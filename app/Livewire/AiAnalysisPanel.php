@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -12,6 +13,7 @@ use Livewire\WithFileUploads;
 class AiAnalysisPanel extends Component
 {
     use WithFileUploads;
+    use AuthorizesRequests;
 
     public $spreadsheet_id = null;
     public $selected_range = '';
@@ -50,6 +52,10 @@ class AiAnalysisPanel extends Component
     
     public function mount($spreadsheet_id = null)
     {
+        if ($spreadsheet_id) {
+            $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+        }
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->ai_service = new AiService();
         $this->loadWorkflowRules();
@@ -272,6 +278,8 @@ class AiAnalysisPanel extends Component
             $this->error = 'Select a range before cleaning data';
             return;
         }
+
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
         $this->loading = true;
         

@@ -6,11 +6,14 @@ use App\Models\Comment;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Notifications\MentionedInComment;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class CellCommentsPanel extends Component
 {
+    use AuthorizesRequests;
+
     public $spreadsheet_id;
 
     public $selectedRow = 0;
@@ -25,6 +28,9 @@ class CellCommentsPanel extends Component
 
     public function mount($spreadsheet_id)
     {
+        $spreadsheet = Spreadsheet::findOrFail($spreadsheet_id);
+        $this->authorize('view', $spreadsheet);
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->loadThreads();
     }
@@ -43,6 +49,8 @@ class CellCommentsPanel extends Component
 
     public function addComment()
     {
+        $this->authorize('comment', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $this->validate([
             'newComment' => 'required|string|min:2|max:1000',
         ]);
@@ -65,6 +73,8 @@ class CellCommentsPanel extends Component
 
     public function addReply($threadId)
     {
+        $this->authorize('comment', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $draft = trim((string) ($this->replyDrafts[$threadId] ?? ''));
         if ($draft === '') {
             return;

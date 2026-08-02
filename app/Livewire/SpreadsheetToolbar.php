@@ -5,9 +5,12 @@ namespace App\Livewire;
 use Livewire\Component;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class SpreadsheetToolbar extends Component
 {
+    use AuthorizesRequests;
+
     public $spreadsheet_id;
     public $selected_row = 0;
     public $selected_col = 0;
@@ -56,6 +59,8 @@ class SpreadsheetToolbar extends Component
 
     public function mount($spreadsheet_id)
     {
+        $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+
         $this->spreadsheet_id = $spreadsheet_id;
     }
 
@@ -146,6 +151,8 @@ class SpreadsheetToolbar extends Component
      */
     public function applyFormatting()
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $formatting = [
             'bold'          => $this->bold,
             'italic'        => $this->italic,
@@ -180,6 +187,8 @@ class SpreadsheetToolbar extends Component
      */
     public function clearFormatting()
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $this->resetFormatting();
 
         Cell::where('spreadsheet_id', $this->spreadsheet_id)

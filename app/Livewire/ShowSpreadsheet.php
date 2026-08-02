@@ -337,6 +337,8 @@ class ShowSpreadsheet extends Component
     #[On('cell-edit-complete')]
     public function saveCell($value)
     {
+        $this->authorize('update', $this->spreadsheet);
+
         if (!$this->editingCell) return;
 
         [$row, $col] = explode('_', $this->editingCell);
@@ -538,6 +540,8 @@ class ShowSpreadsheet extends Component
      */
     public function bulkPasteFromText(string $text): array
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $matrix = $this->parsePastedText($text);
         if (empty($matrix)) {
             return ['started' => false, 'message' => 'No paste data found.'];
@@ -682,6 +686,8 @@ class ShowSpreadsheet extends Component
 
     public function undoAction(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $entry = array_pop($this->undoStack);
         if (!$entry) {
             return;
@@ -693,6 +699,8 @@ class ShowSpreadsheet extends Component
 
     public function redoAction(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $entry = array_pop($this->redoStack);
         if (!$entry) {
             return;
@@ -904,6 +912,8 @@ class ShowSpreadsheet extends Component
     #[On('insert-row-selected')]
     public function insertRowSelected(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $row = (int) $this->selectedRow;
         Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('row_index', '>=', $row)
@@ -924,6 +934,8 @@ class ShowSpreadsheet extends Component
     #[On('delete-row-selected')]
     public function deleteRowSelected(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $row = (int) $this->selectedRow;
         Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('row_index', $row)
@@ -956,6 +968,8 @@ class ShowSpreadsheet extends Component
     #[On('insert-column-selected')]
     public function insertColumnSelected(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $col = (int) $this->selectedCol;
         Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('col_index', '>=', $col)
@@ -976,6 +990,8 @@ class ShowSpreadsheet extends Component
     #[On('delete-column-selected')]
     public function deleteColumnSelected(): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $col = (int) $this->selectedCol;
         Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('col_index', $col)
@@ -1142,6 +1158,8 @@ class ShowSpreadsheet extends Component
         if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
             $data = $data[0];
         }
+
+        $this->authorize('update', $this->spreadsheet);
 
         $direction = strtolower((string) ($data['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $targetCol = (int) $this->selectedCol;

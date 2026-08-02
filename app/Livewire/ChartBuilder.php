@@ -6,9 +6,12 @@ use Livewire\Component;
 use App\Models\Spreadsheet;
 use App\Models\Cell;
 use App\Models\ChartConfig;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class ChartBuilder extends Component
 {
+    use AuthorizesRequests;
+
     public $spreadsheet_id;
 
     // Form state (modal)
@@ -40,6 +43,8 @@ class ChartBuilder extends Component
 
     public function mount($spreadsheet_id)
     {
+        $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->loadCharts();
     }
@@ -75,6 +80,8 @@ class ChartBuilder extends Component
      */
     public function saveChart()
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $this->validate();
 
         $chartData = $this->getChartData($this->data_range, $this->labels_range);
@@ -106,6 +113,8 @@ class ChartBuilder extends Component
      */
     public function deleteChart($chartId)
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         ChartConfig::where('id', $chartId)
             ->where('spreadsheet_id', $this->spreadsheet_id)
             ->delete();

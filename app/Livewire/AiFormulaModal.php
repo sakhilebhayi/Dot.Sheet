@@ -2,12 +2,16 @@
 
 namespace App\Livewire;
 
+use App\Models\Spreadsheet;
 use App\Services\AiService;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Component;
 use Livewire\Attributes\On;
 
 class AiFormulaModal extends Component
 {
+    use AuthorizesRequests;
+
     public $spreadsheet_id;
     public $selected_row;
     public $selected_col;
@@ -24,6 +28,8 @@ class AiFormulaModal extends Component
 
     public function mount($spreadsheet_id, $row = 0, $col = 0)
     {
+        $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->selected_row = $row;
         $this->selected_col = $col;

@@ -5,12 +5,15 @@ namespace App\Livewire;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class VersionHistoryModal extends Component
 {
+    use AuthorizesRequests;
+
     public $spreadsheet_id;
     public $open = false;
     public $versions = [];
@@ -22,6 +25,8 @@ class VersionHistoryModal extends Component
 
     public function mount($spreadsheet_id)
     {
+        $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->loadVersions();
     }

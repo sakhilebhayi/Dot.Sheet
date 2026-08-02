@@ -21,14 +21,14 @@ Route::middleware([
     'verified',
 ])->group(function () {
     Route::get('/dashboard', function () {
-        $userId = auth()->id();
-        $mySheets = \App\Models\Spreadsheet::where('owner_id', $userId)->count();
-        $sharedSheets = \Illuminate\Support\Facades\DB::table('spreadsheet_user')
-            ->where('user_id', $userId)->count();
-        $totalCells = \App\Models\Cell::whereHas('spreadsheet', fn ($q) => $q->where('owner_id', $userId))->count();
-        $aiPrompts = \App\Models\AiPrompt::where('user_id', $userId)->count();
-        $recentSheets = \App\Models\Spreadsheet::where('owner_id', $userId)->latest()->limit(8)->get();
-        return view('dashboard', compact('mySheets', 'sharedSheets', 'totalCells', 'aiPrompts', 'recentSheets'));
+        $user = auth()->user();
+        $spreadsheets = \App\Models\Spreadsheet::where('owner_id', $user->id)
+            ->orWhereHas('sharedUsers', fn ($q) => $q->where('user_id', $user->id))
+            ->withCount('cells')
+            ->with('owner', 'team')
+            ->latest()
+            ->get();
+        return view('dashboard', compact('spreadsheets'));
     })->name('dashboard');
 
     // Spreadsheet routes

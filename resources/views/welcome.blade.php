@@ -20,7 +20,8 @@
             --card: rgba(255, 255, 255, 0.78);
             --line: rgba(18, 34, 38, 0.14);
             --shadow: 0 24px 70px rgba(13, 38, 46, 0.2);
-            --bg-photo: url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2400&q=80');
+            /* Photographic Background: real charts/analytics-on-laptop-screen photo by Carlos Muza (@kmuza), unsplash.com/photos/laptop-computer-on-glass-top-table-hpjSkU2UYSU */
+            --bg-photo: url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=2400&q=80');
         }
 
         * { box-sizing: border-box; }

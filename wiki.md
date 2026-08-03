@@ -1,6 +1,6 @@
 ---
 title: Dot.Sheet — Platform Wiki
-version: 0.1.0
+version: 0.2.0
 status: draft
 owners: [Sheet Platform Lead]
 platform-id: dot-sheet
@@ -158,4 +158,5 @@ Given that spreadsheet content can be arbitrary user/business data, any aggregat
 
 | Version | Date | Author | Change |
 |---|---|---|---|
+| 0.2.0 | 2026-08-03 | Sakhile Bhayi | Redesigned `resources/views/welcome.blade.php`'s marketing surface for real photography: the real `dot_sheet.png` logo was already wired into the hero panel from a prior pass, so this pass replaced the hero's `--bg-photo` CSS variable — previously a generic, uncredited stock image — with a real, licensed Unsplash photo of charts/analytics on a laptop screen by Carlos Muza (@kmuza), unsplash.com/photos/laptop-computer-on-glass-top-table-hpjSkU2UYSU, hotlinked via Unsplash's CDN with photographer credit kept as an inline HTML comment. Verified the CDN URL resolves (`curl -sI` returned `HTTP/2 200`) before committing. |
 | 0.1.0 | 2026-08-02 | Sheet Platform Lead | Initial platform-owned wiki. Ecosystem integration pass: verified `EcosystemAuthController` against the shared SSO contract (correct); fixed `DB_DATABASE` defaulting away from the shared `infodot` database; found and fixed a real dashboard-breaking bug left by the prior "fix" commit (`5cfa982`) — `routes/web.php` and `dashboard.blade.php` had drifted out of sync; found and fixed a systemic missing-authorization gap across six Livewire components (`ShowSpreadsheet`, `ChartBuilder`, `CellCommentsPanel`, `SpreadsheetToolbar`, `AiFormulaModal`, `AiAnalysisPanel`, `VersionHistoryModal`) that allowed view/comment-only shared users to perform edit-tier writes; wired favicons into `layouts/app.blade.php` (previously missing entirely) and standardized favicon sizing across all three layouts; corrected `README.md` claims that no longer matched the code (Laravel version, domain model names, AI provider, named ranges/pivot tables/Scout/Horizon/S3 that don't exist); cross-checked `PHASE_1_COMPLETION.md`, `PHASE_2_COMPLETE.md`, `PHASE_2_PROGRESS.md`, `QUICKSTART.md`, and `TASK_LIST.md` against real code — found their feature checklists largely accurate but their infrastructure/version details stale. |

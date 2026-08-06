@@ -13,8 +13,9 @@
         <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
 
         <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=sora:400,500,600,700|fraunces:600,700,800" rel="stylesheet" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=Sora:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
         <!-- Vite -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -24,14 +25,22 @@
 
         <style>
             :root {
-                --ink: #122226;
-                --ink-soft: #355257;
-                --accent: #1f9d74;
-                --accent-strong: #0f7f5a;
-                --card: rgba(255, 255, 255, 0.78);
-                --line: rgba(18, 34, 38, 0.14);
-                --shadow: 0 24px 70px rgba(13, 38, 46, 0.2);
-                --bg-photo: url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2400&q=80');
+                --ink: #12231f;
+                --ink-soft: #1c332c;
+                --gold: #e3ab1f;
+                --gold-soft: #f1c657;
+                --green: #2f9e46;
+                --green-soft: #4fbb63;
+                --paper: #faf7ec;
+                --paper-soft: #f1ecdb;
+                --slate: #4c5f58;
+                --cream: #ece5cf;
+                --line: rgba(18, 35, 31, 0.13);
+                --line-dark: rgba(250, 247, 236, 0.16);
+                --font-display: 'Fraunces', ui-serif, Georgia, serif;
+                --font-body: 'Sora', system-ui, sans-serif;
+                --font-mono: 'Space Mono', ui-monospace, monospace;
+                --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
             }
 
             *, *::before, *::after { box-sizing: border-box; }
@@ -39,39 +48,9 @@
             body {
                 margin: 0;
                 min-height: 100vh;
-                font-family: 'Sora', system-ui, sans-serif;
+                font-family: var(--font-body);
                 color: var(--ink);
-                background:
-                    linear-gradient(rgba(12, 27, 31, 0.42), rgba(12, 27, 31, 0.42)),
-                    var(--bg-photo) center/cover fixed no-repeat,
-                    radial-gradient(900px 400px at 85% -10%, rgba(31, 157, 116, 0.24), transparent 70%),
-                    radial-gradient(700px 500px at -10% 100%, rgba(234, 179, 8, 0.18), transparent 70%),
-                    linear-gradient(160deg, #f8f5ef 0%, #eff6f2 45%, #f6f6f2 100%);
-                background-blend-mode: multiply, normal, normal, normal, normal;
-                overflow-x: hidden;
-            }
-
-            /* Grain texture overlay */
-            body::before {
-                content: '';
-                position: fixed;
-                inset: 0;
-                pointer-events: none;
-                opacity: 0.22;
-                background-image: radial-gradient(rgba(20, 20, 20, 0.06) 0.55px, transparent 0.55px);
-                background-size: 4px 4px;
-                z-index: 0;
-            }
-
-            body::after {
-                content: '';
-                position: fixed;
-                inset: 0;
-                pointer-events: none;
-                background:
-                    radial-gradient(1200px 500px at 110% -15%, rgba(31, 157, 116, 0.34), transparent 65%),
-                    radial-gradient(900px 520px at -20% 105%, rgba(234, 179, 8, 0.2), transparent 70%);
-                z-index: 0;
+                background: var(--paper);
             }
 
             /* ── Layout ── */
@@ -80,9 +59,7 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 2.5rem 1rem;
-                position: relative;
-                z-index: 1;
+                padding: 2.5rem 1.25rem;
             }
 
             .auth-inner {
@@ -91,78 +68,35 @@
                 display: flex;
                 flex-direction: column;
                 gap: 1.5rem;
-                animation: authLiftIn 700ms cubic-bezier(0.2, 0.85, 0.26, 1) both;
+                animation: authLiftIn 500ms var(--ease-out) both;
             }
 
             /* ── Logo ── */
             .auth-logo-wrap { text-align: center; }
 
-            .auth-logo-link {
-                display: inline-flex;
-                align-items: center;
-                gap: 0.6rem;
-                text-decoration: none;
-                color: var(--ink);
-            }
-
-            .auth-logo-dot {
-                width: 38px;
-                height: 38px;
-                background: var(--accent);
-                border-radius: 11px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: #fff;
-                font-weight: 700;
-                font-size: 1.1rem;
-                flex-shrink: 0;
-                box-shadow: 0 6px 16px rgba(31, 157, 116, 0.38);
-            }
-
-            .auth-logo-name {
-                font-family: 'Fraunces', serif;
-                font-size: 1.4rem;
-                font-weight: 700;
-                letter-spacing: -0.01em;
-            }
-
             /* ── Card ── */
             .auth-card {
-                background: var(--card);
-                border: 1px solid rgba(255, 255, 255, 0.65);
-                box-shadow: var(--shadow);
-                border-radius: 28px;
+                background: #fff;
+                border: 1px solid var(--line);
+                box-shadow: 0 20px 50px rgba(18, 35, 31, 0.1);
+                border-radius: 20px;
                 padding: 2.4rem 2.2rem;
-                position: relative;
-                overflow: hidden;
-            }
-
-            .auth-card::after {
-                content: '';
-                position: absolute;
-                width: 220px;
-                height: 220px;
-                border-radius: 999px;
-                right: -75px;
-                top: -95px;
-                background: radial-gradient(circle, rgba(31, 157, 116, 0.18), transparent 68%);
-                pointer-events: none;
             }
 
             /* ── Headings ── */
             .auth-heading {
                 margin: 0 0 0.3rem;
-                font-family: 'Fraunces', serif;
-                font-size: 1.75rem;
+                font-family: var(--font-display);
+                font-size: 1.7rem;
                 font-weight: 700;
-                line-height: 1.1;
+                line-height: 1.15;
                 letter-spacing: -0.01em;
+                color: var(--ink);
             }
 
             .auth-sub {
                 margin: 0 0 1.75rem;
-                color: var(--ink-soft);
+                color: var(--slate);
                 font-size: 0.9rem;
                 line-height: 1.6;
             }
@@ -183,9 +117,9 @@
                 padding: 0.68rem 0.9rem;
                 border: 1px solid var(--line);
                 border-radius: 10px;
-                background: rgba(255, 255, 255, 0.72);
+                background: var(--paper);
                 color: var(--ink);
-                font-family: 'Sora', system-ui, sans-serif;
+                font-family: var(--font-body);
                 font-size: 0.92rem;
                 outline: none;
                 transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -194,11 +128,11 @@
             }
 
             .ds-input:focus {
-                border-color: var(--accent);
-                box-shadow: 0 0 0 3px rgba(31, 157, 116, 0.15);
+                border-color: var(--gold);
+                box-shadow: 0 0 0 3px rgba(227, 171, 31, 0.22);
             }
 
-            .ds-input::placeholder { color: rgba(53, 82, 87, 0.45); }
+            .ds-input::placeholder { color: rgba(76, 95, 88, 0.55); }
 
             .ds-checkbox-row {
                 display: flex;
@@ -210,14 +144,14 @@
             .ds-checkbox {
                 width: 15px;
                 height: 15px;
-                accent-color: var(--accent);
+                accent-color: var(--gold);
                 cursor: pointer;
                 flex-shrink: 0;
             }
 
             .ds-checkbox-label {
                 font-size: 0.84rem;
-                color: var(--ink-soft);
+                color: var(--slate);
                 cursor: pointer;
             }
 
@@ -226,25 +160,22 @@
                 display: block;
                 width: 100%;
                 padding: 0.82rem 1.2rem;
-                background: var(--ink);
-                color: #f5fbf8;
+                background: var(--gold);
+                color: #1c1204;
                 border: none;
                 border-radius: 12px;
-                font-family: 'Sora', system-ui, sans-serif;
+                font-family: var(--font-display);
                 font-size: 0.93rem;
-                font-weight: 600;
+                font-weight: 700;
                 cursor: pointer;
                 text-align: center;
                 text-decoration: none;
-                transition: transform 180ms ease, box-shadow 180ms ease;
-                box-shadow: 0 8px 20px rgba(18, 34, 38, 0.2);
+                transition: background-color 160ms ease, transform 160ms var(--ease-out);
                 margin-top: 0.5rem;
             }
 
-            .ds-btn-primary:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 14px 28px rgba(18, 34, 38, 0.28);
-            }
+            .ds-btn-primary:hover { background: var(--gold-soft); }
+            .ds-btn-primary:active { transform: scale(0.98); }
 
             /* ── Footer row ── */
             .ds-footer {
@@ -257,21 +188,22 @@
                 padding-top: 1.35rem;
                 border-top: 1px solid var(--line);
                 font-size: 0.84rem;
-                color: var(--ink-soft);
+                color: var(--slate);
             }
 
             .ds-link {
-                color: var(--accent-strong);
+                color: var(--ink);
                 font-weight: 600;
-                text-decoration: none;
+                text-decoration: underline;
+                text-underline-offset: 2px;
             }
 
-            .ds-link:hover { text-decoration: underline; }
+            .ds-link:hover { color: var(--green); }
 
             /* ── Alerts ── */
             .ds-error-box {
-                background: rgba(239, 68, 68, 0.08);
-                border: 1px solid rgba(239, 68, 68, 0.25);
+                background: rgba(220, 38, 38, 0.06);
+                border: 1px solid rgba(220, 38, 38, 0.22);
                 border-radius: 12px;
                 padding: 0.9rem 1rem;
                 margin-bottom: 1.4rem;
@@ -288,13 +220,13 @@
             .ds-error-box li { margin-top: 0.22rem; }
 
             .ds-status {
-                background: rgba(31, 157, 116, 0.1);
-                border: 1px solid rgba(31, 157, 116, 0.28);
+                background: rgba(47, 158, 70, 0.1);
+                border: 1px solid rgba(47, 158, 70, 0.28);
                 border-radius: 12px;
                 padding: 0.78rem 1rem;
                 margin-bottom: 1.4rem;
                 font-size: 0.87rem;
-                color: var(--accent-strong);
+                color: #1f7a34;
                 font-weight: 500;
             }
 
@@ -305,24 +237,28 @@
                 gap: 0.6rem;
                 margin-bottom: 1.1rem;
                 font-size: 0.84rem;
-                color: var(--ink-soft);
+                color: var(--slate);
                 line-height: 1.5;
             }
 
             .ds-terms-row a {
-                color: var(--accent-strong);
+                color: var(--ink);
                 font-weight: 500;
-                text-decoration: none;
+                text-decoration: underline;
             }
-            .ds-terms-row a:hover { text-decoration: underline; }
+            .ds-terms-row a:hover { color: var(--green); }
 
             @keyframes authLiftIn {
-                from { transform: translateY(18px) scale(0.99); opacity: 0; }
-                to   { transform: translateY(0)    scale(1);    opacity: 1; }
+                from { transform: translateY(14px); opacity: 0; }
+                to   { transform: translateY(0);    opacity: 1; }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .auth-inner { animation: none; }
             }
 
             @media (max-width: 520px) {
-                .auth-card { padding: 1.8rem 1.4rem; border-radius: 22px; }
+                .auth-card { padding: 1.8rem 1.4rem; border-radius: 18px; }
                 .auth-heading { font-size: 1.45rem; }
             }
         </style>

@@ -1,493 +1,332 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ config('app.name', 'Dot.Sheet') }}</title>
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
-    <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}">
-    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=sora:400,500,600,700|fraunces:600,700,800" rel="stylesheet" />
-    <style>
-        :root {
-            --ink: #122226;
-            --ink-soft: #355257;
-            --paper: #f7f4eb;
-            --accent: #1f9d74;
-            --accent-strong: #0f7f5a;
-            --card: rgba(255, 255, 255, 0.78);
-            --line: rgba(18, 34, 38, 0.14);
-            --shadow: 0 24px 70px rgba(13, 38, 46, 0.2);
-            /* Photographic Background: real charts/analytics-on-laptop-screen photo by Carlos Muza (@kmuza), unsplash.com/photos/laptop-computer-on-glass-top-table-hpjSkU2UYSU */
-            --bg-photo: url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=2400&q=80');
-        }
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Dot.Sheet — A spreadsheet grid built for many hands at once</title>
+        <meta name="description" content="Formulas that run client and server side, comments and version history on every cell, and a grid that stays in sync while more than one person edits it. Dot.Sheet is the collaborative spreadsheet in the Dot ecosystem.">
 
-        * { box-sizing: border-box; }
+        <!-- Favicon -->
+        <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
+        <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}">
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}">
 
-        body {
-            margin: 0;
-            min-height: 100vh;
-            font-family: 'Sora', system-ui, sans-serif;
-            color: var(--ink);
-            background:
-                linear-gradient(rgba(12, 27, 31, 0.44), rgba(12, 27, 31, 0.44)),
-                var(--bg-photo) center/cover fixed no-repeat,
-                radial-gradient(900px 400px at 85% -10%, rgba(31, 157, 116, 0.24), transparent 70%),
-                radial-gradient(700px 500px at -10% 100%, rgba(234, 179, 8, 0.18), transparent 70%),
-                linear-gradient(160deg, #f8f5ef 0%, #eff6f2 45%, #f6f6f2 100%);
-            background-blend-mode: multiply, normal, normal, normal, normal;
-            overflow-x: hidden;
-        }
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=Sora:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-        body::after {
-            content: '';
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            background:
-                radial-gradient(1200px 500px at 110% -15%, rgba(31, 157, 116, 0.34), transparent 65%),
-                radial-gradient(900px 520px at -20% 105%, rgba(234, 179, 8, 0.2), transparent 70%);
-            z-index: 0;
-        }
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
 
-        .grain {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0.22;
-            background-image: radial-gradient(rgba(20, 20, 20, 0.06) 0.55px, transparent 0.55px);
-            background-size: 4px 4px;
-        }
+        <!-- Livewire (bundles and starts Alpine.js, used by the nav below) -->
+        @livewireStyles
 
-        .page {
-            width: min(1160px, calc(100% - 2.5rem));
-            margin: 1.25rem auto 2.8rem;
-            position: relative;
-            z-index: 1;
-        }
+        <style>
+            :root {
+                --ink: #12231f;
+                --ink-soft: #1c332c;
+                --gold: #e3ab1f;
+                --gold-soft: #f1c657;
+                --green: #2f9e46;
+                --green-soft: #4fbb63;
+                --paper: #faf7ec;
+                --paper-soft: #f1ecdb;
+                --slate: #4c5f58;
+                --cream: #ece5cf;
+                --line: rgba(18, 35, 31, 0.13);
+                --line-dark: rgba(250, 247, 236, 0.16);
+                --font-display: 'Fraunces', ui-serif, Georgia, serif;
+                --font-body: 'Sora', system-ui, sans-serif;
+                --font-mono: 'Space Mono', ui-monospace, monospace;
+                --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+            }
+            html { background: var(--paper); }
+            body { font-family: var(--font-body); background: var(--paper); color: var(--ink); }
+            .font-display { font-family: var(--font-display); }
+            .font-mono { font-family: var(--font-mono); }
 
-        .topbar {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 1.1rem;
-        }
+            .press { transition: transform 160ms var(--ease-out); }
+            .press:active { transform: scale(0.97); }
 
-        .topbar a {
-            text-decoration: none;
-            color: var(--ink);
-            border: 1px solid var(--line);
-            padding: 0.58rem 1rem;
-            border-radius: 999px;
-            font-size: 0.86rem;
-            font-weight: 600;
-            transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
-            backdrop-filter: blur(8px);
-            background: rgba(255, 255, 255, 0.55);
-        }
-
-        .topbar a:hover {
-            transform: translateY(-1px);
-            border-color: rgba(18, 34, 38, 0.28);
-            background: rgba(255, 255, 255, 0.85);
-        }
-
-        .topbar .primary {
-            background: var(--accent);
-            color: #f6fffb;
-            border-color: var(--accent);
-        }
-
-        .topbar .primary:hover {
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-        }
-
-        .hero {
-            background: var(--card);
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: var(--shadow);
-            border-radius: 30px;
-            padding: 3.2rem 3.2rem 2.4rem;
-            display: grid;
-            gap: 2.4rem;
-            grid-template-columns: 1.05fr 0.95fr;
-            position: relative;
-            overflow: hidden;
-            animation: liftIn 820ms cubic-bezier(0.2, 0.85, 0.26, 1) both;
-            backdrop-filter: blur(5px);
-        }
-
-        .hero::after {
-            content: '';
-            position: absolute;
-            width: 340px;
-            height: 340px;
-            border-radius: 999px;
-            right: -130px;
-            top: -140px;
-            background: radial-gradient(circle, rgba(31, 157, 116, 0.22), transparent 68%);
-        }
-
-        .kicker {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.45rem;
-            font-size: 0.78rem;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: var(--ink-soft);
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid var(--line);
-            border-radius: 999px;
-            padding: 0.35rem 0.72rem;
-            margin-bottom: 1rem;
-        }
-
-        h1 {
-            margin: 0;
-            font-family: 'Fraunces', serif;
-            font-size: clamp(2rem, 3.6vw, 3.75rem);
-            line-height: 1.06;
-            letter-spacing: -0.01em;
-            max-width: 15ch;
-        }
-
-        .subtitle {
-            margin: 1rem 0 0;
-            color: var(--ink-soft);
-            font-size: 1.04rem;
-            line-height: 1.7;
-            max-width: 52ch;
-        }
-
-        .hero-ribbon {
-            margin-top: 1.2rem;
-            display: inline-flex;
-            gap: 0.7rem;
-            align-items: center;
-            background: rgba(18, 34, 38, 0.08);
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 0.48rem 0.72rem;
-            font-size: 0.78rem;
-            color: var(--ink-soft);
-        }
-
-        .hero-ribbon strong {
-            color: var(--ink);
-        }
-
-        .cta-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.8rem;
-            margin-top: 1.75rem;
-        }
-
-        .btn {
-            text-decoration: none;
-            border-radius: 12px;
-            padding: 0.82rem 1.15rem;
-            font-weight: 600;
-            font-size: 0.92rem;
-            transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
-        }
-
-        .btn-main {
-            background: var(--ink);
-            color: #f5fbf8;
-            box-shadow: 0 14px 24px rgba(18, 34, 38, 0.22);
-        }
-
-        .btn-main:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 18px 30px rgba(18, 34, 38, 0.28);
-        }
-
-        .btn-muted {
-            color: var(--ink);
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.62);
-        }
-
-        .btn-muted:hover {
-            transform: translateY(-2px);
-            background: rgba(255, 255, 255, 0.9);
-        }
-
-        .feature-grid {
-            margin-top: 2.2rem;
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 0.68rem;
-        }
-
-        .feature {
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 0.78rem;
-            font-size: 0.86rem;
-            color: var(--ink-soft);
-            background: rgba(255, 255, 255, 0.55);
-        }
-
-        .feature strong {
-            display: block;
-            color: var(--ink);
-            margin-bottom: 0.35rem;
-            font-size: 0.92rem;
-        }
-
-        .hero-trust {
-            margin-top: 1.35rem;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.6rem;
-        }
-
-        .hero-trust span {
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.56);
-            border-radius: 999px;
-            font-size: 0.74rem;
-            color: var(--ink-soft);
-            padding: 0.33rem 0.66rem;
-        }
-
-        .panel {
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            background: rgba(255, 255, 255, 0.68);
-            padding: 1.4rem;
-            backdrop-filter: blur(10px);
-        }
-
-        .logo-wrap {
-            border-radius: 18px;
-            border: 1px solid var(--line);
-            background: linear-gradient(145deg, #ffffff 5%, #edf8f2 100%);
-            min-height: 250px;
-            display: grid;
-            place-items: center;
-            padding: 1.25rem;
-            animation: softFloat 3.2s ease-in-out infinite;
-        }
-
-        .logo-wrap img {
-            width: min(260px, 82%);
-            filter: drop-shadow(0 12px 24px rgba(17, 40, 42, 0.28));
-        }
-
-        .metrics {
-            margin-top: 1rem;
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 0.68rem;
-        }
-
-        .metric {
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.62);
-            padding: 0.72rem;
-        }
-
-        .metric .value {
-            font-family: 'Fraunces', serif;
-            font-size: 1.26rem;
-            line-height: 1;
-        }
-
-        .metric .label {
-            margin-top: 0.3rem;
-            font-size: 0.76rem;
-            color: var(--ink-soft);
-        }
-
-        .footer {
-            margin-top: 1rem;
-            font-size: 0.82rem;
-            color: rgba(18, 34, 38, 0.75);
-        }
-
-        .ambient-stats {
-            margin-top: 0.95rem;
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 0.68rem;
-        }
-
-        .ambient-stats article {
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            padding: 0.6rem 0.68rem;
-            background: rgba(255, 255, 255, 0.56);
-        }
-
-        .ambient-stats .stat-value {
-            font-family: 'Fraunces', serif;
-            font-size: 1.12rem;
-            line-height: 1;
-            color: var(--ink);
-        }
-
-        .ambient-stats .stat-label {
-            margin-top: 0.28rem;
-            font-size: 0.72rem;
-            color: var(--ink-soft);
-        }
-
-        @keyframes liftIn {
-            from { transform: translateY(18px) scale(0.99); opacity: 0; }
-            to { transform: translateY(0) scale(1); opacity: 1; }
-        }
-
-        @keyframes softFloat {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-5px); }
-        }
-
-        @media (max-width: 960px) {
-            .hero {
-                grid-template-columns: 1fr;
-                padding: 2rem;
+            @media (prefers-reduced-motion: no-preference) {
+                .reveal {
+                    opacity: 0;
+                    transform: translateY(14px);
+                    transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+                }
+                .reveal.is-visible { opacity: 1; transform: translateY(0); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .reveal { opacity: 1; transform: none; }
             }
 
-            .feature-grid,
-            .metrics {
-                grid-template-columns: 1fr 1fr;
+            @media (hover: hover) and (pointer: fine) {
+                .row-hover:hover { background: rgba(18, 35, 31, 0.035); }
+                .link-underline { background-size: 0% 1px; }
+                .link-underline:hover { background-size: 100% 1px; }
+            }
+            .link-underline {
+                background-image: linear-gradient(currentColor, currentColor);
+                background-position: 0 100%;
+                background-repeat: no-repeat;
+                transition: background-size 220ms var(--ease-out);
             }
 
-            .ambient-stats {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
+            .nav-top a, .nav-top button { color: var(--paper); }
+            .nav-top .nav-cream { color: rgba(250, 247, 236, 0.82); }
+            .nav-scrolled a, .nav-scrolled button { color: var(--ink); }
+            .nav-scrolled .nav-cream { color: var(--slate); }
+        </style>
+    </head>
+    <body class="antialiased">
 
-        @media (max-width: 640px) {
-            .page { width: calc(100% - 1.4rem); }
-            .hero { border-radius: 22px; padding: 1.35rem; gap: 1.4rem; }
-            .topbar { flex-wrap: wrap; justify-content: center; }
-            h1 { font-size: clamp(1.7rem, 9vw, 2.25rem); }
-            .feature-grid,
-            .metrics {
-                grid-template-columns: 1fr;
-            }
+        <!-- Nav -->
+        <header
+            x-data="{ scrolled: false, mobileMenuOpen: false }"
+            @scroll.window="scrolled = window.pageYOffset > 24"
+            :class="scrolled ? 'bg-[var(--paper)]/95 backdrop-blur-md border-b border-[var(--line)] nav-scrolled' : 'border-b border-transparent nav-top'"
+            class="fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
+        >
+            <nav class="max-w-[1400px] mx-auto px-5 sm:px-8 py-3 flex items-center justify-between">
+                <a href="/" class="flex items-center gap-2.5 press">
+                    <img src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet" class="h-16 sm:h-20 w-auto">
+                </a>
 
-            .ambient-stats {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-<body>
-<div class="grain" aria-hidden="true"></div>
+                <div class="hidden md:flex items-center gap-8 font-mono text-[13px] tracking-wide uppercase nav-cream">
+                    <a href="#capabilities" class="link-underline pb-0.5">Product</a>
+                    <a href="#features" class="link-underline pb-0.5">Features</a>
+                </div>
 
-<div class="page">
-    @if (Route::has('login'))
-        <nav class="topbar">
-            @auth
-                <a href="{{ url('/dashboard') }}" class="primary">Go to Dashboard</a>
-            @else
-                <a href="{{ route('login') }}">Log in</a>
-                @if (Route::has('register'))
-                    <a href="{{ route('register') }}" class="primary">Start free</a>
+                @if (Route::has('login'))
+                    <div class="flex items-center gap-3">
+                        @auth
+                            <a href="{{ url('/dashboard') }}" class="press flex items-center gap-2 px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
+                                Dashboard
+                            </a>
+                        @else
+                            <a href="{{ route('login') }}" class="hidden sm:block text-sm font-medium nav-cream transition-colors">
+                                Sign in
+                            </a>
+                            @if (Route::has('register'))
+                                <a href="{{ route('register') }}" class="press px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
+                                    Create account
+                                </a>
+                            @endif
+                        @endauth
+
+                        <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden press p-2 -mr-2" aria-label="Toggle menu">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path x-show="!mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 7h16M4 12h16M4 17h16"></path>
+                                <path x-show="mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
                 @endif
-            @endauth
-        </nav>
-    @endif
+            </nav>
 
-    <main class="hero">
-        <section>
-            <span class="kicker">AI-Powered Spreadsheets</span>
-            <h1>Make collaborative analysis feel effortless.</h1>
-            <p class="subtitle">
-                Dot.Sheet brings formulas, automation, and team collaboration into one intelligent workspace,
-                so your data work feels less like maintenance and more like momentum.
-            </p>
+            <div x-show="mobileMenuOpen"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="md:hidden border-t border-[var(--line)] bg-[var(--paper)]"
+                 style="display: none;">
+                <div class="flex flex-col px-5 py-4 gap-1 font-mono text-sm uppercase tracking-wide">
+                    <a href="#capabilities" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Product</a>
+                    <a href="#features" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Features</a>
+                    @guest
+                        <a href="{{ route('login') }}" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Sign in</a>
+                    @endguest
+                </div>
+            </div>
+        </header>
 
-            <div class="hero-ribbon">
-                <strong>New:</strong>
-                Template packs, chart snapshots, and AI-powered workflow triggers now in one command surface.
+        <!-- Hero -->
+        <section class="relative min-h-[100dvh] flex items-end overflow-hidden">
+            <!-- Photo: laptop computer on glass-top table, by Carlos Muza (@kmuza), unsplash.com/photos/hpjSkU2UYSU -->
+            <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2400&auto=format&fit=crop');"></div>
+            <div class="absolute inset-0" style="background: linear-gradient(180deg, rgba(18,35,31,0.58) 0%, rgba(18,35,31,0.76) 45%, #12231f 92%);"></div>
+            <div class="absolute inset-0" style="background: linear-gradient(90deg, #12231f 0%, rgba(18,35,31,0.55) 38%, transparent 68%);"></div>
+
+            <!-- Signature element — line-art grid + active cell + calculator mark + arrow, echoing the real logo's circle/math-symbols and green chevron -->
+            <svg class="hidden lg:block absolute right-[6%] bottom-[8%] h-[68%] w-auto opacity-[0.16] pointer-events-none" viewBox="0 0 220 320" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M20 20H190M20 90H190M20 160H190M20 230H190M20 300H190" stroke="#faf7ec" stroke-width="1.5"/>
+                <path d="M20 20V300M75 20V300M130 20V300M190 20V300" stroke="#faf7ec" stroke-width="1.5"/>
+                <rect x="75" y="90" width="55" height="70" stroke="#faf7ec" stroke-width="3"/>
+                <rect x="72" y="87" width="6" height="6" fill="#faf7ec"/>
+                <rect x="127" y="87" width="6" height="6" fill="#faf7ec"/>
+                <rect x="72" y="157" width="6" height="6" fill="#faf7ec"/>
+                <rect x="127" y="157" width="6" height="6" fill="#faf7ec"/>
+                <circle cx="190" cy="20" r="16" stroke="#faf7ec" stroke-width="3"/>
+                <path d="M184 20H196M190 14V26" stroke="#faf7ec" stroke-width="2"/>
+                <path d="M20 245L38 262L20 279" stroke="#faf7ec" stroke-width="3"/>
+            </svg>
+
+            <div class="relative z-10 max-w-[1400px] mx-auto px-5 sm:px-8 pt-32 pb-16 sm:pb-20 w-full">
+                <div class="max-w-2xl reveal" data-reveal>
+                    <p class="font-mono text-xs tracking-[0.18em] uppercase text-[var(--gold-soft)] mb-6">
+                        Collaborative spreadsheets
+                    </p>
+
+                    <h1 class="font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] tracking-tight text-[var(--paper)] mb-6">
+                        Row by row.<br>Together, in real time.
+                    </h1>
+
+                    <p class="text-lg text-[rgba(250,247,236,0.82)] leading-relaxed max-w-xl mb-10">
+                        Dot.Sheet is a real grid of rows and columns — formulas, comments, charts, and version history — built to hold more than one editor in the same sheet without waiting for a full reload.
+                    </p>
+
+                    @guest
+                        <div class="flex flex-wrap items-center gap-4">
+                            <a href="{{ route('register') }}" class="press px-7 py-3.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] font-display font-semibold rounded-lg transition-colors">
+                                Create account
+                            </a>
+                            <a href="#features" class="press flex items-center gap-2 px-7 py-3.5 text-[var(--paper)] font-medium rounded-lg border border-[var(--line-dark)] hover:border-[rgba(250,247,236,0.4)] transition-colors">
+                                See what's on the grid
+                            </a>
+                        </div>
+                    @endguest
+                </div>
             </div>
 
-            <div class="cta-row">
-                @auth
-                    <a href="{{ url('/dashboard') }}" class="btn btn-main">Open your workspace</a>
-                @else
-                    <a href="{{ route('login') }}" class="btn btn-main">Sign in to Dot.Sheet</a>
-                    @if (Route::has('register'))
-                        <a href="{{ route('register') }}" class="btn btn-muted">Create account</a>
-                    @endif
-                @endauth
-            </div>
-
-            <div class="feature-grid">
-                <article class="feature">
-                    <strong>Realtime teams</strong>
-                    Presence, comments, and shared cursors in one canvas.
-                </article>
-                <article class="feature">
-                    <strong>AI formulas</strong>
-                    Generate and explain formulas directly from prompts.
-                </article>
-                <article class="feature">
-                    <strong>Fast at scale</strong>
-                    Virtualized grid and queue-backed operations.
-                </article>
-            </div>
-
-            <div class="hero-trust">
-                <span>Import CSV / XLSX</span>
-                <span>Version history</span>
-                <span>Role-based sharing</span>
-                <span>AI insights panel</span>
+            <!-- Live data strip — instrumentation-styled, not a fabricated metric -->
+            <div class="relative z-10 w-full border-t border-[var(--line-dark)] bg-[#12231f]/60 backdrop-blur-sm">
+                <div class="max-w-[1400px] mx-auto px-5 sm:px-8 py-4 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[11px] tracking-[0.14em] uppercase text-[rgba(250,247,236,0.75)]">
+                    <span>Sparse cell storage</span>
+                    <span class="text-[var(--gold-soft)]">·</span>
+                    <span>Client + server formulas</span>
+                    <span class="text-[var(--gold-soft)]">·</span>
+                    <span>Realtime presence</span>
+                    <span class="text-[var(--gold-soft)]">·</span>
+                    <span>Version history</span>
+                </div>
             </div>
         </section>
 
-        <aside class="panel">
-            <div class="logo-wrap">
-                <img src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet logo">
-            </div>
-            <div class="metrics">
-                <div class="metric">
-                    <div class="value">1M+</div>
-                    <div class="label">Cell-ready rendering</div>
+        <!-- Features -->
+        <section id="features" class="py-24 sm:py-28 px-5 sm:px-8 bg-[var(--paper)]">
+            <div class="max-w-[1400px] mx-auto">
+                <div class="max-w-xl mb-16 reveal" data-reveal>
+                    <p class="font-mono text-xs tracking-[0.18em] uppercase text-[var(--green)] mb-4">What it does</p>
+                    <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight">
+                        Everything a sheet needs, none of it bolted on after
+                    </h2>
                 </div>
-                <div class="metric">
-                    <div class="value">Live</div>
-                    <div class="label">Collaboration updates</div>
-                </div>
-                <div class="metric">
-                    <div class="value">AI</div>
-                    <div class="label">Formula assistant</div>
-                </div>
-            </div>
-            <p class="footer">v{{ app()->version() }} • Built with Laravel + Livewire</p>
 
-            <div class="ambient-stats">
-                <article>
-                    <div class="stat-value">99.9%</div>
-                    <div class="stat-label">Uptime target</div>
-                </article>
-                <article>
-                    <div class="stat-value">12ms</div>
-                    <div class="stat-label">Hot-cell response</div>
-                </article>
-                <article>
-                    <div class="stat-value">50+</div>
-                    <div class="stat-label">Concurrent editors</div>
-                </article>
-                <article>
-                    <div class="stat-value">∞</div>
-                    <div class="stat-label">Ideas per sheet</div>
-                </article>
+                <div class="grid md:grid-cols-2 border-t border-[var(--line)]">
+                    @php
+                        $features = [
+                            ['tag' => 'Grid', 'title' => 'A grid that loads what you see', 'body' => 'Cells are stored sparsely — only the ones with something in them — and the viewport loads with prefetch instead of pulling the whole sheet at once.'],
+                            ['tag' => 'Formulas', 'title' => 'Formulas run twice, on purpose', 'body' => 'A client-side parser evaluates as you type; the same formula is re-checked by a server-side PHP evaluator, so every collaborator sees the same result.'],
+                            ['tag' => 'Realtime', 'title' => 'See who\'s editing, live', 'body' => 'Cell edits and cursor moves broadcast over a presence channel, gated by the same permission check as every other action on the sheet.'],
+                            ['tag' => 'History', 'title' => 'Comments and version history', 'body' => 'Threaded, cell-anchored comments with @mention notifications, plus full-grid snapshots you can roll back to.'],
+                            ['tag' => 'Import / export', 'title' => 'CSV and XLSX, both ways', 'body' => 'Large imports and pastes are chunked into queued jobs, so one big file doesn\'t lock up the grid for everyone else in it.'],
+                            ['tag' => 'AI', 'title' => 'AI panels, your provider', 'body' => 'Formula generation, natural-language queries, data cleaning, OCR, and sentiment analysis — running on whichever provider you configure, not one fixed model.'],
+                        ];
+                    @endphp
+                    @foreach ($features as $i => $f)
+                        <div class="row-hover border-b border-[var(--line)] {{ $i % 2 === 0 ? 'md:border-r' : '' }} px-1 py-8 sm:py-10 transition-colors reveal" data-reveal>
+                            <p class="font-mono text-[11px] tracking-[0.14em] uppercase text-[var(--green)] mb-3">{{ $f['tag'] }}</p>
+                            <h3 class="font-display font-semibold text-xl text-[var(--ink)] mb-2.5">{{ $f['title'] }}</h3>
+                            <p class="text-[var(--slate)] leading-relaxed max-w-md">{{ $f['body'] }}</p>
+                        </div>
+                    @endforeach
+                </div>
             </div>
-        </aside>
-    </main>
-</div>
-</body>
+        </section>
+
+        <!-- Capabilities -->
+        <section id="capabilities" class="py-24 sm:py-28 px-5 sm:px-8 bg-[var(--paper-soft)] border-y border-[var(--line)]">
+            <div class="max-w-[1400px] mx-auto">
+                <div class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-12 lg:gap-20">
+                    <div class="reveal" data-reveal>
+                        <p class="font-mono text-xs tracking-[0.18em] uppercase text-[var(--green)] mb-4">Built for shared sheets</p>
+                        <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight mb-5">
+                            Owned by one person, shared with as many as it takes
+                        </h2>
+                        <p class="text-[var(--slate)] leading-relaxed max-w-sm">
+                            A sheet always has an owner. Sharing, teams, and public links sit on top of that — never instead of it.
+                        </p>
+                    </div>
+
+                    <div class="grid sm:grid-cols-2 gap-x-10">
+                        @php
+                            $capabilities = [
+                                ['title' => 'Four sharing tiers', 'body' => 'View, comment, edit, and admin permissions, enforced by one policy class that every controller and Livewire panel checks.'],
+                                ['title' => 'Owner first, team optional', 'body' => 'A spreadsheet belongs to its owner. Attaching it to a team is optional, and never the only way in.'],
+                                ['title' => 'Public read-only links', 'body' => 'Publish a bounded window of a sheet for anyone with the link — no account required to view it.'],
+                                ['title' => 'Charts from a range', 'body' => 'Pick a cell range and a chart type, and Dot.Sheet builds and saves the chart definition against your data.'],
+                                ['title' => 'Automation rules', 'body' => 'Workflow rules can watch a column and act when it crosses a threshold, with every run kept in an audit log.'],
+                                ['title' => 'One sign-in, one ecosystem', 'body' => 'A one-time token handoff from the Dot ecosystem hub signs you in here without a separate password.'],
+                            ];
+                        @endphp
+                        @foreach ($capabilities as $c)
+                            <div class="py-6 border-t border-[var(--line)] reveal" data-reveal>
+                                <h3 class="font-display font-medium text-base text-[var(--ink)] mb-1.5">{{ $c['title'] }}</h3>
+                                <p class="text-sm text-[var(--slate)] leading-relaxed">{{ $c['body'] }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="relative py-28 sm:py-36 px-5 sm:px-8 overflow-hidden">
+            <!-- Photo: person gesturing during meeting with laptop, by Headway (@headwayio), unsplash.com/photos/5QgIuuBxKwM -->
+            <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=2400&auto=format&fit=crop');"></div>
+            <div class="absolute inset-0" style="background: linear-gradient(180deg, #12231f 0%, rgba(18,35,31,0.82) 50%, #12231f 100%);"></div>
+
+            <div class="relative z-10 max-w-2xl mx-auto text-center reveal" data-reveal>
+                <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--paper)] leading-tight mb-5">
+                    Open a sheet. Watch the grid catch up to you.
+                </h2>
+                <p class="text-[rgba(250,247,236,0.82)] leading-relaxed mb-10 max-w-lg mx-auto">
+                    Formulas, comments, and version history are already there. Bring your data — the grid keeps everyone's changes in sync as you go.
+                </p>
+
+                @guest
+                    <div class="flex flex-wrap justify-center gap-4">
+                        <a href="{{ route('register') }}" class="press px-8 py-3.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] font-display font-semibold rounded-lg transition-colors">
+                            Create account
+                        </a>
+                        <a href="{{ route('login') }}" class="press px-8 py-3.5 text-[var(--paper)] font-medium rounded-lg border border-[var(--line-dark)] hover:border-[rgba(250,247,236,0.4)] transition-colors">
+                            Sign in
+                        </a>
+                    </div>
+                @endguest
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="py-14 px-5 sm:px-8 border-t border-[var(--line)] bg-[var(--paper)]">
+            <div class="max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet" class="h-11 w-auto opacity-90">
+                </a>
+                <p class="font-mono text-xs tracking-wide text-[var(--slate)]">
+                    &copy; {{ date('Y') }} Dot.Sheet. Collaborative spreadsheets for the Dot ecosystem.
+                </p>
+            </div>
+        </footer>
+
+        <script>
+            if (window.matchMedia('(prefers-reduced-motion: no-preference)').matches && 'IntersectionObserver' in window) {
+                const io = new IntersectionObserver((entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('is-visible');
+                            io.unobserve(entry.target);
+                        }
+                    });
+                }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+                document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+            } else {
+                document.querySelectorAll('[data-reveal]').forEach((el) => el.classList.add('is-visible'));
+            }
+        </script>
+
+        @livewireScripts
+    </body>
 </html>

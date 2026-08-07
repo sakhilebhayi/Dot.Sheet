@@ -1,6 +1,4 @@
-@extends('layouts.app')
-
-@section('content')
+<x-app-layout>
 <div class="py-12">
     <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8">
@@ -50,7 +48,7 @@
                         Create Spreadsheet
                     </button>
                     <a href="{{ route('spreadsheets.index') }}"
-                       class="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 
+                       class="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300
                               rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
                         Cancel
                     </a>
@@ -59,4 +57,4 @@
         </div>
     </div>
 </div>
-@endsection
+</x-app-layout>

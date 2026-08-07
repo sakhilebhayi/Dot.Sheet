@@ -55,12 +55,34 @@
 
             /* ── Layout ── */
             .auth-wrap {
+                position: relative;
                 min-height: 100vh;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 padding: 2.5rem 1.25rem;
+                overflow: hidden;
             }
+
+            /* Same hero photo as welcome.blade.php (laptop computer on glass-top table, by Carlos
+               Muza), with a light paper-toned scrim matching this platform's own light auth-card
+               theme — the welcome hero's dark-ink scrim is a localized full-bleed treatment for
+               that one photo section, not this platform's overall identity (the rest of the
+               welcome page, and every auth page, is light --paper). */
+            .auth-photo,
+            .auth-scrim {
+                position: absolute;
+                inset: 0;
+            }
+            .auth-photo {
+                background-image: url('https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2400&auto=format&fit=crop');
+                background-size: cover;
+                background-position: center;
+            }
+            .auth-scrim {
+                background: radial-gradient(ellipse 68% 62% at 50% 40%, var(--paper) 0%, rgba(250,247,236,0.94) 45%, rgba(250,247,236,0.7) 74%, rgba(250,247,236,0.35) 100%);
+            }
+            .auth-inner { position: relative; z-index: 1; }
 
             .auth-inner {
                 width: 100%;

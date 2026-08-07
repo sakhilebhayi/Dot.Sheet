@@ -24,17 +24,17 @@ class RunBackupCommand extends Command
 
         $backupRoot = storage_path('app/backups');
         $timestamp = now()->format('Ymd_His');
-        $backupPath = $backupRoot . DIRECTORY_SEPARATOR . $timestamp;
+        $backupPath = $backupRoot.DIRECTORY_SEPARATOR.$timestamp;
 
         File::ensureDirectoryExists($backupPath);
 
         $this->info("Creating backup at: {$backupPath}");
 
-        if (!$this->option('skip-files')) {
+        if (! $this->option('skip-files')) {
             $this->backupStorageFiles($backupPath);
         }
 
-        if (!$this->option('skip-db')) {
+        if (! $this->option('skip-db')) {
             $this->backupDatabase($backupPath);
         }
 
@@ -50,7 +50,7 @@ class RunBackupCommand extends Command
     private function backupStorageFiles(string $backupPath): void
     {
         $storageAppPath = storage_path('app');
-        $destinationRoot = $backupPath . DIRECTORY_SEPARATOR . 'files';
+        $destinationRoot = $backupPath.DIRECTORY_SEPARATOR.'files';
 
         File::ensureDirectoryExists($destinationRoot);
 
@@ -58,12 +58,12 @@ class RunBackupCommand extends Command
         $copied = 0;
 
         foreach ($candidateDirs as $dir) {
-            $source = $storageAppPath . DIRECTORY_SEPARATOR . $dir;
-            if (!File::isDirectory($source)) {
+            $source = $storageAppPath.DIRECTORY_SEPARATOR.$dir;
+            if (! File::isDirectory($source)) {
                 continue;
             }
 
-            $destination = $destinationRoot . DIRECTORY_SEPARATOR . $dir;
+            $destination = $destinationRoot.DIRECTORY_SEPARATOR.$dir;
             File::copyDirectory($source, $destination);
             $copied++;
 
@@ -80,13 +80,14 @@ class RunBackupCommand extends Command
         $connectionName = config('database.default');
         $connection = config("database.connections.{$connectionName}");
 
-        if (!is_array($connection)) {
+        if (! is_array($connection)) {
             $this->warn('Database connection configuration not found. Skipping DB backup.');
+
             return;
         }
 
         $driver = (string) ($connection['driver'] ?? '');
-        $sqlPath = $backupPath . DIRECTORY_SEPARATOR . 'database.sql';
+        $sqlPath = $backupPath.DIRECTORY_SEPARATOR.'database.sql';
 
         try {
             match ($driver) {
@@ -96,7 +97,7 @@ class RunBackupCommand extends Command
                 default => $this->warn("Unsupported database driver [{$driver}] for automatic dump. Skipping DB backup."),
             };
         } catch (Throwable $e) {
-            $this->warn('Database backup failed: ' . $e->getMessage());
+            $this->warn('Database backup failed: '.$e->getMessage());
         }
     }
 
@@ -110,14 +111,15 @@ class RunBackupCommand extends Command
 
         if ($database === '' || $username === '') {
             $this->warn('MySQL credentials are incomplete. Skipping DB backup.');
+
             return;
         }
 
         $command = [
             'mysqldump',
-            '--host=' . $host,
-            '--port=' . $port,
-            '--user=' . $username,
+            '--host='.$host,
+            '--port='.$port,
+            '--user='.$username,
             '--single-transaction',
             '--quick',
             '--skip-lock-tables',
@@ -142,18 +144,19 @@ class RunBackupCommand extends Command
 
         if ($database === '' || $username === '') {
             $this->warn('PostgreSQL credentials are incomplete. Skipping DB backup.');
+
             return;
         }
 
         $command = [
             'pg_dump',
-            '--host=' . $host,
-            '--port=' . $port,
-            '--username=' . $username,
+            '--host='.$host,
+            '--port='.$port,
+            '--username='.$username,
             '--format=plain',
             '--no-owner',
             '--no-privileges',
-            '--file=' . $sqlPath,
+            '--file='.$sqlPath,
             $database,
         ];
 
@@ -170,19 +173,21 @@ class RunBackupCommand extends Command
 
         if ($databasePath === '') {
             $this->warn('SQLite database path is missing. Skipping DB backup.');
+
             return;
         }
 
-        if (!Str::startsWith($databasePath, ['/'])) {
+        if (! Str::startsWith($databasePath, ['/'])) {
             $databasePath = database_path($databasePath);
         }
 
-        if (!File::exists($databasePath)) {
+        if (! File::exists($databasePath)) {
             $this->warn('SQLite database file not found. Skipping DB backup.');
+
             return;
         }
 
-        File::copy($databasePath, $backupPath . DIRECTORY_SEPARATOR . 'database.sqlite');
+        File::copy($databasePath, $backupPath.DIRECTORY_SEPARATOR.'database.sqlite');
         $this->line('Copied SQLite database file');
     }
 
@@ -197,14 +202,14 @@ class RunBackupCommand extends Command
         ];
 
         File::put(
-            $backupPath . DIRECTORY_SEPARATOR . 'manifest.json',
+            $backupPath.DIRECTORY_SEPARATOR.'manifest.json',
             json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
         );
     }
 
     private function pruneOldBackups(string $backupRoot, int $retentionDays): void
     {
-        if (!File::isDirectory($backupRoot)) {
+        if (! File::isDirectory($backupRoot)) {
             return;
         }
 
@@ -215,7 +220,7 @@ class RunBackupCommand extends Command
 
             if ($lastModified < $cutoff) {
                 File::deleteDirectory($directory);
-                $this->line('Pruned old backup: ' . basename($directory));
+                $this->line('Pruned old backup: '.basename($directory));
             }
         }
     }

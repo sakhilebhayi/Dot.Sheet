@@ -15,8 +15,11 @@ class VersionHistoryModal extends Component
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     public $open = false;
+
     public $versions = [];
+
     public $snapshotLabel = '';
 
     protected $listeners = [
@@ -60,7 +63,7 @@ class VersionHistoryModal extends Component
     public function createSnapshot(): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (!Auth::user()->can('update', $spreadsheet)) {
+        if (! Auth::user()->can('update', $spreadsheet)) {
             return;
         }
 
@@ -82,7 +85,7 @@ class VersionHistoryModal extends Component
     public function restoreVersion($versionId): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (!Auth::user()->can('update', $spreadsheet)) {
+        if (! Auth::user()->can('update', $spreadsheet)) {
             return;
         }
 

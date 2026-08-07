@@ -4,8 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Spreadsheet extends Model
 {
@@ -44,8 +44,8 @@ class Spreadsheet extends Model
     public function sharedUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'spreadsheet_user')
-                    ->withPivot('permission')
-                    ->withTimestamps();
+            ->withPivot('permission')
+            ->withTimestamps();
     }
 
     public function aiPrompts(): HasMany
@@ -75,7 +75,7 @@ class Spreadsheet extends Model
 
     public function publicLinkIsActive(): bool
     {
-        if (!$this->public_enabled || !$this->public_token) {
+        if (! $this->public_enabled || ! $this->public_token) {
             return false;
         }
 

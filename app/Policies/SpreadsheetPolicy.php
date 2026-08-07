@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\Spreadsheet;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class SpreadsheetPolicy
 {
@@ -100,7 +99,7 @@ class SpreadsheetPolicy
      */
     protected function isTeamMember(User $user, Spreadsheet $spreadsheet): bool
     {
-        if (!$spreadsheet->team_id) {
+        if (! $spreadsheet->team_id) {
             return false;
         }
 
@@ -112,7 +111,7 @@ class SpreadsheetPolicy
      */
     protected function isTeamMemberWithEdit(User $user, Spreadsheet $spreadsheet): bool
     {
-        if (!$spreadsheet->team_id) {
+        if (! $spreadsheet->team_id) {
             return false;
         }
 
@@ -131,8 +130,8 @@ class SpreadsheetPolicy
     protected function isSharedWithPermission(User $user, Spreadsheet $spreadsheet, array $permissions = ['view', 'comment', 'edit', 'admin']): bool
     {
         return $spreadsheet->sharedUsers()
-                    ->where('user_id', $user->id)
-                    ->whereIn('permission', $permissions)
-                    ->exists();
+            ->where('user_id', $user->id)
+            ->whereIn('permission', $permissions)
+            ->exists();
     }
 }

@@ -17,14 +17,13 @@ class BulkPasteChunkJob implements ShouldQueue
     use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * @param array<int, array{row_index:int,col_index:int,value:string}> $cells
+     * @param  array<int, array{row_index:int,col_index:int,value:string}>  $cells
      */
     public function __construct(
         public int $spreadsheetId,
         public array $cells,
         public ?int $userId = null,
-    ) {
-    }
+    ) {}
 
     public function handle(): void
     {

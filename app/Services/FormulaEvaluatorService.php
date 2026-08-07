@@ -8,8 +8,11 @@ use Illuminate\Support\Facades\Cache;
 class FormulaEvaluatorService
 {
     protected $cellCache = [];
+
     protected $evaluationStack = [];
+
     protected $dependencyGraph = [];
+
     protected $cacheTtlSeconds = 300;
 
     public function __construct()
@@ -19,14 +22,15 @@ class FormulaEvaluatorService
 
     /**
      * Evaluate a formula
-     * @param string $formula The formula string (e.g., "=A1+B1")
-     * @param int $spreadsheetId The spreadsheet ID for context
+     *
+     * @param  string  $formula  The formula string (e.g., "=A1+B1")
+     * @param  int  $spreadsheetId  The spreadsheet ID for context
      * @return array ['value' => result, 'error' => bool, 'errorMessage' => string]
      */
     public function evaluate($formula, $spreadsheetId)
     {
         try {
-            if (!$formula || !is_string($formula)) {
+            if (! $formula || ! is_string($formula)) {
                 return ['value' => 0, 'error' => false];
             }
 
@@ -95,10 +99,10 @@ class FormulaEvaluatorService
                     $refs = $this->extractFormulaReferences((string) $cell->formula);
 
                     foreach ($refs as $refKey) {
-                        if (!isset($graph[$refKey])) {
+                        if (! isset($graph[$refKey])) {
                             $graph[$refKey] = [];
                         }
-                        if (!in_array($dependentKey, $graph[$refKey], true)) {
+                        if (! in_array($dependentKey, $graph[$refKey], true)) {
                             $graph[$refKey][] = $dependentKey;
                         }
                     }
@@ -136,7 +140,7 @@ class FormulaEvaluatorService
 
     protected function cellRefToKey(string $cellRef): ?string
     {
-        if (!preg_match('/^([A-Z]{1,3})(\d+)$/', $cellRef, $m)) {
+        if (! preg_match('/^([A-Z]{1,3})(\d+)$/', $cellRef, $m)) {
             return null;
         }
 
@@ -153,7 +157,7 @@ class FormulaEvaluatorService
     {
         $startKey = $this->cellRefToKey($startRef);
         $endKey = $this->cellRefToKey($endRef);
-        if (!$startKey || !$endKey) {
+        if (! $startKey || ! $endKey) {
             return [];
         }
 
@@ -190,7 +194,7 @@ class FormulaEvaluatorService
 
         // Handle simple values
         if (is_numeric($expr)) {
-            return (float)$expr;
+            return (float) $expr;
         }
 
         if (strtoupper($expr) === 'TRUE') {
@@ -212,11 +216,11 @@ class FormulaEvaluatorService
             $args = $this->parseFunctionArgs($matches[2]);
 
             return match ($funcName) {
-                'SUM' => array_sum(array_map(fn($a) => $this->evaluateExpression($a), $args)),
-                'AVERAGE', 'AVG' => array_sum(array_map(fn($a) => $this->evaluateExpression($a), $args)) / count($args),
+                'SUM' => array_sum(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
+                'AVERAGE', 'AVG' => array_sum(array_map(fn ($a) => $this->evaluateExpression($a), $args)) / count($args),
                 'COUNT' => count($args),
-                'MAX' => max(array_map(fn($a) => $this->evaluateExpression($a), $args)),
-                'MIN' => min(array_map(fn($a) => $this->evaluateExpression($a), $args)),
+                'MAX' => max(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
+                'MIN' => min(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
                 'ROUND' => round($this->evaluateExpression($args[0]), $args[1] ?? 0),
                 'ABS' => abs($this->evaluateExpression($args[0])),
                 'IF' => $this->evaluateExpression($args[0]) ? $this->evaluateExpression($args[1]) : $this->evaluateExpression($args[2]),
@@ -240,15 +244,18 @@ class FormulaEvaluatorService
         $cellRef = strtoupper($cellRef);
         preg_match('/^([A-Z]{1,3})(\d+)$/', $cellRef, $matches);
 
-        if (!$matches) return 0;
+        if (! $matches) {
+            return 0;
+        }
 
         $col = $this->colLetterToIndex($matches[1]);
-        $row = (int)$matches[2] - 1;
+        $row = (int) $matches[2] - 1;
         $key = "{$row}_{$col}";
 
         if (isset($this->cellCache[$key])) {
             $value = $this->cellCache[$key]['computed_value'] ?? $this->cellCache[$key]['raw_value'];
-            return is_numeric($value) ? (float)$value : 0;
+
+            return is_numeric($value) ? (float) $value : 0;
         }
 
         return 0;
@@ -263,6 +270,7 @@ class FormulaEvaluatorService
         for ($i = 0; $i < strlen($letter); $i++) {
             $index = $index * 26 + (ord($letter[$i]) - 64);
         }
+
         return $index - 1;
     }
 

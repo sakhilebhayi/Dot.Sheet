@@ -48,7 +48,7 @@ class FormulaEvaluatorServiceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $service = new FormulaEvaluatorService();
+        $service = new FormulaEvaluatorService;
         $result = $service->evaluate('=SUM(A1,B1)', $spreadsheet->id);
 
         $this->assertFalse($result['error']);
@@ -78,7 +78,7 @@ class FormulaEvaluatorServiceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $service = new FormulaEvaluatorService();
+        $service = new FormulaEvaluatorService;
 
         $method = new ReflectionMethod(FormulaEvaluatorService::class, 'getDependencyGraph');
         $method->setAccessible(true);

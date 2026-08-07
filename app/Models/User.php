@@ -77,8 +77,8 @@ class User extends Authenticatable
     public function sharedSpreadsheets()
     {
         return $this->belongsToMany(Spreadsheet::class, 'spreadsheet_user')
-                    ->withPivot('permission')
-                    ->withTimestamps();
+            ->withPivot('permission')
+            ->withTimestamps();
     }
 
     public function aiPrompts()

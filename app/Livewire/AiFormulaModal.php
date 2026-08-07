@@ -2,28 +2,37 @@
 
 namespace App\Livewire;
 
+use App\Models\AiPrompt;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-use Livewire\Component;
 use Livewire\Attributes\On;
+use Livewire\Component;
 
 class AiFormulaModal extends Component
 {
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     public $selected_row;
+
     public $selected_col;
+
     public $cell_reference;
-    
+
     public $description = '';
+
     public $generated_formula = null;
+
     public $ai_suggestion = '';
+
     public $loading = false;
+
     public $error = null;
+
     public $success = false;
-    
+
     protected $ai_service;
 
     public function mount($spreadsheet_id, $row = 0, $col = 0)
@@ -33,8 +42,8 @@ class AiFormulaModal extends Component
         $this->spreadsheet_id = $spreadsheet_id;
         $this->selected_row = $row;
         $this->selected_col = $col;
-        $this->cell_reference = $this->colIndexToLetter($col) . ($row + 1);
-        $this->ai_service = new AiService();
+        $this->cell_reference = $this->colIndexToLetter($col).($row + 1);
+        $this->ai_service = new AiService;
     }
 
     #[On('open-formula-modal')]
@@ -42,7 +51,7 @@ class AiFormulaModal extends Component
     {
         $this->selected_row = $row;
         $this->selected_col = $col;
-        $this->cell_reference = $this->colIndexToLetter($col) . ($row + 1);
+        $this->cell_reference = $this->colIndexToLetter($col).($row + 1);
         $this->resetForm();
         $this->dispatch('show-formula-modal');
     }
@@ -66,21 +75,22 @@ class AiFormulaModal extends Component
             // Generate formula using AI
             $result = $this->ai_service->generateFormula($this->description, $context);
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 $this->error = $result['error'] ?? 'Failed to generate formula';
                 $this->loading = false;
+
                 return;
             }
 
             $this->generated_formula = $result['formula'];
-            $this->ai_suggestion = "Generated formula: " . $this->generated_formula;
-            
+            $this->ai_suggestion = 'Generated formula: '.$this->generated_formula;
+
             // Store in AI prompts table
             $this->storeAiPrompt($result);
 
             $this->success = true;
         } catch (\Exception $e) {
-            $this->error = 'Error: ' . $e->getMessage();
+            $this->error = 'Error: '.$e->getMessage();
         } finally {
             $this->loading = false;
         }
@@ -88,13 +98,14 @@ class AiFormulaModal extends Component
 
     public function insertFormula()
     {
-        if (!$this->generated_formula) {
+        if (! $this->generated_formula) {
             $this->error = 'No formula generated. Please generate one first.';
+
             return;
         }
 
         // Emit event to ShowSpreadsheet to insert the formula
-        $this->dispatch('formula-accepted', 
+        $this->dispatch('formula-accepted',
             row: $this->selected_row,
             col: $this->selected_col,
             formula: $this->generated_formula
@@ -114,7 +125,7 @@ class AiFormulaModal extends Component
 
     protected function storeAiPrompt($result)
     {
-        \App\Models\AiPrompt::create([
+        AiPrompt::create([
             'user_id' => auth()->id(),
             'spreadsheet_id' => $this->spreadsheet_id,
             'prompt' => $this->description,
@@ -131,10 +142,13 @@ class AiFormulaModal extends Component
     {
         $letter = '';
         while ($index >= 0) {
-            $letter = chr(65 + ($index % 26)) . $letter;
+            $letter = chr(65 + ($index % 26)).$letter;
             $index = intdiv($index, 26) - 1;
-            if ($index < 0) break;
+            if ($index < 0) {
+                break;
+            }
         }
+
         return $letter;
     }
 

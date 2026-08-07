@@ -17,8 +17,7 @@ class WorkflowRuleTriggered extends Notification
         public string $cellReference,
         public mixed $actualValue,
         public array $channels = ['email'],
-    ) {
-    }
+    ) {}
 
     /**
      * Get the notification delivery channels.
@@ -50,7 +49,7 @@ class WorkflowRuleTriggered extends Notification
             ->line("Workflow rule '{$this->ruleName}' was triggered.")
             ->line("Cell: {$this->cellReference}")
             ->line("Value: {$value}")
-            ->action('Open Spreadsheet', url('/spreadsheets/' . $this->spreadsheetId));
+            ->action('Open Spreadsheet', url('/spreadsheets/'.$this->spreadsheetId));
     }
 
     /**

@@ -3,15 +3,14 @@
 namespace App\Services;
 
 use App\Jobs\ImportRowsChunkJob;
-use App\Models\Spreadsheet;
 use App\Models\Cell;
+use App\Models\Spreadsheet;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
-use Maatwebsite\Excel\Facades\Excel;
 use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\ToArray;
+use Maatwebsite\Excel\Facades\Excel;
 
 class SpreadsheetImportExportService
 {
@@ -83,15 +82,20 @@ class SpreadsheetImportExportService
             $rows[] = $rowData;
         }
 
-        $fileName = 'spreadsheet_' . $spreadsheet->id . '_' . now()->format('YmdHis') . '.xlsx';
-        $filePath = 'exports/' . $fileName;
+        $fileName = 'spreadsheet_'.$spreadsheet->id.'_'.now()->format('YmdHis').'.xlsx';
+        $filePath = 'exports/'.$fileName;
 
-        Excel::store(new class($rows) implements FromArray {
+        Excel::store(new class($rows) implements FromArray
+        {
             public function __construct(private array $data) {}
-            public function array(): array { return $this->data; }
+
+            public function array(): array
+            {
+                return $this->data;
+            }
         }, $filePath, 'local');
 
-        return storage_path('app/' . $filePath);
+        return storage_path('app/'.$filePath);
     }
 
     /**
@@ -119,20 +123,24 @@ class SpreadsheetImportExportService
 
         if (in_array($ext, ['xlsx', 'xls'])) {
             try {
-                $data = Excel::toArray(new class implements ToArray {
-                    public function toArray(array $array): array { return $array; }
+                $data = Excel::toArray(new class implements ToArray
+                {
+                    public function toArray(array $array): array
+                    {
+                        return $array;
+                    }
                 }, $file);
                 $rows = $data[0] ?? [];
             } catch (\Exception $e) {
-                return ['success' => false, 'error' => 'Excel import failed: ' . $e->getMessage()];
+                return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
             }
         }
 
         if ($rows === null) {
-            return ['success' => false, 'error' => 'Unsupported file type: ' . $ext];
+            return ['success' => false, 'error' => 'Unsupported file type: '.$ext];
         }
 
-        $effectiveRows = count(array_filter($rows, fn ($row) => !empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))));
+        $effectiveRows = count(array_filter($rows, fn ($row) => ! empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))));
         $largeImportThreshold = 1500;
         if ($effectiveRows >= $largeImportThreshold) {
             $chunkSize = 500;
@@ -170,15 +178,19 @@ class SpreadsheetImportExportService
     protected function importExcel(Spreadsheet $spreadsheet, UploadedFile $file): array
     {
         try {
-            $data = Excel::toArray(new class implements ToArray {
-                public function toArray(array $array): array { return $array; }
+            $data = Excel::toArray(new class implements ToArray
+            {
+                public function toArray(array $array): array
+                {
+                    return $array;
+                }
             }, $file);
 
             $rows = $data[0] ?? [];
 
             return $this->insertRows($spreadsheet, $rows);
         } catch (\Exception $e) {
-            return ['success' => false, 'error' => 'Excel import failed: ' . $e->getMessage()];
+            return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
         }
     }
 
@@ -194,7 +206,7 @@ class SpreadsheetImportExportService
 
         try {
             foreach ($rows as $rowIndex => $row) {
-                if (empty(array_filter((array) $row, fn($v) => $v !== null && $v !== ''))) {
+                if (empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))) {
                     continue;
                 }
 
@@ -213,13 +225,13 @@ class SpreadsheetImportExportService
                     Cell::updateOrCreate(
                         [
                             'spreadsheet_id' => $spreadsheet->id,
-                            'row_index'      => $rowNumber,
-                            'col_index'      => $colIndex + 1,
+                            'row_index' => $rowNumber,
+                            'col_index' => $colIndex + 1,
                         ],
                         [
-                            'raw_value'      => $value,
+                            'raw_value' => $value,
                             'computed_value' => $isFormula ? null : $value,
-                            'formula'        => $isFormula ? $value : null,
+                            'formula' => $isFormula ? $value : null,
                         ]
                     );
 
@@ -230,12 +242,13 @@ class SpreadsheetImportExportService
             DB::commit();
 
             return [
-                'success'    => true,
-                'rows'       => $rowCount,
-                'cells'      => $cellCount,
+                'success' => true,
+                'rows' => $rowCount,
+                'cells' => $cellCount,
             ];
         } catch (\Exception $e) {
             DB::rollBack();
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }

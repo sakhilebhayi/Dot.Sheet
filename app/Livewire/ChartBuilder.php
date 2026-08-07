@@ -2,11 +2,11 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
-use App\Models\Spreadsheet;
 use App\Models\Cell;
 use App\Models\ChartConfig;
+use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Component;
 
 class ChartBuilder extends Component
 {
@@ -16,9 +16,13 @@ class ChartBuilder extends Component
 
     // Form state (modal)
     public $showModal = false;
-    public $title       = 'My Chart';
-    public $type        = 'bar';
-    public $data_range  = '';
+
+    public $title = 'My Chart';
+
+    public $type = 'bar';
+
+    public $data_range = '';
+
     public $labels_range = '';
 
     // Saved charts list
@@ -26,18 +30,18 @@ class ChartBuilder extends Component
 
     // Chart types available
     public $chartTypes = [
-        'bar'       => 'Bar Chart',
-        'line'      => 'Line Chart',
-        'pie'       => 'Pie Chart',
-        'doughnut'  => 'Doughnut Chart',
-        'scatter'   => 'Scatter Plot',
-        'area'      => 'Area Chart',
+        'bar' => 'Bar Chart',
+        'line' => 'Line Chart',
+        'pie' => 'Pie Chart',
+        'doughnut' => 'Doughnut Chart',
+        'scatter' => 'Scatter Plot',
+        'area' => 'Area Chart',
     ];
 
     protected $rules = [
-        'title'        => 'required|string|max:100',
-        'type'         => 'required|in:bar,line,pie,doughnut,scatter,area',
-        'data_range'   => ['required', 'regex:/^[A-Z]+\d+:[A-Z]+\d+$/i'],
+        'title' => 'required|string|max:100',
+        'type' => 'required|in:bar,line,pie,doughnut,scatter,area',
+        'data_range' => ['required', 'regex:/^[A-Z]+\d+:[A-Z]+\d+$/i'],
         'labels_range' => ['nullable', 'regex:/^[A-Z]+\d+:[A-Z]+\d+$/i'],
     ];
 
@@ -66,7 +70,7 @@ class ChartBuilder extends Component
     {
         $this->reset(['title', 'type', 'data_range', 'labels_range']);
         $this->title = 'My Chart';
-        $this->type  = 'bar';
+        $this->type = 'bar';
         $this->showModal = true;
     }
 
@@ -88,11 +92,11 @@ class ChartBuilder extends Component
 
         $chart = ChartConfig::create([
             'spreadsheet_id' => $this->spreadsheet_id,
-            'title'          => $this->title,
-            'type'           => $this->type,
-            'data_range'     => strtoupper($this->data_range),
-            'labels_range'   => $this->labels_range ? strtoupper($this->labels_range) : null,
-            'options'        => [],
+            'title' => $this->title,
+            'type' => $this->type,
+            'data_range' => strtoupper($this->data_range),
+            'labels_range' => $this->labels_range ? strtoupper($this->labels_range) : null,
+            'options' => [],
         ]);
 
         $this->loadCharts();
@@ -100,11 +104,11 @@ class ChartBuilder extends Component
 
         // Dispatch event to render the chart in the browser
         $this->dispatch('render-chart', [
-            'id'    => $chart->id,
+            'id' => $chart->id,
             'title' => $chart->title,
-            'type'  => $chart->type === 'area' ? 'line' : $chart->type, // Chart.js uses 'line' for area
-            'fill'  => $chart->type === 'area',
-            'data'  => $chartData,
+            'type' => $chart->type === 'area' ? 'line' : $chart->type, // Chart.js uses 'line' for area
+            'fill' => $chart->type === 'area',
+            'data' => $chartData,
         ]);
     }
 
@@ -132,11 +136,11 @@ class ChartBuilder extends Component
         $chartData = $this->getChartData($chart->data_range, $chart->labels_range);
 
         $this->dispatch('render-chart', [
-            'id'    => $chart->id,
+            'id' => $chart->id,
             'title' => $chart->title,
-            'type'  => $chart->type === 'area' ? 'line' : $chart->type,
-            'fill'  => $chart->type === 'area',
-            'data'  => $chartData,
+            'type' => $chart->type === 'area' ? 'line' : $chart->type,
+            'fill' => $chart->type === 'area',
+            'data' => $chartData,
         ]);
     }
 
@@ -147,7 +151,7 @@ class ChartBuilder extends Component
     {
         [$startRef, $endRef] = explode(':', strtoupper($dataRange));
         [$startCol, $startRow] = $this->parseRef($startRef);
-        [$endCol, $endRow]   = $this->parseRef($endRef);
+        [$endCol, $endRow] = $this->parseRef($endRef);
 
         // Fetch cells from DB for data range
         $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
@@ -173,30 +177,30 @@ class ChartBuilder extends Component
             $labels = $labelCells;
         } else {
             for ($r = $startRow; $r <= $endRow; $r++) {
-                $labels[] = 'Row ' . $r;
+                $labels[] = 'Row '.$r;
             }
         }
 
         // Build datasets per column
         $datasets = [];
-        $colors   = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+        $colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
         foreach ($cells as $colIdx => $colCells) {
-            $colLetter  = $this->colIndexToLetter($colIdx);
-            $color      = $colors[($colIdx - $startCol) % count($colors)];
-            $values     = [];
+            $colLetter = $this->colIndexToLetter($colIdx);
+            $color = $colors[($colIdx - $startCol) % count($colors)];
+            $values = [];
 
             foreach (range($startRow, $endRow) as $row) {
-                $cell   = $colCells->firstWhere('row_index', $row);
+                $cell = $colCells->firstWhere('row_index', $row);
                 $values[] = is_numeric($cell?->computed_value) ? (float) $cell->computed_value : 0;
             }
 
             $datasets[] = [
-                'label'           => $colLetter,
-                'data'            => $values,
-                'backgroundColor' => $color . '80',
-                'borderColor'     => $color,
-                'borderWidth'     => 2,
+                'label' => $colLetter,
+                'data' => $values,
+                'backgroundColor' => $color.'80',
+                'borderColor' => $color,
+                'borderWidth' => 2,
             ];
         }
 
@@ -213,6 +217,7 @@ class ChartBuilder extends Component
         foreach (str_split($m[1]) as $ch) {
             $col = $col * 26 + (ord($ch) - 64);
         }
+
         return [$col, (int) $m[2]];
     }
 
@@ -220,10 +225,11 @@ class ChartBuilder extends Component
     {
         $letter = '';
         while ($index > 0) {
-            $rem    = ($index - 1) % 26;
-            $letter = chr(65 + $rem) . $letter;
-            $index  = (int)(($index - 1) / 26);
+            $rem = ($index - 1) % 26;
+            $letter = chr(65 + $rem).$letter;
+            $index = (int) (($index - 1) / 26);
         }
+
         return $letter;
     }
 }

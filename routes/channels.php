@@ -9,11 +9,11 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 
 Broadcast::channel('spreadsheet.{spreadsheetId}', function ($user, $spreadsheetId) {
     $spreadsheet = Spreadsheet::find($spreadsheetId);
-    if (!$spreadsheet) {
+    if (! $spreadsheet) {
         return false;
     }
 
-    if (!$user->can('view', $spreadsheet)) {
+    if (! $user->can('view', $spreadsheet)) {
         return false;
     }
 

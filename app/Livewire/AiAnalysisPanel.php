@@ -12,44 +12,58 @@ use Livewire\WithFileUploads;
 
 class AiAnalysisPanel extends Component
 {
-    use WithFileUploads;
     use AuthorizesRequests;
+    use WithFileUploads;
 
     public $spreadsheet_id = null;
+
     public $selected_range = '';
-    
+
     // Tab management
     public $active_tab = 'insights'; // insights, cleaning, charts, sentiment, ocr, workflows
-    
+
     // Analysis data
     public $insights = [];
+
     public $cleaning_suggestions = [];
+
     public $chart_recommendations = [];
+
     public $sentiment_result = [];
 
     // OCR state
     public $ocrImage;
+
     public $ocrText = '';
 
     // Automated workflows
     public $workflow_name = '';
+
     public $workflow_column = 'A';
+
     public $workflow_operator = '<';
+
     public $workflow_value = '10';
+
     public $workflow_action = 'email_owner';
+
     public $workflow_notify_email = true;
+
     public $workflow_notify_database = false;
+
     public $workflow_rules = [];
-    
+
     // Loading & error states
     public $loading = false;
+
     public $error = '';
+
     public $success_message = '';
-    
+
     protected ?AiService $ai_service = null;
 
     protected $listeners = ['range-selected' => 'analyzeRange'];
-    
+
     public function mount($spreadsheet_id = null)
     {
         if ($spreadsheet_id) {
@@ -57,13 +71,13 @@ class AiAnalysisPanel extends Component
         }
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->ai_service = new AiService();
+        $this->ai_service = new AiService;
         $this->loadWorkflowRules();
     }
 
     public function hydrate(): void
     {
-        $this->ai_service = new AiService();
+        $this->ai_service = new AiService;
     }
 
     public function render()
@@ -77,9 +91,10 @@ class AiAnalysisPanel extends Component
     public function analyzeRange($range, $data = null)
     {
         $this->selected_range = strtoupper((string) $range);
-        
-        if (!$this->spreadsheet_id) {
+
+        if (! $this->spreadsheet_id) {
             $this->error = 'No spreadsheet selected';
+
             return;
         }
 
@@ -88,14 +103,15 @@ class AiAnalysisPanel extends Component
         $this->success_message = '';
 
         try {
-            $rangeValues = is_array($data) && !empty($data) ? $data : $this->getRangeValues($this->selected_range);
+            $rangeValues = is_array($data) && ! empty($data) ? $data : $this->getRangeValues($this->selected_range);
             if (empty($rangeValues)) {
                 $this->error = 'No cells found in selected range';
+
                 return;
             }
 
             $stats = $this->calculateRangeStatistics($rangeValues);
-            
+
             // Use AI to generate insights
             $insights_result = $this->ai_service->analyzeData(
                 [
@@ -136,7 +152,7 @@ class AiAnalysisPanel extends Component
             $this->active_tab = 'insights';
 
         } catch (\Exception $e) {
-            $this->error = 'Analysis failed: ' . $e->getMessage();
+            $this->error = 'Analysis failed: '.$e->getMessage();
         } finally {
             $this->loading = false;
         }
@@ -156,7 +172,7 @@ class AiAnalysisPanel extends Component
             return [];
         }
 
-        $values = array_filter($data, function($v) {
+        $values = array_filter($data, function ($v) {
             return is_numeric($v);
         });
 
@@ -164,7 +180,7 @@ class AiAnalysisPanel extends Component
             return [
                 'type' => 'non-numeric',
                 'count' => count($data),
-                'unique' => count(array_unique($data))
+                'unique' => count(array_unique($data)),
             ];
         }
 
@@ -176,7 +192,7 @@ class AiAnalysisPanel extends Component
             'min' => min($values),
             'max' => max($values),
             'unique' => count(array_unique($values)),
-            'null_count' => count($data) - count($values)
+            'null_count' => count($data) - count($values),
         ];
     }
 
@@ -192,9 +208,9 @@ class AiAnalysisPanel extends Component
             if ($stats['unique'] < $stats['count'] * 0.5) {
                 $suggestions[] = [
                     'issue' => 'High duplicate rate',
-                    'description' => 'This range has many duplicate values (' . 
-                                   round((1 - $stats['unique']/$stats['count']) * 100, 1) . '%)',
-                    'action' => 'Remove duplicates'
+                    'description' => 'This range has many duplicate values ('.
+                                   round((1 - $stats['unique'] / $stats['count']) * 100, 1).'%)',
+                    'action' => 'Remove duplicates',
                 ];
             }
         }
@@ -203,8 +219,8 @@ class AiAnalysisPanel extends Component
         if (isset($stats['null_count']) && $stats['null_count'] > 0) {
             $suggestions[] = [
                 'issue' => 'Missing values',
-                'description' => 'Found ' . $stats['null_count'] . ' empty cells in this range',
-                'action' => 'Fill or remove empty values'
+                'description' => 'Found '.$stats['null_count'].' empty cells in this range',
+                'action' => 'Fill or remove empty values',
             ];
         }
 
@@ -215,14 +231,14 @@ class AiAnalysisPanel extends Component
             if ($stats['max'] > $threshold) {
                 $suggestions[] = [
                     'issue' => 'Potential outliers',
-                    'description' => 'Maximum value (' . $stats['max'] . ') may be an outlier',
-                    'action' => 'Review extreme values'
+                    'description' => 'Maximum value ('.$stats['max'].') may be an outlier',
+                    'action' => 'Review extreme values',
                 ];
             }
         }
 
         $rangeValues = $this->getRangeValues($this->selected_range);
-        if (!empty($rangeValues)) {
+        if (! empty($rangeValues)) {
             $local = $this->ai_service->detectDataCleaningIssues($rangeValues);
             foreach ($local['issues'] ?? [] as $issue) {
                 $suggestions[] = [
@@ -244,7 +260,7 @@ class AiAnalysisPanel extends Component
         // Simple parsing - can be enhanced
         return [
             'summary' => $response,
-            'generated_at' => now()->format('H:i:s')
+            'generated_at' => now()->format('H:i:s'),
         ];
     }
 
@@ -261,7 +277,7 @@ class AiAnalysisPanel extends Component
             if (stripos($response, $type) !== false) {
                 $recommendations[] = [
                     'type' => $type,
-                    'reason' => 'Suitable for this data type'
+                    'reason' => 'Suitable for this data type',
                 ];
             }
         }
@@ -274,15 +290,16 @@ class AiAnalysisPanel extends Component
      */
     public function cleanData()
     {
-        if (!$this->selected_range) {
+        if (! $this->selected_range) {
             $this->error = 'Select a range before cleaning data';
+
             return;
         }
 
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
         $this->loading = true;
-        
+
         try {
             [$startRow, $endRow, $startCol, $endCol] = $this->parseRangeBounds($this->selected_range);
 
@@ -293,7 +310,7 @@ class AiAnalysisPanel extends Component
 
             $updated = 0;
             foreach ($cells as $cell) {
-                if (!is_string($cell->raw_value)) {
+                if (! is_string($cell->raw_value)) {
                     continue;
                 }
 
@@ -314,7 +331,7 @@ class AiAnalysisPanel extends Component
 
             $this->dispatch('external-cell-updated');
         } catch (\Exception $e) {
-            $this->error = 'Error: ' . $e->getMessage();
+            $this->error = 'Error: '.$e->getMessage();
         } finally {
             $this->loading = false;
         }
@@ -322,16 +339,18 @@ class AiAnalysisPanel extends Component
 
     public function runSentimentAnalysis(): void
     {
-        if (!$this->selected_range) {
+        if (! $this->selected_range) {
             $this->error = 'Select a range before running sentiment analysis';
+
             return;
         }
 
         $values = array_map(static fn ($v) => (string) $v, $this->getRangeValues($this->selected_range));
         $result = $this->ai_service->analyzeSentiment($values);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             $this->error = $result['error'] ?? 'Sentiment analysis failed';
+
             return;
         }
 
@@ -351,8 +370,9 @@ class AiAnalysisPanel extends Component
         ]);
 
         $result = $this->ai_service->extractTextFromImage($this->ocrImage->getRealPath());
-        if (!$result['success']) {
+        if (! $result['success']) {
             $this->error = $result['error'] ?? 'OCR failed';
+
             return;
         }
 
@@ -363,8 +383,9 @@ class AiAnalysisPanel extends Component
 
     public function insertOcrTextIntoSelectedCell(): void
     {
-        if (!$this->ocrText) {
+        if (! $this->ocrText) {
             $this->error = 'No OCR text to insert';
+
             return;
         }
 
@@ -436,7 +457,7 @@ class AiAnalysisPanel extends Component
         $this->dispatch('generate-chart', [
             'type' => $chart_type,
             'range' => $this->selected_range,
-            'spreadsheet_id' => $this->spreadsheet_id
+            'spreadsheet_id' => $this->spreadsheet_id,
         ]);
 
         $this->success_message = "Chart generation initiated for {$chart_type} chart";
@@ -454,12 +475,12 @@ class AiAnalysisPanel extends Component
 
     protected function loadWorkflowRules(): void
     {
-        if (!$this->spreadsheet_id) {
+        if (! $this->spreadsheet_id) {
             return;
         }
 
         $spreadsheet = Spreadsheet::find($this->spreadsheet_id);
-        if (!$spreadsheet || !Auth::user()?->can('view', $spreadsheet)) {
+        if (! $spreadsheet || ! Auth::user()?->can('view', $spreadsheet)) {
             return;
         }
 
@@ -472,13 +493,13 @@ class AiAnalysisPanel extends Component
                     return null;
                 }
 
-                if (!isset($rule['notify_channels']) || !is_array($rule['notify_channels'])) {
+                if (! isset($rule['notify_channels']) || ! is_array($rule['notify_channels'])) {
                     $rule['notify_channels'] = ['email'];
                 }
 
                 return $rule;
             })
-            ->filter(fn ($rule) => is_array($rule) && !empty($rule))
+            ->filter(fn ($rule) => is_array($rule) && ! empty($rule))
             ->values()
             ->toArray();
     }
@@ -486,8 +507,9 @@ class AiAnalysisPanel extends Component
     protected function saveWorkflowRules(): void
     {
         $spreadsheet = Spreadsheet::find($this->spreadsheet_id);
-        if (!$spreadsheet || !Auth::user()?->can('update', $spreadsheet)) {
+        if (! $spreadsheet || ! Auth::user()?->can('update', $spreadsheet)) {
             $this->error = 'You are not allowed to edit workflows.';
+
             return;
         }
 
@@ -528,7 +550,7 @@ class AiAnalysisPanel extends Component
 
     protected function getRangeValues(string $range): array
     {
-        if (!$range) {
+        if (! $range) {
             return [];
         }
 
@@ -557,10 +579,11 @@ class AiAnalysisPanel extends Component
         if (preg_match('/^([A-Z]{1,3})(\d+)$/', $range, $single)) {
             $col = $this->colLetterToIndex($single[1]);
             $row = ((int) $single[2]) - 1;
+
             return [$row, $row, $col, $col];
         }
 
-        if (!preg_match('/^([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)$/', $range, $matches)) {
+        if (! preg_match('/^([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)$/', $range, $matches)) {
             throw new \InvalidArgumentException('Invalid range format. Use A1:B12');
         }
 
@@ -585,6 +608,7 @@ class AiAnalysisPanel extends Component
         for ($i = 0; $i < strlen($letter); $i++) {
             $index = $index * 26 + (ord($letter[$i]) - 64);
         }
+
         return $index - 1;
     }
 }

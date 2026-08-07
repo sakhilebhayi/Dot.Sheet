@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
+use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Str;
@@ -17,7 +18,7 @@ class SpreadsheetController extends Controller
     public function index()
     {
         $user = auth()->user();
-        
+
         // Get user's own spreadsheets and shared spreadsheets
         $spreadsheets = Spreadsheet::where('owner_id', $user->id)
             ->orWhereHas('sharedUsers', function ($query) use ($user) {
@@ -53,7 +54,7 @@ class SpreadsheetController extends Controller
         ]);
 
         $user = auth()->user();
-        
+
         // Verify team ownership if team_id provided
         if ($validated['team_id']) {
             $user->teams()->findOrFail($validated['team_id']);
@@ -68,7 +69,7 @@ class SpreadsheetController extends Controller
         ]);
 
         return redirect()->route('spreadsheets.show', $spreadsheet)
-                       ->with('success', 'Spreadsheet created successfully!');
+            ->with('success', 'Spreadsheet created successfully!');
     }
 
     /**
@@ -77,6 +78,7 @@ class SpreadsheetController extends Controller
     public function show(Spreadsheet $spreadsheet)
     {
         $this->authorize('view', $spreadsheet);
+
         return view('spreadsheets.show', ['spreadsheet' => $spreadsheet]);
     }
 
@@ -86,6 +88,7 @@ class SpreadsheetController extends Controller
     public function edit(Spreadsheet $spreadsheet)
     {
         $this->authorize('update', $spreadsheet);
+
         return view('spreadsheets.edit', ['spreadsheet' => $spreadsheet]);
     }
 
@@ -104,7 +107,7 @@ class SpreadsheetController extends Controller
         $spreadsheet->update($validated);
 
         return redirect()->route('spreadsheets.show', $spreadsheet)
-                       ->with('success', 'Spreadsheet updated successfully!');
+            ->with('success', 'Spreadsheet updated successfully!');
     }
 
     /**
@@ -118,7 +121,7 @@ class SpreadsheetController extends Controller
         $spreadsheet->delete();
 
         return redirect()->route('spreadsheets.index')
-                       ->with('success', "Spreadsheet '{$name}' deleted successfully!");
+            ->with('success', "Spreadsheet '{$name}' deleted successfully!");
     }
 
     /**
@@ -132,8 +135,8 @@ class SpreadsheetController extends Controller
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
         ]);
 
-        $service = new \App\Services\SpreadsheetImportExportService();
-        $result  = $service->importFile($spreadsheet, $request->file('file'));
+        $service = new SpreadsheetImportExportService;
+        $result = $service->importFile($spreadsheet, $request->file('file'));
 
         return response()->json($result);
     }
@@ -146,7 +149,7 @@ class SpreadsheetController extends Controller
         $this->authorize('update', $spreadsheet);
 
         $batch = Bus::findBatch($batchId);
-        if (!$batch) {
+        if (! $batch) {
             return response()->json([
                 'status' => 'missing',
                 'batch_id' => $batchId,
@@ -185,13 +188,13 @@ class SpreadsheetController extends Controller
     {
         $this->authorize('view', $spreadsheet);
 
-        $service = new \App\Services\SpreadsheetImportExportService();
-        $csv     = $service->exportCsv($spreadsheet);
+        $service = new SpreadsheetImportExportService;
+        $csv = $service->exportCsv($spreadsheet);
 
-        $filename = \Str::slug($spreadsheet->name) . '_' . now()->format('Ymd') . '.csv';
+        $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.csv';
 
         return response($csv, 200, [
-            'Content-Type'        => 'text/csv',
+            'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
     }
@@ -203,10 +206,10 @@ class SpreadsheetController extends Controller
     {
         $this->authorize('view', $spreadsheet);
 
-        $service  = new \App\Services\SpreadsheetImportExportService();
+        $service = new SpreadsheetImportExportService;
         $filePath = $service->exportExcel($spreadsheet);
 
-        $filename = \Str::slug($spreadsheet->name) . '_' . now()->format('Ymd') . '.xlsx';
+        $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.xlsx';
 
         return response()->download($filePath, $filename)->deleteFileAfterSend();
     }

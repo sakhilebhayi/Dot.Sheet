@@ -70,7 +70,7 @@ class SpreadsheetCoreOperationsTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $service = new FormulaEvaluatorService();
+        $service = new FormulaEvaluatorService;
         $evaluation = $service->evaluate('=SUM(A1,B1)', $spreadsheet->id);
 
         $this->assertFalse($evaluation['error']);

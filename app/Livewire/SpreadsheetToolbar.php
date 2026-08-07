@@ -2,57 +2,81 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Component;
 
 class SpreadsheetToolbar extends Component
 {
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     public $selected_row = 0;
+
     public $selected_col = 0;
 
     // Current cell formatting state
     public $bold = false;
+
     public $italic = false;
+
     public $underline = false;
+
     public $strike = false;
+
     public $font_size = 12;
+
     public $font_color = '#000000';
+
     public $bg_color = '#ffffff';
+
     public $align = 'left';
+
     public $number_format = 'general'; // general, currency, percent, number, date
 
     // Format painter
     public $formatPainterBuffer = null;
+
     public $formatPainterActive = false;
 
     // Row/column sizing controls
     public $row_height_input = 28;
+
     public $col_width_input = 96;
 
     // Validation controls
     public $validation_type = 'number';
+
     public $validation_min = '';
+
     public $validation_max = '';
+
     public $validation_items = '';
 
     // Conditional formatting controls
     public $conditional_target = 'cell';
+
     public $conditional_operator = '>';
+
     public $conditional_value = '0';
+
     public $conditional_color = '#FEE2E2';
 
     // Sort/filter controls
     public $sort_direction = 'asc';
+
     public $filter_column = 'A';
+
     public $filter_type = 'contains';
+
     public $filter_operator = '>';
+
     public $filter_value = '';
+
     public $filter_value2 = '';
+
     public $filter_color = '#FEE2E2';
 
     protected $listeners = ['cell-selected' => 'loadCellFormatting'];
@@ -84,14 +108,14 @@ class SpreadsheetToolbar extends Component
 
         if ($cell && $cell->formatting) {
             $fmt = is_array($cell->formatting) ? $cell->formatting : json_decode($cell->formatting, true);
-            $this->bold         = $fmt['bold'] ?? false;
-            $this->italic       = $fmt['italic'] ?? false;
-            $this->underline    = $fmt['underline'] ?? false;
-            $this->strike       = $fmt['strike'] ?? false;
-            $this->font_size    = $fmt['font_size'] ?? 12;
-            $this->font_color   = $fmt['font_color'] ?? '#000000';
-            $this->bg_color     = $fmt['bg_color'] ?? '#ffffff';
-            $this->align        = $fmt['align'] ?? 'left';
+            $this->bold = $fmt['bold'] ?? false;
+            $this->italic = $fmt['italic'] ?? false;
+            $this->underline = $fmt['underline'] ?? false;
+            $this->strike = $fmt['strike'] ?? false;
+            $this->font_size = $fmt['font_size'] ?? 12;
+            $this->font_color = $fmt['font_color'] ?? '#000000';
+            $this->bg_color = $fmt['bg_color'] ?? '#ffffff';
+            $this->align = $fmt['align'] ?? 'left';
             $this->number_format = $fmt['number_format'] ?? 'general';
             $this->row_height_input = 28;
             $this->col_width_input = 96;
@@ -106,7 +130,7 @@ class SpreadsheetToolbar extends Component
     public function toggle($property)
     {
         if (in_array($property, ['bold', 'italic', 'underline', 'strike'])) {
-            $this->$property = !$this->$property;
+            $this->$property = ! $this->$property;
             $this->applyFormatting();
         }
     }
@@ -154,30 +178,30 @@ class SpreadsheetToolbar extends Component
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
         $formatting = [
-            'bold'          => $this->bold,
-            'italic'        => $this->italic,
-            'underline'     => $this->underline,
-            'strike'        => $this->strike,
-            'font_size'     => $this->font_size,
-            'font_color'    => $this->sanitizeColor($this->font_color),
-            'bg_color'      => $this->sanitizeColor($this->bg_color),
-            'align'         => $this->align,
+            'bold' => $this->bold,
+            'italic' => $this->italic,
+            'underline' => $this->underline,
+            'strike' => $this->strike,
+            'font_size' => $this->font_size,
+            'font_color' => $this->sanitizeColor($this->font_color),
+            'bg_color' => $this->sanitizeColor($this->bg_color),
+            'align' => $this->align,
             'number_format' => $this->number_format,
         ];
 
         Cell::updateOrCreate(
             [
                 'spreadsheet_id' => $this->spreadsheet_id,
-                'row_index'      => $this->selected_row,
-                'col_index'      => $this->selected_col,
+                'row_index' => $this->selected_row,
+                'col_index' => $this->selected_col,
             ],
             ['formatting' => $formatting]
         );
 
         // Notify grid to re-render this cell
         $this->dispatch('formatting-applied', [
-            'row'        => $this->selected_row,
-            'col'        => $this->selected_col,
+            'row' => $this->selected_row,
+            'col' => $this->selected_col,
             'formatting' => $formatting,
         ]);
     }
@@ -221,7 +245,7 @@ class SpreadsheetToolbar extends Component
 
     public function applyFormatPainter(): void
     {
-        if (!is_array($this->formatPainterBuffer)) {
+        if (! is_array($this->formatPainterBuffer)) {
             return;
         }
 
@@ -323,14 +347,14 @@ class SpreadsheetToolbar extends Component
 
     protected function resetFormatting()
     {
-        $this->bold          = false;
-        $this->italic        = false;
-        $this->underline     = false;
-        $this->strike        = false;
-        $this->font_size     = 12;
-        $this->font_color    = '#000000';
-        $this->bg_color      = '#ffffff';
-        $this->align         = 'left';
+        $this->bold = false;
+        $this->italic = false;
+        $this->underline = false;
+        $this->strike = false;
+        $this->font_size = 12;
+        $this->font_color = '#000000';
+        $this->bg_color = '#ffffff';
+        $this->align = 'left';
         $this->number_format = 'general';
     }
 
@@ -342,6 +366,7 @@ class SpreadsheetToolbar extends Component
         if (preg_match('/^#[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/', $color)) {
             return $color;
         }
+
         return '#000000';
     }
 }

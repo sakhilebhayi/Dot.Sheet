@@ -2,7 +2,6 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -22,13 +21,12 @@ class SpreadsheetCellUpdated implements ShouldBroadcastNow
         public ?string $formula,
         public int $userId,
         public string $userName,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): array
     {
         return [
-            new PresenceChannel('spreadsheet.' . $this->spreadsheetId),
+            new PresenceChannel('spreadsheet.'.$this->spreadsheetId),
         ];
     }
 

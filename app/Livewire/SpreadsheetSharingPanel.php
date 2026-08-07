@@ -16,20 +16,27 @@ class SpreadsheetSharingPanel extends Component
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     protected ?Spreadsheet $spreadsheet = null;
 
     public $inviteEmail = '';
+
     public $invitePermission = 'view';
+
     public $inviteExpiryDays = 7;
 
     public $sharedUsers = [];
+
     public $pendingInvites = [];
 
     public $publicEnabled = false;
+
     public $publicExpiresAt = '';
+
     public $publicUrl = '';
 
     public $statusMessage = '';
+
     public $statusType = 'info';
 
     public function mount($spreadsheet_id)
@@ -99,6 +106,7 @@ class SpreadsheetSharingPanel extends Component
         if ($existingUser) {
             if ((int) $existingUser->id === (int) $this->spreadsheet->owner_id) {
                 $this->flash('Cannot share with the owner account.', 'error');
+
                 return;
             }
 
@@ -109,6 +117,7 @@ class SpreadsheetSharingPanel extends Component
             $this->flash('Access granted to existing user.', 'success');
             $this->inviteEmail = '';
             $this->refreshData();
+
             return;
         }
 
@@ -134,7 +143,7 @@ class SpreadsheetSharingPanel extends Component
 
     public function updatePermission($userId, $permission): void
     {
-        if (!in_array($permission, ['view', 'comment', 'edit', 'admin'], true)) {
+        if (! in_array($permission, ['view', 'comment', 'edit', 'admin'], true)) {
             return;
         }
 
@@ -167,7 +176,7 @@ class SpreadsheetSharingPanel extends Component
             $expiresAt = Carbon::parse($this->publicExpiresAt);
         }
 
-        if ($this->publicEnabled && !$this->spreadsheet->public_token) {
+        if ($this->publicEnabled && ! $this->spreadsheet->public_token) {
             $this->spreadsheet->public_token = Str::random(40);
         }
 

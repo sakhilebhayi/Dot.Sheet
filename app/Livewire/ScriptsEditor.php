@@ -11,14 +11,19 @@ class ScriptsEditor extends Component
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     protected ?Spreadsheet $spreadsheet = null;
 
     public $scripts = [];
+
     public $scriptMacros = [];
 
     public $selectedScriptId = null;
+
     public $scriptName = '';
+
     public $scriptBody = "// Return action list\nreturn [\n  { type: 'set', cell: 'A1', value: 'Hello' }\n];";
+
     public $macroName = '';
 
     public $status = '';
@@ -55,7 +60,7 @@ class ScriptsEditor extends Component
     public function loadScript(string $id): void
     {
         $script = collect($this->scripts)->firstWhere('id', $id);
-        if (!$script) {
+        if (! $script) {
             return;
         }
 
@@ -80,6 +85,7 @@ class ScriptsEditor extends Component
                 $s['name'] = $this->scriptName;
                 $s['body'] = $this->scriptBody;
                 $s['updated_at'] = now()->toISOString();
+
                 return $s;
             });
         } else {
@@ -115,7 +121,7 @@ class ScriptsEditor extends Component
 
     public function dispatchRunScript(): void
     {
-        if (!$this->scriptBody) {
+        if (! $this->scriptBody) {
             return;
         }
 
@@ -140,7 +146,7 @@ class ScriptsEditor extends Component
             return;
         }
 
-        $name = trim($this->macroName) !== '' ? trim($this->macroName) : ('Macro ' . now()->format('H:i:s'));
+        $name = trim($this->macroName) !== '' ? trim($this->macroName) : ('Macro '.now()->format('H:i:s'));
         $this->scriptMacros = collect($this->scriptMacros)
             ->prepend([
                 'id' => (string) str()->uuid(),
@@ -159,7 +165,7 @@ class ScriptsEditor extends Component
     public function playMacro(string $id): void
     {
         $macro = collect($this->scriptMacros)->firstWhere('id', $id);
-        if (!$macro) {
+        if (! $macro) {
             return;
         }
 

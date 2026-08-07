@@ -21,8 +21,7 @@ class SimulateSpreadsheetEditJob implements ShouldQueue
         public int $iterations = 100,
         public int $maxRow = 200,
         public int $maxCol = 30,
-    ) {
-    }
+    ) {}
 
     public function handle(): void
     {

@@ -17,14 +17,13 @@ class ImportRowsChunkJob implements ShouldQueue
     use SerializesModels;
 
     /**
-     * @param array<int, array<int, mixed>> $rows
+     * @param  array<int, array<int, mixed>>  $rows
      */
     public function __construct(
         public int $spreadsheetId,
         public array $rows,
         public int $startRowIndex = 1,
-    ) {
-    }
+    ) {}
 
     public function handle(): void
     {

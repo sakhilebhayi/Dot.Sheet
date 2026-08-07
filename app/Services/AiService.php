@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -15,17 +15,26 @@ use Illuminate\Support\Str;
 class AiService
 {
     protected $client;
+
     protected $provider;
+
     protected $model;
+
     protected $baseUrl;
+
     protected $apiKey;
+
     protected $maxTokens = 2000;
+
     protected $temperature = 0.7;
-    
+
     // Rate limiting
     protected $rateLimit = 60; // requests per hour
+
     protected $rateLimitWindow = 3600; // 1 hour
+
     protected $cacheEnabled = true;
+
     protected $cacheTtl = 3600; // 1 hour
 
     public function __construct()
@@ -37,7 +46,7 @@ class AiService
         $this->rateLimit = config('ai.rate_limit.requests_per_hour', 1000);
         $this->cacheEnabled = config('ai.caching.enabled', true);
         $this->cacheTtl = config('ai.caching.ttl', 3600);
-        
+
         $this->client = new Client([
             'timeout' => 30,
             'connect_timeout' => 10,
@@ -51,25 +60,25 @@ class AiService
     {
         $userId = Auth::id() ?? 'guest';
         $cacheKey = "ai_rate_limit_{$userId}";
-        
+
         $count = Cache::get($cacheKey, 0);
-        
+
         if ($count >= $this->rateLimit) {
             return [
                 'allowed' => false,
                 'error' => "Rate limit exceeded. Max {$this->rateLimit} requests per hour.",
-                'reset_at' => Cache::get($cacheKey . '_reset')
+                'reset_at' => Cache::get($cacheKey.'_reset'),
             ];
         }
-        
+
         // Increment counter
         Cache::put($cacheKey, $count + 1, $this->rateLimitWindow);
-        
+
         if ($count === 0) {
             // Set reset time on first request
-            Cache::put($cacheKey . '_reset', now()->addHour(), $this->rateLimitWindow);
+            Cache::put($cacheKey.'_reset', now()->addHour(), $this->rateLimitWindow);
         }
-        
+
         return ['allowed' => true];
     }
 
@@ -78,7 +87,8 @@ class AiService
      */
     protected function getCacheKey(string $prompt, array $options = []): string
     {
-        $hash = md5($prompt . json_encode($options));
+        $hash = md5($prompt.json_encode($options));
+
         return "ai_response_{$this->provider}_{$hash}";
     }
 
@@ -91,36 +101,37 @@ class AiService
         if (config('ai.demo_mode', false)) {
             return $this->generateDemoResponse($prompt, $options);
         }
-        
+
         // Check rate limiting
         $rateCheck = $this->checkRateLimit();
-        if (!$rateCheck['allowed']) {
+        if (! $rateCheck['allowed']) {
             return $this->errorResponse($rateCheck['error']);
         }
-        
+
         // Check cache
         if ($this->cacheEnabled) {
             $cached = Cache::get($this->getCacheKey($prompt, $options));
             if ($cached) {
                 Log::info('AI response from cache', ['provider' => $this->provider]);
+
                 return array_merge($cached, ['cached' => true]);
             }
         }
 
         try {
-            $method = 'generate' . ucfirst($this->provider);
-            
-            if (!method_exists($this, $method)) {
+            $method = 'generate'.ucfirst($this->provider);
+
+            if (! method_exists($this, $method)) {
                 return $this->errorResponse("Provider '{$this->provider}' not supported");
             }
 
             $result = $this->$method($prompt, $options);
-            
+
             // Cache successful responses
             if ($result['success'] && $this->cacheEnabled) {
                 Cache::put($this->getCacheKey($prompt, $options), $result, $this->cacheTtl);
             }
-            
+
             return $result;
         } catch (\Exception $e) {
             Log::error('AI Service Error', [
@@ -140,31 +151,31 @@ class AiService
     {
         // Detect prompt type from keywords
         $prompt_lower = strtolower($prompt);
-        
-        if (str_contains($prompt_lower, 'formula') || str_contains($prompt_lower, 'sum') || 
+
+        if (str_contains($prompt_lower, 'formula') || str_contains($prompt_lower, 'sum') ||
             str_contains($prompt_lower, 'average') || str_contains($prompt_lower, 'calculate')) {
             $response = '=SUM(A1:A10) will sum all values in cells A1 through A10. Formula: =SUM(A1:A10)';
-        } elseif (str_contains($prompt_lower, 'chart') || str_contains($prompt_lower, 'graph') || 
+        } elseif (str_contains($prompt_lower, 'chart') || str_contains($prompt_lower, 'graph') ||
                   str_contains($prompt_lower, 'visual')) {
             $response = 'A bar chart would work well for this data. Consider using Chart type: bar';
-        } elseif (str_contains($prompt_lower, 'clean') || str_contains($prompt_lower, 'duplicate') || 
+        } elseif (str_contains($prompt_lower, 'clean') || str_contains($prompt_lower, 'duplicate') ||
                   str_contains($prompt_lower, 'missing')) {
             $response = 'Data analysis found: 2 duplicate entries, 0 missing values. Suggestion: Remove duplicates from rows 5 and 12.';
-        } elseif (str_contains($prompt_lower, 'analyze') || str_contains($prompt_lower, 'insight') || 
+        } elseif (str_contains($prompt_lower, 'analyze') || str_contains($prompt_lower, 'insight') ||
                   str_contains($prompt_lower, 'trend')) {
-            $response = config('ai.demo_responses.analysis', 
+            $response = config('ai.demo_responses.analysis',
                 'The data shows a consistent upward trend with an average increase of 5% month-over-month.');
         } else {
-            $response = config('ai.demo_responses.insight', 
+            $response = config('ai.demo_responses.insight',
                 'Based on your query, I recommend reviewing the data in columns A and B for patterns.');
         }
-        
+
         return [
             'success' => true,
             'response' => $response,
             'provider' => 'demo',
             'model' => 'demo',
-            'demo' => true
+            'demo' => true,
         ];
     }
 
@@ -173,7 +184,7 @@ class AiService
      */
     protected function generateOllama(string $prompt, array $options = []): array
     {
-        $response = $this->client->post($this->baseUrl . '/api/generate', [
+        $response = $this->client->post($this->baseUrl.'/api/generate', [
             'json' => [
                 'model' => $options['model'] ?? $this->model,
                 'prompt' => $prompt,
@@ -188,7 +199,7 @@ class AiService
 
         $data = json_decode($response->getBody(), true);
 
-        if (!isset($data['response'])) {
+        if (! isset($data['response'])) {
             return $this->errorResponse('Invalid response from Ollama');
         }
 
@@ -206,7 +217,7 @@ class AiService
      */
     protected function generateOpenai(string $prompt, array $options = []): array
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return $this->errorResponse('OpenAI API key not configured');
         }
 
@@ -228,7 +239,7 @@ class AiService
 
         $data = json_decode($response->getBody(), true);
 
-        if (!isset($data['choices'][0]['message']['content'])) {
+        if (! isset($data['choices'][0]['message']['content'])) {
             return $this->errorResponse('Invalid response from OpenAI');
         }
 
@@ -246,7 +257,7 @@ class AiService
      */
     protected function generateAnthropic(string $prompt, array $options = []): array
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return $this->errorResponse('Anthropic API key not configured');
         }
 
@@ -268,7 +279,7 @@ class AiService
 
         $data = json_decode($response->getBody(), true);
 
-        if (!isset($data['content'][0]['text'])) {
+        if (! isset($data['content'][0]['text'])) {
             return $this->errorResponse('Invalid response from Anthropic');
         }
 
@@ -289,7 +300,7 @@ class AiService
         $prompt = $this->buildFormulaPrompt($description, $context);
         $response = $this->generateResponse($prompt, ['max_tokens' => 500]);
 
-        if (!$response['success']) {
+        if (! $response['success']) {
             return $response;
         }
 
@@ -310,7 +321,7 @@ class AiService
         $prompt = $this->buildAnalysisPrompt($data, $question);
         $response = $this->generateResponse($prompt);
 
-        if (!$response['success']) {
+        if (! $response['success']) {
             return $response;
         }
 
@@ -327,7 +338,7 @@ class AiService
         $prompt = $this->buildChartRecommendationPrompt($data);
         $response = $this->generateResponse($prompt, ['max_tokens' => 300]);
 
-        if (!$response['success']) {
+        if (! $response['success']) {
             return $response;
         }
 
@@ -347,7 +358,7 @@ class AiService
         $prompt = $this->buildDataCleaningPrompt($data);
         $response = $this->generateResponse($prompt);
 
-        if (!$response['success']) {
+        if (! $response['success']) {
             return $response;
         }
 
@@ -364,7 +375,7 @@ class AiService
         $prompt = $this->buildNLQueryPrompt($query, $spreadsheetContext);
         $response = $this->generateResponse($prompt);
 
-        if (!$response['success']) {
+        if (! $response['success']) {
             return $response;
         }
 
@@ -527,7 +538,7 @@ PROMPT;
     protected function extractChartType(string $response): string
     {
         $types = ['bar', 'line', 'pie', 'scatter', 'area', 'column'];
-        
+
         foreach ($types as $type) {
             if (stripos($response, $type) !== false) {
                 return $type;
@@ -579,19 +590,21 @@ PROMPT;
     {
         try {
             if ($this->provider === 'ollama') {
-                $response = $this->client->get($this->baseUrl . '/api/tags', [
+                $response = $this->client->get($this->baseUrl.'/api/tags', [
                     'timeout' => 5,
                 ]);
+
                 return $response->getStatusCode() === 200;
             }
 
             if ($this->provider === 'openai' || $this->provider === 'anthropic') {
-                return !empty($this->apiKey);
+                return ! empty($this->apiKey);
             }
 
             return false;
         } catch (\Exception $e) {
             Log::warning('AI Service availability check failed', ['error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -603,12 +616,13 @@ PROMPT;
     {
         if ($this->provider === 'ollama') {
             try {
-                $response = $this->client->get($this->baseUrl . '/api/tags', ['timeout' => 5]);
+                $response = $this->client->get($this->baseUrl.'/api/tags', ['timeout' => 5]);
                 $data = json_decode($response->getBody(), true);
-                
-                return array_map(fn($model) => $model['name'], $data['models'] ?? []);
+
+                return array_map(fn ($model) => $model['name'], $data['models'] ?? []);
             } catch (\Exception $e) {
                 Log::error('Failed to fetch Ollama models', ['error' => $e->getMessage()]);
+
                 return [];
             }
         }
@@ -688,7 +702,7 @@ PROMPT;
      */
     public function normalizeCellTextForCleaning(mixed $value): mixed
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
@@ -707,7 +721,7 @@ PROMPT;
         $processed = 0;
 
         foreach ($texts as $text) {
-            if (!is_string($text) || trim($text) === '') {
+            if (! is_string($text) || trim($text) === '') {
                 continue;
             }
 
@@ -744,7 +758,7 @@ PROMPT;
      */
     public function extractTextFromImage(string $imagePath): array
     {
-        if (!is_file($imagePath)) {
+        if (! is_file($imagePath)) {
             return $this->errorResponse('Image file not found for OCR');
         }
 
@@ -757,7 +771,7 @@ PROMPT;
             ];
         }
 
-        $cmd = 'tesseract ' . escapeshellarg($imagePath) . ' stdout 2>/dev/null';
+        $cmd = 'tesseract '.escapeshellarg($imagePath).' stdout 2>/dev/null';
         $output = shell_exec($cmd);
 
         if ($output === null) {

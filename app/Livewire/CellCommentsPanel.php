@@ -17,11 +17,13 @@ class CellCommentsPanel extends Component
     public $spreadsheet_id;
 
     public $selectedRow = 0;
+
     public $selectedCol = 0;
 
     public $threads = [];
 
     public $newComment = '';
+
     public $replyDrafts = [];
 
     protected $listeners = ['cell-selected' => 'onCellSelected'];
@@ -103,11 +105,11 @@ class CellCommentsPanel extends Component
             ->where('id', $threadId)
             ->first();
 
-        if (!$thread) {
+        if (! $thread) {
             return;
         }
 
-        $thread->resolved = !$thread->resolved;
+        $thread->resolved = ! $thread->resolved;
         $thread->save();
 
         $this->loadThreads();
@@ -119,7 +121,7 @@ class CellCommentsPanel extends Component
             ->where('id', $commentId)
             ->first();
 
-        if (!$comment) {
+        if (! $comment) {
             return;
         }
 
@@ -153,7 +155,7 @@ class CellCommentsPanel extends Component
         }
 
         $spreadsheet = Spreadsheet::find($this->spreadsheet_id);
-        if (!$spreadsheet) {
+        if (! $spreadsheet) {
             return;
         }
 
@@ -171,8 +173,8 @@ class CellCommentsPanel extends Component
         foreach ($tokens as $token) {
             $users = User::whereIn('id', $recipientIds)
                 ->where(function ($q) use ($token) {
-                    $q->where('name', 'like', $token . '%')
-                      ->orWhere('email', 'like', $token . '%');
+                    $q->where('name', 'like', $token.'%')
+                        ->orWhere('email', 'like', $token.'%');
                 })
                 ->get();
 

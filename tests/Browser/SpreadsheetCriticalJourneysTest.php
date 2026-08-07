@@ -46,7 +46,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $spreadsheet) {
             $browser->loginAs($user)
-                ->visit('/spreadsheets/' . $spreadsheet->id)
+                ->visit('/spreadsheets/'.$spreadsheet->id)
                 ->waitFor('#formulaInput')
                 ->type('#formulaInput', '99')
                 ->click('button[onclick="saveCurrentCell()"]')

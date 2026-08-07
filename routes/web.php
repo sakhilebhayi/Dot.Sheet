@@ -1,8 +1,8 @@
 <?php
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
-
 use App\Http\Controllers\SpreadsheetController;
+use App\Models\Spreadsheet;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Laravel\Jetstream\Jetstream;
@@ -23,9 +23,7 @@ Route::get('/cookies', function () {
     ]);
 })->name('cookies');
 
-
 Route::get('shared/s/{token}', [SpreadsheetController::class, 'publicShow'])->name('spreadsheets.public');
-
 
 Route::middleware([
     'auth:sanctum',
@@ -34,12 +32,13 @@ Route::middleware([
 ])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
-        $spreadsheets = \App\Models\Spreadsheet::where('owner_id', $user->id)
+        $spreadsheets = Spreadsheet::where('owner_id', $user->id)
             ->orWhereHas('sharedUsers', fn ($q) => $q->where('user_id', $user->id))
             ->withCount('cells')
             ->with('owner', 'team')
             ->latest()
             ->get();
+
         return view('dashboard', compact('spreadsheets'));
     })->name('dashboard');
 
@@ -49,7 +48,7 @@ Route::middleware([
     // Import / Export
     Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->name('spreadsheets.import');
     Route::get('spreadsheets/{spreadsheet}/import/batches/{batchId}', [SpreadsheetController::class, 'importBatchStatus'])->name('spreadsheets.import.batch-status');
-    Route::get('spreadsheets/{spreadsheet}/export/csv',   [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');
+    Route::get('spreadsheets/{spreadsheet}/export/csv', [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');
     Route::get('spreadsheets/{spreadsheet}/export/excel', [SpreadsheetController::class, 'exportExcel'])->name('spreadsheets.export.excel');
 
     // Invitations

@@ -4,75 +4,99 @@ namespace App\Livewire;
 
 use App\Events\SpreadsheetCellUpdated;
 use App\Events\SpreadsheetCursorMoved;
-use App\Models\Spreadsheet;
+use App\Jobs\BulkPasteChunkJob;
 use App\Models\Cell;
 use App\Models\CellHistory;
+use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\FormulaEvaluatorService;
-use App\Jobs\BulkPasteChunkJob;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
-use Livewire\Component;
-use Livewire\Attributes\On;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\On;
+use Livewire\Component;
 
 class ShowSpreadsheet extends Component
 {
     use AuthorizesRequests;
 
     public $spreadsheet_id;
+
     protected ?Spreadsheet $spreadsheet = null;
-    
+
     // Grid display
     public $viewportRows = 50;           // Visible rows (for virtual scrolling)
+
     public $viewportCols = 20;           // Visible columns
+
     public $scrollRowOffset = 0;         // Current scroll position (rows)
+
     public $scrollColOffset = 0;         // Current scroll position (columns)
+
     public $totalRows = 1000000;         // Total rows in grid (1M+ target)
+
     public $totalCols = 100;             // Total columns (A-CV)
+
     public $rowHeight = 28;              // px
+
     public $colWidth = 96;               // px
 
     // Lazy-loading / prefetch tuning
     public $prefetchRows = 40;
+
     public $prefetchCols = 15;
-    
+
     // Current selection
     public $selectedRow = 0;
+
     public $selectedCol = 0;
+
     public $editingCell = null;          // Format: 'R<row>C<col>'
+
     public $editingValue = '';
-    
+
     // Cell data (cached in memory for performance)
     public $cellData = [];               // Grid cache: [rowIndex][colIndex] => Cell data
+
     public $loadedWindows = [];          // Loaded windows cache keys to avoid duplicate queries
-    
+
     // Formula evaluation
     public $formulaErrors = [];
+
     public $computedValues = [];         // Cached computed values
 
     // Local undo/redo stacks (session-scoped)
     public $undoStack = [];
+
     public $redoStack = [];
 
     // Bulk paste queue batch tracking
     public $bulkPasteBatchId = null;
+
     public $bulkPasteStatus = 'idle';
+
     public $bulkPasteTotalJobs = 0;
+
     public $bulkPasteProcessedJobs = 0;
 
     // Phase 4 settings-backed features
     public $rowHeights = [];
+
     public $colWidths = [];
+
     public $hiddenRows = [];
+
     public $hiddenCols = [];
+
     public $validationRules = [];
+
     public $conditionalFormattingRules = [];
+
     public $filterRules = [];
-    
+
     public function mount($spreadsheet_id)
     {
         $this->spreadsheet_id = $spreadsheet_id;
@@ -90,10 +114,10 @@ class ShowSpreadsheet extends Component
     {
         // Load spreadsheet with authorization check
         $this->spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        
+
         // Check authorization
         $this->authorize('view', $this->spreadsheet);
-        
+
         // Load only current viewport (+ prefetch buffer) from DB
         $this->loadViewportCells(true);
         $this->loadFeatureSettings();
@@ -145,7 +169,7 @@ class ShowSpreadsheet extends Component
         $endCol = min($this->totalCols - 1, $this->scrollColOffset + $this->viewportCols + $this->prefetchCols);
 
         $windowKey = implode(':', [$startRow, $endRow, $startCol, $endCol]);
-        if (!$force && isset($this->loadedWindows[$windowKey])) {
+        if (! $force && isset($this->loadedWindows[$windowKey])) {
             return;
         }
 
@@ -158,7 +182,7 @@ class ShowSpreadsheet extends Component
             $row = (int) $cell->row_index;
             $col = (int) $cell->col_index;
 
-            if (!isset($this->cellData[$row])) {
+            if (! isset($this->cellData[$row])) {
                 $this->cellData[$row] = [];
             }
 
@@ -188,6 +212,7 @@ class ShowSpreadsheet extends Component
         foreach ($this->cellData as $row => $cols) {
             if ($row < $minRow || $row > $maxRow) {
                 unset($this->cellData[$row]);
+
                 continue;
             }
 
@@ -244,11 +269,12 @@ class ShowSpreadsheet extends Component
     protected function getCellData($row, $col)
     {
         $key = "{$row}_{$col}";
-        
+
         if (isset($this->cellData[$row][$col])) {
             $cell = $this->cellData[$row][$col];
             $displayValue = $cell['computed_value'] ?? $cell['raw_value'] ?? '';
             $formatting = $this->applyConditionalFormattingRules($row, $col, $displayValue, $cell['formatting'] ?? []);
+
             return [
                 'id' => $cell['id'],
                 'row' => $row,
@@ -280,10 +306,13 @@ class ShowSpreadsheet extends Component
     {
         $letter = '';
         while ($index >= 0) {
-            $letter = chr(65 + ($index % 26)) . $letter;
+            $letter = chr(65 + ($index % 26)).$letter;
             $index = intdiv($index, 26) - 1;
-            if ($index < 0) break;
+            if ($index < 0) {
+                break;
+            }
         }
+
         return $letter;
     }
 
@@ -296,17 +325,18 @@ class ShowSpreadsheet extends Component
         for ($i = 0; $i < strlen($letter); $i++) {
             $index = $index * 26 + (ord($letter[$i]) - 64);
         }
+
         return $index - 1;
     }
 
     // Livewire Actions
-    
+
     #[On('cell-clicked')]
     public function selectCell($row, $col)
     {
         $this->selectedRow = $row;
         $this->selectedCol = $col;
-        
+
         // Ensure selection is visible (autoscroll on select)
         $this->ensureVisible($row, $col);
 
@@ -339,17 +369,19 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
-        if (!$this->editingCell) return;
+        if (! $this->editingCell) {
+            return;
+        }
 
         [$row, $col] = explode('_', $this->editingCell);
-        $row = (int)$row;
-        $col = (int)$col;
+        $row = (int) $row;
+        $col = (int) $col;
 
         // Find or create cell
         $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-                   ->where('row_index', $row)
-                   ->where('col_index', $col)
-                   ->first();
+            ->where('row_index', $row)
+            ->where('col_index', $col)
+            ->first();
 
         $oldValue = $cell?->raw_value;
         $oldState = [
@@ -363,6 +395,7 @@ class ShowSpreadsheet extends Component
             $this->formulaErrors["{$row}_{$col}"] = $validationError;
             $this->editingCell = null;
             $this->editingValue = '';
+
             return;
         }
 
@@ -409,7 +442,7 @@ class ShowSpreadsheet extends Component
         ]);
 
         // Update local cache
-        if (!isset($this->cellData[$row])) {
+        if (! isset($this->cellData[$row])) {
             $this->cellData[$row] = [];
         }
         $this->cellData[$row][$col] = [
@@ -444,7 +477,7 @@ class ShowSpreadsheet extends Component
         // Invalidate formula caches after any cell update
         Cache::forget("spreadsheet:{$this->spreadsheet_id}:cell_values");
         Cache::forget("spreadsheet:{$this->spreadsheet_id}:formula_dependency_graph");
-        
+
         if (Auth::check()) {
             broadcast(new SpreadsheetCellUpdated(
                 spreadsheetId: (int) $this->spreadsheet_id,
@@ -513,7 +546,8 @@ class ShowSpreadsheet extends Component
 
     public function evaluateFormula($formula)
     {
-        $evaluator = new FormulaEvaluatorService();
+        $evaluator = new FormulaEvaluatorService;
+
         return $evaluator->evaluate($formula, $this->spreadsheet_id);
     }
 
@@ -621,12 +655,12 @@ class ShowSpreadsheet extends Component
      */
     public function getBulkPasteBatchStatus(): array
     {
-        if (!$this->bulkPasteBatchId) {
+        if (! $this->bulkPasteBatchId) {
             return ['status' => 'idle'];
         }
 
         $batch = Bus::findBatch($this->bulkPasteBatchId);
-        if (!$batch) {
+        if (! $batch) {
             return ['status' => 'missing'];
         }
 
@@ -689,7 +723,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $entry = array_pop($this->undoStack);
-        if (!$entry) {
+        if (! $entry) {
             return;
         }
 
@@ -702,7 +736,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $entry = array_pop($this->redoStack);
-        if (!$entry) {
+        if (! $entry) {
             return;
         }
 
@@ -721,19 +755,19 @@ class ShowSpreadsheet extends Component
         }
 
         $actions = $data['actions'] ?? [];
-        if (!is_array($actions) || empty($actions)) {
+        if (! is_array($actions) || empty($actions)) {
             return ['applied' => 0, 'message' => 'No actions provided'];
         }
 
         $applied = 0;
         foreach (array_slice($actions, 0, 1000) as $action) {
-            if (!is_array($action)) {
+            if (! is_array($action)) {
                 continue;
             }
 
             $type = strtolower((string) ($action['type'] ?? ''));
             $target = $this->resolveScriptTarget($action);
-            if (!$target && $type !== 'noop') {
+            if (! $target && $type !== 'noop') {
                 continue;
             }
 
@@ -742,6 +776,7 @@ class ShowSpreadsheet extends Component
                 $this->editingCell = "{$target['row']}_{$target['col']}";
                 $this->saveCell($value);
                 $applied++;
+
                 continue;
             }
 
@@ -752,6 +787,7 @@ class ShowSpreadsheet extends Component
                     'formula' => null,
                 ]);
                 $applied++;
+
                 continue;
             }
 
@@ -790,7 +826,7 @@ class ShowSpreadsheet extends Component
     protected function parseCellReference(string $cellRef): ?array
     {
         $cellRef = strtoupper(trim($cellRef));
-        if (!preg_match('/^([A-Z]{1,3})(\d+)$/', $cellRef, $matches)) {
+        if (! preg_match('/^([A-Z]{1,3})(\d+)$/', $cellRef, $matches)) {
             return null;
         }
 
@@ -806,7 +842,7 @@ class ShowSpreadsheet extends Component
     protected function validateCellInput(int $row, int $col, string $value): ?string
     {
         foreach ($this->validationRules as $rule) {
-            if (!is_array($rule)) {
+            if (! is_array($rule)) {
                 continue;
             }
 
@@ -816,7 +852,7 @@ class ShowSpreadsheet extends Component
 
             $type = (string) ($rule['type'] ?? '');
             if ($type === 'number') {
-                if (!is_numeric($value)) {
+                if (! is_numeric($value)) {
                     return 'Validation failed: value must be numeric.';
                 }
 
@@ -842,7 +878,7 @@ class ShowSpreadsheet extends Component
 
             if ($type === 'list') {
                 $items = array_values(array_filter(array_map('trim', explode(',', (string) ($rule['items'] ?? '')))));
-                if (!empty($items) && !in_array($value, $items, true)) {
+                if (! empty($items) && ! in_array($value, $items, true)) {
                     return 'Validation failed: value not in allowed list.';
                 }
             }
@@ -854,7 +890,7 @@ class ShowSpreadsheet extends Component
     protected function applyConditionalFormattingRules(int $row, int $col, mixed $displayValue, array $formatting): array
     {
         foreach ($this->conditionalFormattingRules as $rule) {
-            if (!is_array($rule)) {
+            if (! is_array($rule)) {
                 continue;
             }
 
@@ -866,7 +902,7 @@ class ShowSpreadsheet extends Component
                 continue;
             }
 
-            if (!$this->matchCondition($displayValue, (string) ($rule['operator'] ?? '=='), $rule['value'] ?? null)) {
+            if (! $this->matchCondition($displayValue, (string) ($rule['operator'] ?? '=='), $rule['value'] ?? null)) {
                 continue;
             }
 
@@ -882,7 +918,7 @@ class ShowSpreadsheet extends Component
     protected function matchCondition(mixed $value, string $operator, mixed $expected): bool
     {
         if (in_array($operator, ['>', '>=', '<', '<='], true)) {
-            if (!is_numeric($value) || !is_numeric($expected)) {
+            if (! is_numeric($value) || ! is_numeric($expected)) {
                 return false;
             }
 
@@ -958,6 +994,7 @@ class ShowSpreadsheet extends Component
             if ($r === $row) {
                 return null;
             }
+
             return $r > $row ? $r - 1 : $r;
         }, $this->hiddenRows), fn ($v) => $v !== null));
         $this->saveFeatureSettings();
@@ -1014,6 +1051,7 @@ class ShowSpreadsheet extends Component
             if ($c === $col) {
                 return null;
             }
+
             return $c > $col ? $c - 1 : $c;
         }, $this->hiddenCols), fn ($v) => $v !== null));
         $this->saveFeatureSettings();
@@ -1194,6 +1232,7 @@ class ShowSpreadsheet extends Component
             } else {
                 $cmp = strnatcasecmp((string) $va, (string) $vb);
             }
+
             return $direction === 'desc' ? -$cmp : $cmp;
         });
 
@@ -1219,6 +1258,7 @@ class ShowSpreadsheet extends Component
     {
         if (empty($this->filterRules)) {
             $this->hiddenRows = [];
+
             return;
         }
 
@@ -1242,14 +1282,14 @@ class ShowSpreadsheet extends Component
                 $value = $cell?->computed_value ?? $cell?->raw_value ?? '';
                 $type = $rule['type'] ?? 'contains';
                 if ($type === 'contains') {
-                    if (!str_contains(strtolower((string) $value), strtolower((string) ($rule['value'] ?? '')))) {
+                    if (! str_contains(strtolower((string) $value), strtolower((string) ($rule['value'] ?? '')))) {
                         $keep = false;
                         break;
                     }
                 } elseif ($type === 'number_between') {
                     $min = (float) ($rule['value'] ?? 0);
                     $max = (float) ($rule['value2'] ?? INF);
-                    if (!is_numeric($value) || (float) $value < $min || (float) $value > $max) {
+                    if (! is_numeric($value) || (float) $value < $min || (float) $value > $max) {
                         $keep = false;
                         break;
                     }
@@ -1257,7 +1297,7 @@ class ShowSpreadsheet extends Component
                     $from = strtotime((string) ($rule['value'] ?? ''));
                     $to = strtotime((string) ($rule['value2'] ?? ''));
                     $actual = strtotime((string) $value);
-                    if (!$actual || !$from || !$to || $actual < $from || $actual > $to) {
+                    if (! $actual || ! $from || ! $to || $actual < $from || $actual > $to) {
                         $keep = false;
                         break;
                     }
@@ -1268,14 +1308,14 @@ class ShowSpreadsheet extends Component
                         break;
                     }
                 } elseif ($type === 'condition') {
-                    if (!$this->matchCondition($value, (string) ($rule['operator'] ?? '=='), $rule['value'] ?? null)) {
+                    if (! $this->matchCondition($value, (string) ($rule['operator'] ?? '=='), $rule['value'] ?? null)) {
                         $keep = false;
                         break;
                     }
                 }
             }
 
-            if (!$keep) {
+            if (! $keep) {
                 $hidden[] = $row;
             }
         }
@@ -1287,7 +1327,7 @@ class ShowSpreadsheet extends Component
     {
         $settings = $this->spreadsheet->settings ?? [];
         $rules = $settings['ai_workflows'] ?? [];
-        if (!is_array($rules) || empty($rules)) {
+        if (! is_array($rules) || empty($rules)) {
             return;
         }
 
@@ -1295,7 +1335,7 @@ class ShowSpreadsheet extends Component
         $value = $computedValue ?? $rawValue;
 
         foreach ($rules as $rule) {
-            if (!is_array($rule) || !($rule['enabled'] ?? true)) {
+            if (! is_array($rule) || ! ($rule['enabled'] ?? true)) {
                 continue;
             }
 
@@ -1306,12 +1346,12 @@ class ShowSpreadsheet extends Component
 
             $operator = (string) ($rule['operator'] ?? '==');
             $expected = $rule['value'] ?? null;
-            if (!$this->compareWorkflowCondition($value, $operator, $expected)) {
+            if (! $this->compareWorkflowCondition($value, $operator, $expected)) {
                 continue;
             }
 
             $ruleId = (string) ($rule['id'] ?? md5(json_encode($rule)));
-            $dedupeKey = "workflow:{$this->spreadsheet_id}:{$ruleId}:{$row}:{$col}:" . md5((string) $value);
+            $dedupeKey = "workflow:{$this->spreadsheet_id}:{$ruleId}:{$row}:{$col}:".md5((string) $value);
             if (Cache::has($dedupeKey)) {
                 continue;
             }
@@ -1352,7 +1392,7 @@ class ShowSpreadsheet extends Component
     protected function resolveWorkflowNotificationChannels(array $rule): array
     {
         $channels = $rule['notify_channels'] ?? ['email'];
-        if (!is_array($channels)) {
+        if (! is_array($channels)) {
             return ['email'];
         }
 
@@ -1369,11 +1409,11 @@ class ShowSpreadsheet extends Component
     protected function dispatchWorkflowNotification(array $rule, int $row, int $col, mixed $value, array $channels): void
     {
         $owner = $this->spreadsheet->owner;
-        if (!$owner) {
+        if (! $owner) {
             return;
         }
 
-        $cellRef = self::colIndexToLetter($col) . ($row + 1);
+        $cellRef = self::colIndexToLetter($col).($row + 1);
         $owner->notify(new WorkflowRuleTriggered(
             spreadsheetId: (int) $this->spreadsheet_id,
             spreadsheetName: (string) $this->spreadsheet->name,
@@ -1396,7 +1436,7 @@ class ShowSpreadsheet extends Component
             'rule_expected_value' => (string) ($rule['value'] ?? ''),
             'row_index' => $row,
             'col_index' => $col,
-            'cell_reference' => self::colIndexToLetter($col) . ($row + 1),
+            'cell_reference' => self::colIndexToLetter($col).($row + 1),
             'actual_value' => is_scalar($value) || $value === null ? (string) $value : json_encode($value),
             'notification_channels' => $channels,
             'status' => $status,
@@ -1410,7 +1450,7 @@ class ShowSpreadsheet extends Component
             ->where('col_index', $col)
             ->first();
 
-        if (!$cell) {
+        if (! $cell) {
             return;
         }
 
@@ -1419,11 +1459,11 @@ class ShowSpreadsheet extends Component
         $cell->formatting = $formatting;
         $cell->save();
 
-        if (!isset($this->cellData[$row])) {
+        if (! isset($this->cellData[$row])) {
             $this->cellData[$row] = [];
         }
 
-        if (!isset($this->cellData[$row][$col])) {
+        if (! isset($this->cellData[$row][$col])) {
             $this->cellData[$row][$col] = [
                 'id' => $cell->id,
                 'raw_value' => $cell->raw_value,
@@ -1473,7 +1513,7 @@ class ShowSpreadsheet extends Component
                 ]);
             }
 
-            if (!isset($this->cellData[$row])) {
+            if (! isset($this->cellData[$row])) {
                 $this->cellData[$row] = [];
             }
             $this->cellData[$row][$col] = [

@@ -17,8 +17,7 @@ class MentionedInComment extends Notification
         public int $row,
         public int $col,
         public string $excerpt,
-    ) {
-    }
+    ) {}
 
     /**
      * Create a new notification instance.
@@ -33,14 +32,14 @@ class MentionedInComment extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $cellRef = $this->colToLetter($this->col) . $this->row;
+        $cellRef = $this->colToLetter($this->col).$this->row;
 
         return (new MailMessage)
             ->subject('You were mentioned in a spreadsheet comment')
             ->line("{$this->actorName} mentioned you in {$this->spreadsheetName}.")
             ->line("Cell: {$cellRef}")
             ->line("Comment: \"{$this->excerpt}\"")
-            ->action('Open Spreadsheet', url('/spreadsheets/' . $this->spreadsheetId));
+            ->action('Open Spreadsheet', url('/spreadsheets/'.$this->spreadsheetId));
     }
 
     /**
@@ -67,9 +66,10 @@ class MentionedInComment extends Notification
         $letter = '';
         while ($col > 0) {
             $rem = ($col - 1) % 26;
-            $letter = chr(65 + $rem) . $letter;
+            $letter = chr(65 + $rem).$letter;
             $col = intdiv($col - 1, 26);
         }
+
         return $letter;
     }
 }

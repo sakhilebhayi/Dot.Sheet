@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Jobs\SimulateSpreadsheetEditJob;
 use App\Models\Spreadsheet;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 
 class SpreadsheetLoadTestCommand extends Command
@@ -30,8 +29,9 @@ class SpreadsheetLoadTestCommand extends Command
         $pollMs = max(100, (int) $this->option('poll-ms'));
 
         $spreadsheet = Spreadsheet::find($spreadsheetId);
-        if (!$spreadsheet) {
+        if (! $spreadsheet) {
             $this->error('Spreadsheet not found.');
+
             return self::FAILURE;
         }
 
@@ -53,13 +53,14 @@ class SpreadsheetLoadTestCommand extends Command
             ->allowFailures()
             ->dispatch();
 
-        $this->line('Batch ID: ' . $batch->id);
+        $this->line('Batch ID: '.$batch->id);
 
         do {
             usleep($pollMs * 1000);
             $fresh = Bus::findBatch($batch->id);
-            if (!$fresh) {
+            if (! $fresh) {
                 $this->error('Batch could not be found while polling.');
+
                 return self::FAILURE;
             }
 
@@ -67,7 +68,7 @@ class SpreadsheetLoadTestCommand extends Command
             $processed = $fresh->processedJobs();
             $progress = (int) floor(($processed / $total) * 100);
             $this->line("Progress: {$progress}% ({$processed}/{$total})");
-        } while (!$fresh->finished());
+        } while (! $fresh->finished());
 
         $duration = microtime(true) - $start;
         $ops = $jobsCount * $iterations;
@@ -75,10 +76,10 @@ class SpreadsheetLoadTestCommand extends Command
 
         $this->newLine();
         $this->info('Load test complete.');
-        $this->line('Duration: ' . round($duration, 2) . 's');
-        $this->line('Operations: ' . $ops);
-        $this->line('Ops/sec: ' . $opsPerSec);
-        $this->line('Failed jobs: ' . $fresh->failedJobs);
+        $this->line('Duration: '.round($duration, 2).'s');
+        $this->line('Operations: '.$ops);
+        $this->line('Ops/sec: '.$opsPerSec);
+        $this->line('Failed jobs: '.$fresh->failedJobs);
 
         return self::SUCCESS;
     }

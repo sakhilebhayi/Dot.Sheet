@@ -12,7 +12,7 @@ class AiWorkflowUtilitiesTest extends TestCase
 {
     public function test_range_parsing_normalizes_reverse_bounds(): void
     {
-        $panel = new AiAnalysisPanel();
+        $panel = new AiAnalysisPanel;
         $method = new ReflectionMethod(AiAnalysisPanel::class, 'parseRangeBounds');
         $method->setAccessible(true);
 
@@ -23,7 +23,7 @@ class AiWorkflowUtilitiesTest extends TestCase
 
     public function test_range_parsing_handles_single_cell(): void
     {
-        $panel = new AiAnalysisPanel();
+        $panel = new AiAnalysisPanel;
         $method = new ReflectionMethod(AiAnalysisPanel::class, 'parseRangeBounds');
         $method->setAccessible(true);
 
@@ -34,7 +34,7 @@ class AiWorkflowUtilitiesTest extends TestCase
 
     public function test_workflow_condition_matching_for_numeric_and_string_values(): void
     {
-        $sheet = new ShowSpreadsheet();
+        $sheet = new ShowSpreadsheet;
         $method = new ReflectionMethod(ShowSpreadsheet::class, 'compareWorkflowCondition');
         $method->setAccessible(true);
 
@@ -45,7 +45,7 @@ class AiWorkflowUtilitiesTest extends TestCase
 
     public function test_cleaning_transform_normalizes_whitespace(): void
     {
-        $service = new AiService();
+        $service = new AiService;
 
         $this->assertSame('hello world', $service->normalizeCellTextForCleaning("  hello\n   world  "));
         $this->assertSame(25, $service->normalizeCellTextForCleaning(25));

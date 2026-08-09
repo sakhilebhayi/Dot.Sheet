@@ -1,8 +1,11 @@
 <?php
 
+use App\Http\Middleware\EnsurePlatformOperator;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Support\Facades\Log;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -13,7 +16,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'operator' => EnsurePlatformOperator::class,
+        ]);
+    })
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('ops:backup')
+            ->daily()
+            ->onFailure(function (): void {
+                Log::error('ops:backup scheduled run failed');
+            });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

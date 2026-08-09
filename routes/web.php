@@ -54,4 +54,8 @@ Route::middleware([
     // Invitations
     Route::get('spreadsheets/invitations/{token}/accept', [SpreadsheetController::class, 'acceptInvitation'])
         ->name('spreadsheets.invitations.accept');
+
+    Route::middleware('operator')->prefix('operator')->name('operator.')->group(function () {
+        Route::get('/backups', fn () => view('operator.backups'))->name('backups.index');
+    });
 });

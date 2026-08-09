@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Models\BackupPruneProposal;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
@@ -218,10 +220,25 @@ class RunBackupCommand extends Command
         foreach (File::directories($backupRoot) as $directory) {
             $lastModified = File::lastModified($directory);
 
-            if ($lastModified < $cutoff) {
-                File::deleteDirectory($directory);
-                $this->line('Pruned old backup: '.basename($directory));
+            if ($lastModified >= $cutoff) {
+                continue;
             }
+
+            $hasPendingProposal = BackupPruneProposal::where('backup_path', $directory)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($hasPendingProposal) {
+                continue;
+            }
+
+            BackupPruneProposal::create([
+                'backup_path' => $directory,
+                'backup_created_at' => Carbon::createFromTimestamp($lastModified),
+                'status' => 'pending',
+            ]);
+
+            $this->line('Proposed pruning old backup (awaiting operator approval): '.basename($directory));
         }
     }
 }

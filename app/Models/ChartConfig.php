@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ChartConfig extends Model
 {
     protected $fillable = [
-        'spreadsheet_id', 'title', 'type',
+        'spreadsheet_id', 'sheet_tab_id', 'title', 'type',
         'data_range', 'options',
     ];
 
@@ -17,5 +17,10 @@ class ChartConfig extends Model
     public function spreadsheet(): BelongsTo
     {
         return $this->belongsTo(Spreadsheet::class);
+    }
+
+    public function sheetTab(): BelongsTo
+    {
+        return $this->belongsTo(SheetTab::class);
     }
 }

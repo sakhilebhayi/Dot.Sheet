@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cell;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\SpreadsheetImportExportService;
@@ -133,12 +134,32 @@ class SpreadsheetController extends Controller
 
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
+            'sheet_tab_id' => 'nullable|integer|exists:sheet_tabs,id',
         ]);
 
         $service = new SpreadsheetImportExportService;
-        $result = $service->importFile($spreadsheet, $request->file('file'));
+        $result = $service->importFile($spreadsheet, $request->file('file'), $this->resolveSheetTab($request, $spreadsheet));
 
         return response()->json($result);
+    }
+
+    /**
+     * Resolve which tab an import/export request targets. Falls back to
+     * the spreadsheet's default tab when sheet_tab_id isn't given, and
+     * ignores a sheet_tab_id that doesn't actually belong to this
+     * spreadsheet rather than trusting it blindly.
+     */
+    protected function resolveSheetTab(Request $request, Spreadsheet $spreadsheet): ?SheetTab
+    {
+        $sheetTabId = $request->input('sheet_tab_id');
+        if ($sheetTabId) {
+            $tab = SheetTab::where('spreadsheet_id', $spreadsheet->id)->find($sheetTabId);
+            if ($tab) {
+                return $tab;
+            }
+        }
+
+        return $spreadsheet->defaultSheetTab();
     }
 
     /**
@@ -184,12 +205,12 @@ class SpreadsheetController extends Controller
     /**
      * Export spreadsheet as CSV download
      */
-    public function exportCsv(Spreadsheet $spreadsheet)
+    public function exportCsv(Request $request, Spreadsheet $spreadsheet)
     {
         $this->authorize('view', $spreadsheet);
 
         $service = new SpreadsheetImportExportService;
-        $csv = $service->exportCsv($spreadsheet);
+        $csv = $service->exportCsv($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
 
         $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.csv';
 
@@ -202,12 +223,12 @@ class SpreadsheetController extends Controller
     /**
      * Export spreadsheet as Excel download
      */
-    public function exportExcel(Spreadsheet $spreadsheet)
+    public function exportExcel(Request $request, Spreadsheet $spreadsheet)
     {
         $this->authorize('view', $spreadsheet);
 
         $service = new SpreadsheetImportExportService;
-        $filePath = $service->exportExcel($spreadsheet);
+        $filePath = $service->exportExcel($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
 
         $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.xlsx';
 

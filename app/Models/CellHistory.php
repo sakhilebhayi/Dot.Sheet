@@ -7,6 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CellHistory extends Model
 {
+    // The migration creates 'cell_history' (singular); Eloquent's default
+    // pluralized guess ('cell_histories') doesn't exist. Without this
+    // override, every cell save crashes here -- this was previously
+    // undetected because the test suite never exercised the live
+    // saveCell() flow against a fresh cell (only the skipped Browser tests
+    // would have).
+    protected $table = 'cell_history';
+
     public $timestamps = false;
 
     const CREATED_AT = 'created_at';

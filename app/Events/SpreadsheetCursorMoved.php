@@ -14,6 +14,7 @@ class SpreadsheetCursorMoved implements ShouldBroadcastNow
 
     public function __construct(
         public int $spreadsheetId,
+        public ?int $sheetTabId,
         public int $row,
         public int $col,
         public int $userId,
@@ -36,6 +37,7 @@ class SpreadsheetCursorMoved implements ShouldBroadcastNow
     {
         return [
             'spreadsheet_id' => $this->spreadsheetId,
+            'sheet_tab_id' => $this->sheetTabId,
             'row' => $this->row,
             'col' => $this->col,
             'user_id' => $this->userId,

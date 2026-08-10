@@ -55,11 +55,11 @@
                         <div x-show="open" @click.away="open = false"
                              class="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200
                                     dark:border-gray-700 rounded-lg shadow-lg z-20 py-1 min-w-[120px]">
-                            <a href="/spreadsheets/{{ $spreadsheet->id }}/export/csv"
+                            <a href="/spreadsheets/{{ $spreadsheet->id }}/export/csv?sheet_tab_id={{ $activeSheetTabId }}"
                                class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 Export CSV
                             </a>
-                            <a href="/spreadsheets/{{ $spreadsheet->id }}/export/excel"
+                            <a href="/spreadsheets/{{ $spreadsheet->id }}/export/excel?sheet_tab_id={{ $activeSheetTabId }}"
                                class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                                 Export Excel
                             </a>
@@ -288,6 +288,35 @@
                     <div id="remoteCursorsLayer" class="absolute inset-0 pointer-events-none z-10"></div>
                 </div>
             </div>
+
+            <!-- Sheet Tabs -->
+            <div class="flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 overflow-x-auto flex-shrink-0">
+                @foreach ($sheetTabs as $tab)
+                    <div class="group flex items-center">
+                        <button type="button"
+                                wire:click="switchTab({{ $tab['id'] }})"
+                                @dblclick="const name = prompt('Rename sheet', '{{ addslashes($tab['name']) }}'); if (name) $wire.renameTab({{ $tab['id'] }}, name)"
+                                title="Double-click to rename"
+                                class="px-3 py-1 text-xs font-medium rounded-t-md border-t border-l border-r
+                                       {{ (int) $tab['id'] === (int) $activeSheetTabId
+                                            ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400'
+                                            : 'bg-gray-200 dark:bg-gray-800/40 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+                            {{ $tab['name'] }}
+                        </button>
+                        @if (count($sheetTabs) > 1)
+                            <button type="button" wire:click="deleteTab({{ $tab['id'] }})"
+                                    title="Delete sheet"
+                                    class="opacity-0 group-hover:opacity-100 -ml-4 mr-1 text-gray-400 hover:text-red-500 text-xs px-1">
+                                ✕
+                            </button>
+                        @endif
+                    </div>
+                @endforeach
+                <button type="button" wire:click="createTab()" title="Add sheet"
+                        class="px-2 py-1 text-sm font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+                    +
+                </button>
+            </div>
         </div>
 
         <!-- Right Sidebar - Analysis Panel (AI) -->
@@ -321,12 +350,15 @@
             <!-- Charts Section -->
             <div class="p-3 border-b border-gray-200 dark:border-gray-700">
                 <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Charts</h3>
-                @livewire('chart-builder', ['spreadsheet_id' => $spreadsheet->id])
+                {{-- wire:key forces a full remount (fresh mount() call) when the
+                     active tab changes, so this panel's own charts stay scoped
+                     to whichever tab is currently open. --}}
+                @livewire('chart-builder', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('chart-builder-'.$activeSheetTabId))
             </div>
 
             <!-- Comments Section -->
             <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                @livewire('cell-comments-panel', ['spreadsheet_id' => $spreadsheet->id])
+                @livewire('cell-comments-panel', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('cell-comments-panel-'.$activeSheetTabId))
             </div>
 
             <!-- Sharing Section -->
@@ -405,6 +437,20 @@
     }
 
     const spreadsheetId = {{ $spreadsheet->id }};
+    // The realtime presence channel is shared by every tab in the
+    // spreadsheet (see SpreadsheetCellUpdated/SpreadsheetCursorMoved), so
+    // this tracks which tab is active client-side to filter out broadcasts
+    // for a tab the user isn't currently looking at.
+    let activeSheetTabId = {{ $activeSheetTabId ?? 'null' }};
+
+    document.addEventListener('livewire:init', () => {
+        Livewire.on('sheet-tab-switched', (payload) => {
+            const data = Array.isArray(payload) ? payload[0] : payload;
+            activeSheetTabId = data?.sheetTabId ?? null;
+            collaborationCursors = {};
+            renderRemoteCursors(collaborationCursors);
+        });
+    });
 
     function colToLetter(col) {
         let c = col + 1;
@@ -600,10 +646,18 @@
                     renderRemoteCursors(collaborationCursors);
                 })
                 .listen('.cursor.moved', (payload) => {
+                    // Every tab shares this one presence channel -- ignore
+                    // cursor moves for a tab the viewer isn't currently on.
+                    if (payload.sheet_tab_id != null && payload.sheet_tab_id != activeSheetTabId) {
+                        return;
+                    }
                     collaborationCursors[payload.user_id] = payload;
                     renderRemoteCursors(collaborationCursors);
                 })
-                .listen('.cell.updated', () => {
+                .listen('.cell.updated', (payload) => {
+                    if (payload.sheet_tab_id != null && payload.sheet_tab_id != activeSheetTabId) {
+                        return;
+                    }
                     Livewire.dispatch('external-cell-updated');
                 });
         }
@@ -950,6 +1004,7 @@
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('sheet_tab_id', activeSheetTabId);
         formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
 
         fetch('/spreadsheets/{{ $spreadsheet->id }}/import', {
@@ -979,7 +1034,7 @@
 @livewire('ai-formula-modal', ['spreadsheet_id' => $spreadsheet->id])
 
 <!-- Version History Modal -->
-@livewire('version-history-modal', ['spreadsheet_id' => $spreadsheet->id])
+@livewire('version-history-modal', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('version-history-modal-'.$activeSheetTabId))
 
 <!-- AI Natural Language Query Modal -->
 <div id="nlqModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">

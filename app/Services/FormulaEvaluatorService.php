@@ -25,9 +25,12 @@ class FormulaEvaluatorService
      *
      * @param  string  $formula  The formula string (e.g., "=A1+B1")
      * @param  int  $spreadsheetId  The spreadsheet ID for context
+     * @param  int|null  $sheetTabId  The tab within the spreadsheet cell references resolve
+     *                                against. References never cross tabs -- see
+     *                                Dot.Sheet's multi-tab workbook support.
      * @return array ['value' => result, 'error' => bool, 'errorMessage' => string]
      */
-    public function evaluate($formula, $spreadsheetId)
+    public function evaluate($formula, $spreadsheetId, $sheetTabId = null)
     {
         try {
             if (! $formula || ! is_string($formula)) {
@@ -39,11 +42,11 @@ class FormulaEvaluatorService
                 $formula = substr($formula, 1);
             }
 
-            // Cache cell data for this spreadsheet
-            $this->cacheSpreadsheetCells($spreadsheetId);
+            // Cache cell data for this spreadsheet tab
+            $this->cacheSpreadsheetCells($spreadsheetId, $sheetTabId);
 
             // Build and cache dependency graph for recalculation planning
-            $this->dependencyGraph = $this->getDependencyGraph($spreadsheetId);
+            $this->dependencyGraph = $this->getDependencyGraph($spreadsheetId, $sheetTabId);
 
             // Evaluate the expression
             $result = $this->evaluateExpression($formula);
@@ -55,14 +58,15 @@ class FormulaEvaluatorService
     }
 
     /**
-     * Cache all cells for a spreadsheet
+     * Cache all cells for a spreadsheet tab
      */
-    protected function cacheSpreadsheetCells($spreadsheetId)
+    protected function cacheSpreadsheetCells($spreadsheetId, $sheetTabId = null)
     {
         $cells = Cache::remember(
-            "spreadsheet:{$spreadsheetId}:cell_values",
+            "spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:cell_values",
             $this->cacheTtlSeconds,
             fn () => Cell::where('spreadsheet_id', $spreadsheetId)
+                ->where('sheet_tab_id', $sheetTabId)
                 ->get(['row_index', 'col_index', 'raw_value', 'computed_value'])
                 ->toArray()
         );
@@ -82,15 +86,16 @@ class FormulaEvaluatorService
      * Build and cache dependency graph for formula recalculation.
      * Returns map: dependencyCellKey => [dependentCellKey, ...]
      */
-    protected function getDependencyGraph($spreadsheetId): array
+    protected function getDependencyGraph($spreadsheetId, $sheetTabId = null): array
     {
         return Cache::remember(
-            "spreadsheet:{$spreadsheetId}:formula_dependency_graph",
+            "spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:formula_dependency_graph",
             $this->cacheTtlSeconds,
-            function () use ($spreadsheetId) {
+            function () use ($spreadsheetId, $sheetTabId) {
                 $graph = [];
 
                 $formulaCells = Cell::where('spreadsheet_id', $spreadsheetId)
+                    ->where('sheet_tab_id', $sheetTabId)
                     ->whereNotNull('formula')
                     ->get(['row_index', 'col_index', 'formula']);
 

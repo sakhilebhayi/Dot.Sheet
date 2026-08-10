@@ -26,6 +26,18 @@ class Spreadsheet extends Model
         'public_expires_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // Every spreadsheet needs at least one tab to open into -- mirrors
+        // what a new file in Sheets/Excel looks like on creation.
+        static::created(function (Spreadsheet $spreadsheet) {
+            $spreadsheet->sheetTabs()->create([
+                'name' => 'Sheet1',
+                'sort_order' => 0,
+            ]);
+        });
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -39,6 +51,16 @@ class Spreadsheet extends Model
     public function cells(): HasMany
     {
         return $this->hasMany(Cell::class);
+    }
+
+    public function sheetTabs(): HasMany
+    {
+        return $this->hasMany(SheetTab::class);
+    }
+
+    public function defaultSheetTab(): ?SheetTab
+    {
+        return $this->sheetTabs()->orderBy('sort_order')->orderBy('id')->first();
     }
 
     public function sharedUsers(): BelongsToMany

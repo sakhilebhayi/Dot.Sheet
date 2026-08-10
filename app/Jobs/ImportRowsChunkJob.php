@@ -21,6 +21,7 @@ class ImportRowsChunkJob implements ShouldQueue
      */
     public function __construct(
         public int $spreadsheetId,
+        public ?int $sheetTabId,
         public array $rows,
         public int $startRowIndex = 1,
     ) {}
@@ -43,6 +44,7 @@ class ImportRowsChunkJob implements ShouldQueue
                 Cell::updateOrCreate(
                     [
                         'spreadsheet_id' => $this->spreadsheetId,
+                        'sheet_tab_id' => $this->sheetTabId,
                         'row_index' => $rowNumber,
                         'col_index' => $colIndex + 1,
                     ],
@@ -50,6 +52,7 @@ class ImportRowsChunkJob implements ShouldQueue
                         'raw_value' => $value,
                         'computed_value' => $isFormula ? null : $value,
                         'formula' => $isFormula ? $value : null,
+                        'updated_at' => now(),
                     ]
                 );
             }

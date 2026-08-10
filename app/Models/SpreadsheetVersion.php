@@ -9,6 +9,7 @@ class SpreadsheetVersion extends Model
 {
     protected $fillable = [
         'spreadsheet_id',
+        'sheet_tab_id',
         'user_id',
         'label',
         'cells_snapshot',
@@ -21,6 +22,11 @@ class SpreadsheetVersion extends Model
     public function spreadsheet(): BelongsTo
     {
         return $this->belongsTo(Spreadsheet::class);
+    }
+
+    public function sheetTab(): BelongsTo
+    {
+        return $this->belongsTo(SheetTab::class);
     }
 
     public function user(): BelongsTo

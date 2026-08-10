@@ -14,6 +14,8 @@ class ChartBuilder extends Component
 
     public $spreadsheet_id;
 
+    public $sheet_tab_id;
+
     // Form state (modal)
     public $showModal = false;
 
@@ -45,11 +47,12 @@ class ChartBuilder extends Component
         'labels_range' => ['nullable', 'regex:/^[A-Z]+\d+:[A-Z]+\d+$/i'],
     ];
 
-    public function mount($spreadsheet_id)
+    public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->sheet_tab_id = $sheet_tab_id;
         $this->loadCharts();
     }
 
@@ -61,6 +64,7 @@ class ChartBuilder extends Component
     public function loadCharts()
     {
         $this->charts = ChartConfig::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->orderBy('created_at', 'desc')
             ->get()
             ->toArray();
@@ -92,6 +96,7 @@ class ChartBuilder extends Component
 
         $chart = ChartConfig::create([
             'spreadsheet_id' => $this->spreadsheet_id,
+            'sheet_tab_id' => $this->sheet_tab_id,
             'title' => $this->title,
             'type' => $this->type,
             'data_range' => strtoupper($this->data_range),
@@ -121,6 +126,7 @@ class ChartBuilder extends Component
 
         ChartConfig::where('id', $chartId)
             ->where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->delete();
 
         $this->loadCharts();
@@ -155,6 +161,7 @@ class ChartBuilder extends Component
 
         // Fetch cells from DB for data range
         $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->whereBetween('row_index', [$startRow, $endRow])
             ->whereBetween('col_index', [$startCol, $endCol])
             ->get()
@@ -168,6 +175,7 @@ class ChartBuilder extends Component
             [$lColEnd, $lEndRow] = $this->parseRef($lEnd);
 
             $labelCells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+                ->where('sheet_tab_id', $this->sheet_tab_id)
                 ->whereBetween('row_index', [$lStartRow, $lEndRow])
                 ->where('col_index', $lCol)
                 ->orderBy('row_index')
@@ -177,7 +185,7 @@ class ChartBuilder extends Component
             $labels = $labelCells;
         } else {
             for ($r = $startRow; $r <= $endRow; $r++) {
-                $labels[] = 'Row '.$r;
+                $labels[] = 'Row '.($r + 1);
             }
         }
 
@@ -208,7 +216,12 @@ class ChartBuilder extends Component
     }
 
     /**
-     * Parse a cell reference like "B3" into [colIndex, rowIndex]
+     * Parse a cell reference like "B3" into [colIndex, rowIndex], 0-based
+     * to match how Cell.row_index/col_index are actually stored
+     * everywhere else in the app (ShowSpreadsheet::saveCell, NamedRange,
+     * FormulaEvaluatorService) -- "A1" is [0, 0], not [1, 1]. This used to
+     * be 1-based here only, so every chart's data range silently queried
+     * one row/column past what the user actually selected.
      */
     protected function parseRef(string $ref): array
     {
@@ -218,16 +231,18 @@ class ChartBuilder extends Component
             $col = $col * 26 + (ord($ch) - 64);
         }
 
-        return [$col, (int) $m[2]];
+        return [$col - 1, ((int) $m[2]) - 1];
     }
 
     protected function colIndexToLetter(int $index): string
     {
         $letter = '';
-        while ($index > 0) {
-            $rem = ($index - 1) % 26;
-            $letter = chr(65 + $rem).$letter;
-            $index = (int) (($index - 1) / 26);
+        while ($index >= 0) {
+            $letter = chr(65 + ($index % 26)).$letter;
+            $index = intdiv($index, 26) - 1;
+            if ($index < 0) {
+                break;
+            }
         }
 
         return $letter;

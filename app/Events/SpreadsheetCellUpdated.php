@@ -14,6 +14,7 @@ class SpreadsheetCellUpdated implements ShouldBroadcastNow
 
     public function __construct(
         public int $spreadsheetId,
+        public ?int $sheetTabId,
         public int $row,
         public int $col,
         public ?string $rawValue,
@@ -39,6 +40,11 @@ class SpreadsheetCellUpdated implements ShouldBroadcastNow
     {
         return [
             'spreadsheet_id' => $this->spreadsheetId,
+            // Every tab in a spreadsheet shares the one presence channel
+            // (collaborators show as present whichever tab they're on), so
+            // recipients need sheet_tab_id to know whether this update is
+            // for the tab they're currently viewing.
+            'sheet_tab_id' => $this->sheetTabId,
             'row' => $this->row,
             'col' => $this->col,
             'raw_value' => $this->rawValue,

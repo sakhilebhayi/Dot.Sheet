@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Comment extends Model
 {
     protected $fillable = [
-        'spreadsheet_id', 'user_id', 'parent_id',
+        'spreadsheet_id', 'sheet_tab_id', 'user_id', 'parent_id',
         'row_index', 'col_index', 'content', 'resolved',
     ];
 
@@ -18,6 +18,11 @@ class Comment extends Model
     public function spreadsheet(): BelongsTo
     {
         return $this->belongsTo(Spreadsheet::class);
+    }
+
+    public function sheetTab(): BelongsTo
+    {
+        return $this->belongsTo(SheetTab::class);
     }
 
     public function user(): BelongsTo

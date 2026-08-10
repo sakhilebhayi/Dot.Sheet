@@ -12,6 +12,7 @@ class Cell extends Model
 
     protected $fillable = [
         'spreadsheet_id',
+        'sheet_tab_id',
         'row_index',
         'col_index',
         'raw_value',
@@ -29,6 +30,11 @@ class Cell extends Model
     public function spreadsheet(): BelongsTo
     {
         return $this->belongsTo(Spreadsheet::class);
+    }
+
+    public function sheetTab(): BelongsTo
+    {
+        return $this->belongsTo(SheetTab::class);
     }
 
     public function history(): HasMany

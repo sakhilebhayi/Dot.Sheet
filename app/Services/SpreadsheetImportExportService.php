@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\ImportRowsChunkJob;
 use App\Models\Cell;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
@@ -17,9 +18,12 @@ class SpreadsheetImportExportService
     /**
      * Export spreadsheet to CSV string
      */
-    public function exportCsv(Spreadsheet $spreadsheet): string
+    public function exportCsv(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null): string
     {
+        $sheetTab ??= $spreadsheet->defaultSheetTab();
+
         $cells = Cell::where('spreadsheet_id', $spreadsheet->id)
+            ->where('sheet_tab_id', $sheetTab?->id)
             ->orderBy('row_index')
             ->orderBy('col_index')
             ->get();
@@ -58,9 +62,12 @@ class SpreadsheetImportExportService
     /**
      * Export spreadsheet to Excel file (returns file path)
      */
-    public function exportExcel(Spreadsheet $spreadsheet): string
+    public function exportExcel(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null): string
     {
+        $sheetTab ??= $spreadsheet->defaultSheetTab();
+
         $cells = Cell::where('spreadsheet_id', $spreadsheet->id)
+            ->where('sheet_tab_id', $sheetTab?->id)
             ->orderBy('row_index')
             ->orderBy('col_index')
             ->get();
@@ -101,18 +108,20 @@ class SpreadsheetImportExportService
     /**
      * Import from CSV content string into a spreadsheet
      */
-    public function importCsv(Spreadsheet $spreadsheet, string $csvContent): array
+    public function importCsv(Spreadsheet $spreadsheet, string $csvContent, ?SheetTab $sheetTab = null): array
     {
         $rows = array_map('str_getcsv', explode("\n", trim($csvContent)));
 
-        return $this->insertRows($spreadsheet, $rows);
+        return $this->insertRows($spreadsheet, $rows, $sheetTab);
     }
 
     /**
      * Import from uploaded CSV/Excel file
      */
-    public function importFile(Spreadsheet $spreadsheet, UploadedFile $file): array
+    public function importFile(Spreadsheet $spreadsheet, UploadedFile $file, ?SheetTab $sheetTab = null): array
     {
+        $sheetTab ??= $spreadsheet->defaultSheetTab();
+
         $ext = strtolower($file->getClientOriginalExtension());
         $rows = null;
 
@@ -149,6 +158,7 @@ class SpreadsheetImportExportService
             foreach ($chunks as $index => $chunk) {
                 $jobs[] = new ImportRowsChunkJob(
                     spreadsheetId: $spreadsheet->id,
+                    sheetTabId: $sheetTab?->id,
                     rows: $chunk,
                     startRowIndex: ($index * $chunkSize) + 1,
                 );
@@ -169,13 +179,13 @@ class SpreadsheetImportExportService
             ];
         }
 
-        return $this->insertRows($spreadsheet, $rows);
+        return $this->insertRows($spreadsheet, $rows, $sheetTab);
     }
 
     /**
      * Import from Excel file using maatwebsite/excel
      */
-    protected function importExcel(Spreadsheet $spreadsheet, UploadedFile $file): array
+    protected function importExcel(Spreadsheet $spreadsheet, UploadedFile $file, ?SheetTab $sheetTab = null): array
     {
         try {
             $data = Excel::toArray(new class implements ToArray
@@ -188,7 +198,7 @@ class SpreadsheetImportExportService
 
             $rows = $data[0] ?? [];
 
-            return $this->insertRows($spreadsheet, $rows);
+            return $this->insertRows($spreadsheet, $rows, $sheetTab);
         } catch (\Exception $e) {
             return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
         }
@@ -197,8 +207,10 @@ class SpreadsheetImportExportService
     /**
      * Insert rows into spreadsheet cells
      */
-    protected function insertRows(Spreadsheet $spreadsheet, array $rows): array
+    protected function insertRows(Spreadsheet $spreadsheet, array $rows, ?SheetTab $sheetTab = null): array
     {
+        $sheetTab ??= $spreadsheet->defaultSheetTab();
+
         $rowCount = 0;
         $cellCount = 0;
 
@@ -225,6 +237,7 @@ class SpreadsheetImportExportService
                     Cell::updateOrCreate(
                         [
                             'spreadsheet_id' => $spreadsheet->id,
+                            'sheet_tab_id' => $sheetTab?->id,
                             'row_index' => $rowNumber,
                             'col_index' => $colIndex + 1,
                         ],
@@ -232,6 +245,7 @@ class SpreadsheetImportExportService
                             'raw_value' => $value,
                             'computed_value' => $isFormula ? null : $value,
                             'formula' => $isFormula ? $value : null,
+                            'updated_at' => now(),
                         ]
                     );
 

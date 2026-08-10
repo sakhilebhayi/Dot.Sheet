@@ -16,6 +16,8 @@ class CellCommentsPanel extends Component
 
     public $spreadsheet_id;
 
+    public $sheet_tab_id;
+
     public $selectedRow = 0;
 
     public $selectedCol = 0;
@@ -28,12 +30,13 @@ class CellCommentsPanel extends Component
 
     protected $listeners = ['cell-selected' => 'onCellSelected'];
 
-    public function mount($spreadsheet_id)
+    public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $spreadsheet = Spreadsheet::findOrFail($spreadsheet_id);
         $this->authorize('view', $spreadsheet);
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->sheet_tab_id = $sheet_tab_id;
         $this->loadThreads();
     }
 
@@ -59,6 +62,7 @@ class CellCommentsPanel extends Component
 
         $comment = Comment::create([
             'spreadsheet_id' => $this->spreadsheet_id,
+            'sheet_tab_id' => $this->sheet_tab_id,
             'user_id' => Auth::id(),
             'parent_id' => null,
             'row_index' => $this->selectedRow,
@@ -84,6 +88,7 @@ class CellCommentsPanel extends Component
 
         $comment = Comment::create([
             'spreadsheet_id' => $this->spreadsheet_id,
+            'sheet_tab_id' => $this->sheet_tab_id,
             'user_id' => Auth::id(),
             'parent_id' => $threadId,
             'row_index' => $this->selectedRow,
@@ -101,6 +106,7 @@ class CellCommentsPanel extends Component
     public function toggleResolved($threadId)
     {
         $thread = Comment::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->whereNull('parent_id')
             ->where('id', $threadId)
             ->first();
@@ -118,6 +124,7 @@ class CellCommentsPanel extends Component
     public function deleteComment($commentId)
     {
         $comment = Comment::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->where('id', $commentId)
             ->first();
 
@@ -137,6 +144,7 @@ class CellCommentsPanel extends Component
     {
         $threads = Comment::with(['user:id,name,email', 'replies.user:id,name,email'])
             ->where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->where('row_index', $this->selectedRow)
             ->where('col_index', $this->selectedCol)
             ->whereNull('parent_id')

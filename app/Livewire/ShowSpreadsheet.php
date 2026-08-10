@@ -7,6 +7,7 @@ use App\Events\SpreadsheetCursorMoved;
 use App\Jobs\BulkPasteChunkJob;
 use App\Models\Cell;
 use App\Models\CellHistory;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
@@ -26,6 +27,14 @@ class ShowSpreadsheet extends Component
     public $spreadsheet_id;
 
     protected ?Spreadsheet $spreadsheet = null;
+
+    // Multi-tab workbook. Every Cell/ChartConfig/Comment/SpreadsheetVersion
+    // query below is scoped to $activeSheetTabId as well as spreadsheet_id
+    // -- see cellsQuery() -- so two tabs in the same spreadsheet each have
+    // their own fully independent grid.
+    public $activeSheetTabId;
+
+    public $sheetTabs = [];
 
     // Grid display
     public $viewportRows = 50;           // Visible rows (for virtual scrolling)
@@ -97,10 +106,10 @@ class ShowSpreadsheet extends Component
 
     public $filterRules = [];
 
-    public function mount($spreadsheet_id)
+    public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->loadSpreadsheet();
+        $this->loadSpreadsheet($sheet_tab_id);
     }
 
     public function hydrate(): void
@@ -110,7 +119,7 @@ class ShowSpreadsheet extends Component
         }
     }
 
-    public function loadSpreadsheet()
+    public function loadSpreadsheet($sheet_tab_id = null)
     {
         // Load spreadsheet with authorization check
         $this->spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
@@ -118,9 +127,122 @@ class ShowSpreadsheet extends Component
         // Check authorization
         $this->authorize('view', $this->spreadsheet);
 
+        $this->loadSheetTabs();
+
+        $requestedTab = $sheet_tab_id ? $this->findOwnTab((int) $sheet_tab_id) : null;
+        $this->activeSheetTabId = $requestedTab['id'] ?? ($this->sheetTabs[0]['id'] ?? null);
+
         // Load only current viewport (+ prefetch buffer) from DB
         $this->loadViewportCells(true);
         $this->loadFeatureSettings();
+    }
+
+    protected function loadSheetTabs(): void
+    {
+        $this->sheetTabs = SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'name', 'sort_order'])
+            ->toArray();
+    }
+
+    protected function findOwnTab(int $tabId): ?array
+    {
+        foreach ($this->sheetTabs as $tab) {
+            if ((int) $tab['id'] === $tabId) {
+                return $tab;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every cell query in this component goes through here rather than a
+     * bare Cell::where('spreadsheet_id', ...) so tab-scoping can't be
+     * forgotten on a new call site.
+     */
+    protected function cellsQuery()
+    {
+        return Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->activeSheetTabId);
+    }
+
+    public function switchTab($sheetTabId): void
+    {
+        $tab = $this->findOwnTab((int) $sheetTabId);
+        if (! $tab || (int) $sheetTabId === (int) $this->activeSheetTabId) {
+            return;
+        }
+
+        $this->activeSheetTabId = $tab['id'];
+        $this->cellData = [];
+        $this->loadedWindows = [];
+        $this->selectedRow = 0;
+        $this->selectedCol = 0;
+        $this->editingCell = null;
+        $this->undoStack = [];
+        $this->redoStack = [];
+        $this->loadViewportCells(true);
+
+        $this->dispatch('sheet-tab-switched', sheetTabId: $this->activeSheetTabId);
+    }
+
+    public function createTab(?string $name = null): void
+    {
+        $this->authorize('update', $this->spreadsheet);
+
+        $nextIndex = count($this->sheetTabs) + 1;
+        $tab = SheetTab::create([
+            'spreadsheet_id' => $this->spreadsheet_id,
+            'name' => $name && trim($name) !== '' ? trim($name) : "Sheet{$nextIndex}",
+            'sort_order' => count($this->sheetTabs),
+        ]);
+
+        $this->loadSheetTabs();
+        $this->switchTab($tab->id);
+    }
+
+    public function renameTab($sheetTabId, string $name): void
+    {
+        $this->authorize('update', $this->spreadsheet);
+
+        $name = trim($name);
+        if ($name === '' || ! $this->findOwnTab((int) $sheetTabId)) {
+            return;
+        }
+
+        SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('id', $sheetTabId)
+            ->update(['name' => $name]);
+
+        $this->loadSheetTabs();
+    }
+
+    public function deleteTab($sheetTabId): void
+    {
+        $this->authorize('update', $this->spreadsheet);
+
+        if (count($this->sheetTabs) <= 1 || ! $this->findOwnTab((int) $sheetTabId)) {
+            // A workbook always needs at least one tab.
+            return;
+        }
+
+        $wasActive = (int) $sheetTabId === (int) $this->activeSheetTabId;
+
+        SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('id', $sheetTabId)
+            ->delete();
+
+        $this->loadSheetTabs();
+
+        if ($wasActive) {
+            $this->activeSheetTabId = $this->sheetTabs[0]['id'] ?? null;
+            $this->cellData = [];
+            $this->loadedWindows = [];
+            $this->loadViewportCells(true);
+            $this->dispatch('sheet-tab-switched', sheetTabId: $this->activeSheetTabId);
+        }
     }
 
     protected function loadCellsFromDatabase()
@@ -173,7 +295,7 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $cells = $this->cellsQuery()
             ->whereBetween('row_index', [$startRow, $endRow])
             ->whereBetween('col_index', [$startCol, $endCol])
             ->get();
@@ -347,6 +469,7 @@ class ShowSpreadsheet extends Component
         if (Auth::check()) {
             broadcast(new SpreadsheetCursorMoved(
                 spreadsheetId: (int) $this->spreadsheet_id,
+                sheetTabId: $this->activeSheetTabId ? (int) $this->activeSheetTabId : null,
                 row: (int) $row,
                 col: (int) $col,
                 userId: (int) Auth::id(),
@@ -378,7 +501,7 @@ class ShowSpreadsheet extends Component
         $col = (int) $col;
 
         // Find or create cell
-        $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $cell = $this->cellsQuery()
             ->where('row_index', $row)
             ->where('col_index', $col)
             ->first();
@@ -425,11 +548,13 @@ class ShowSpreadsheet extends Component
         } else {
             $cell = Cell::create([
                 'spreadsheet_id' => $this->spreadsheet_id,
+                'sheet_tab_id' => $this->activeSheetTabId,
                 'row_index' => $row,
                 'col_index' => $col,
                 'raw_value' => $rawValue,
                 'computed_value' => $computedValue,
                 'formula' => $formula,
+                'updated_at' => now(),
             ]);
         }
 
@@ -439,6 +564,7 @@ class ShowSpreadsheet extends Component
             'user_id' => Auth::id(),
             'old_value' => $oldValue,
             'new_value' => $value,
+            'created_at' => now(),
         ]);
 
         // Update local cache
@@ -475,12 +601,13 @@ class ShowSpreadsheet extends Component
         }
 
         // Invalidate formula caches after any cell update
-        Cache::forget("spreadsheet:{$this->spreadsheet_id}:cell_values");
-        Cache::forget("spreadsheet:{$this->spreadsheet_id}:formula_dependency_graph");
+        Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:cell_values");
+        Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:formula_dependency_graph");
 
         if (Auth::check()) {
             broadcast(new SpreadsheetCellUpdated(
                 spreadsheetId: (int) $this->spreadsheet_id,
+                sheetTabId: $this->activeSheetTabId ? (int) $this->activeSheetTabId : null,
                 row: (int) $row,
                 col: (int) $col,
                 rawValue: $rawValue,
@@ -525,6 +652,7 @@ class ShowSpreadsheet extends Component
     protected function createAutoSnapshotIfNeeded(): void
     {
         $latest = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->activeSheetTabId)
             ->latest()
             ->first();
 
@@ -532,12 +660,13 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $cells = $this->cellsQuery()
             ->get(['row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting'])
             ->toArray();
 
         SpreadsheetVersion::create([
             'spreadsheet_id' => $this->spreadsheet_id,
+            'sheet_tab_id' => $this->activeSheetTabId,
             'user_id' => Auth::id(),
             'label' => 'Auto Snapshot',
             'cells_snapshot' => $cells,
@@ -548,7 +677,7 @@ class ShowSpreadsheet extends Component
     {
         $evaluator = new FormulaEvaluatorService;
 
-        return $evaluator->evaluate($formula, $this->spreadsheet_id);
+        return $evaluator->evaluate($formula, $this->spreadsheet_id, $this->activeSheetTabId);
     }
 
     /**
@@ -629,7 +758,7 @@ class ShowSpreadsheet extends Component
         $chunks = array_chunk($cellPayload, $chunkSize);
         $jobs = [];
         foreach ($chunks as $chunk) {
-            $jobs[] = new BulkPasteChunkJob($this->spreadsheet_id, $chunk, Auth::id());
+            $jobs[] = new BulkPasteChunkJob($this->spreadsheet_id, $this->activeSheetTabId, $chunk, Auth::id());
         }
 
         $batch = Bus::batch($jobs)
@@ -676,8 +805,8 @@ class ShowSpreadsheet extends Component
             $this->loadedWindows = [];
             $this->loadViewportCells(true);
 
-            Cache::forget("spreadsheet:{$this->spreadsheet_id}:cell_values");
-            Cache::forget("spreadsheet:{$this->spreadsheet_id}:formula_dependency_graph");
+            Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:cell_values");
+            Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:formula_dependency_graph");
 
             return [
                 'status' => $this->bulkPasteStatus,
@@ -951,7 +1080,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $row = (int) $this->selectedRow;
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('row_index', '>=', $row)
             ->increment('row_index');
 
@@ -973,11 +1102,11 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $row = (int) $this->selectedRow;
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('row_index', $row)
             ->delete();
 
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('row_index', '>', $row)
             ->decrement('row_index');
 
@@ -1008,7 +1137,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $col = (int) $this->selectedCol;
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('col_index', '>=', $col)
             ->increment('col_index');
 
@@ -1030,11 +1159,11 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $col = (int) $this->selectedCol;
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('col_index', $col)
             ->delete();
 
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $this->cellsQuery()
             ->where('col_index', '>', $col)
             ->decrement('col_index');
 
@@ -1202,7 +1331,7 @@ class ShowSpreadsheet extends Component
         $direction = strtolower((string) ($data['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $targetCol = (int) $this->selectedCol;
 
-        $rows = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $rows = $this->cellsQuery()
             ->select('row_index')
             ->distinct()
             ->orderBy('row_index')
@@ -1217,7 +1346,7 @@ class ShowSpreadsheet extends Component
 
         $values = [];
         foreach ($rows as $row) {
-            $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            $cell = $this->cellsQuery()
                 ->where('row_index', $row)
                 ->where('col_index', $targetCol)
                 ->first();
@@ -1239,13 +1368,13 @@ class ShowSpreadsheet extends Component
         $startRow = min($rows);
         $tempOffset = 200000000;
         foreach ($rows as $idx => $oldRow) {
-            Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            $this->cellsQuery()
                 ->where('row_index', $oldRow)
                 ->update(['row_index' => $tempOffset + $idx]);
         }
 
         foreach ($rows as $idx => $_oldRow) {
-            Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            $this->cellsQuery()
                 ->where('row_index', $tempOffset + $idx)
                 ->update(['row_index' => $startRow + $idx]);
         }
@@ -1262,7 +1391,7 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $rows = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $rows = $this->cellsQuery()
             ->select('row_index')
             ->distinct()
             ->pluck('row_index')
@@ -1274,7 +1403,7 @@ class ShowSpreadsheet extends Component
         foreach ($rows as $row) {
             $keep = true;
             foreach ($this->filterRules as $rule) {
-                $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+                $cell = $this->cellsQuery()
                     ->where('row_index', $row)
                     ->where('col_index', (int) ($rule['col'] ?? 0))
                     ->first();
@@ -1351,7 +1480,7 @@ class ShowSpreadsheet extends Component
             }
 
             $ruleId = (string) ($rule['id'] ?? md5(json_encode($rule)));
-            $dedupeKey = "workflow:{$this->spreadsheet_id}:{$ruleId}:{$row}:{$col}:".md5((string) $value);
+            $dedupeKey = "workflow:{$this->spreadsheet_id}:{$this->activeSheetTabId}:{$ruleId}:{$row}:{$col}:".md5((string) $value);
             if (Cache::has($dedupeKey)) {
                 continue;
             }
@@ -1445,7 +1574,7 @@ class ShowSpreadsheet extends Component
 
     protected function highlightCellForWorkflow(int $row, int $col): void
     {
-        $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $cell = $this->cellsQuery()
             ->where('row_index', $row)
             ->where('col_index', $col)
             ->first();
@@ -1478,7 +1607,7 @@ class ShowSpreadsheet extends Component
 
     protected function applyCellState(int $row, int $col, array $state): void
     {
-        $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $cell = $this->cellsQuery()
             ->where('row_index', $row)
             ->where('col_index', $col)
             ->first();
@@ -1505,11 +1634,13 @@ class ShowSpreadsheet extends Component
             } else {
                 $cell = Cell::create([
                     'spreadsheet_id' => $this->spreadsheet_id,
+                    'sheet_tab_id' => $this->activeSheetTabId,
                     'row_index' => $row,
                     'col_index' => $col,
                     'raw_value' => $raw,
                     'computed_value' => $computed,
                     'formula' => $formula,
+                    'updated_at' => now(),
                 ]);
             }
 
@@ -1525,8 +1656,8 @@ class ShowSpreadsheet extends Component
             ];
         }
 
-        Cache::forget("spreadsheet:{$this->spreadsheet_id}:cell_values");
-        Cache::forget("spreadsheet:{$this->spreadsheet_id}:formula_dependency_graph");
+        Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:cell_values");
+        Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:formula_dependency_graph");
         $this->dispatch('cell-saved', row: $row, col: $col);
     }
 

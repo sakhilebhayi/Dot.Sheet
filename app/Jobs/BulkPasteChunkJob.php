@@ -21,6 +21,7 @@ class BulkPasteChunkJob implements ShouldQueue
      */
     public function __construct(
         public int $spreadsheetId,
+        public ?int $sheetTabId,
         public array $cells,
         public ?int $userId = null,
     ) {}
@@ -37,6 +38,7 @@ class BulkPasteChunkJob implements ShouldQueue
             $value = (string) $entry['value'];
 
             $cell = Cell::where('spreadsheet_id', $this->spreadsheetId)
+                ->where('sheet_tab_id', $this->sheetTabId)
                 ->where('row_index', $row)
                 ->where('col_index', $col)
                 ->first();
@@ -57,11 +59,13 @@ class BulkPasteChunkJob implements ShouldQueue
             } else {
                 $cell = Cell::create([
                     'spreadsheet_id' => $this->spreadsheetId,
+                    'sheet_tab_id' => $this->sheetTabId,
                     'row_index' => $row,
                     'col_index' => $col,
                     'raw_value' => $rawValue,
                     'computed_value' => $computedValue,
                     'formula' => $formula,
+                    'updated_at' => now(),
                 ]);
             }
 
@@ -71,11 +75,12 @@ class BulkPasteChunkJob implements ShouldQueue
                     'user_id' => $this->userId,
                     'old_value' => $oldValue,
                     'new_value' => $value,
+                    'created_at' => now(),
                 ]);
             }
         }
 
-        Cache::forget("spreadsheet:{$this->spreadsheetId}:cell_values");
-        Cache::forget("spreadsheet:{$this->spreadsheetId}:formula_dependency_graph");
+        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:cell_values");
+        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:formula_dependency_graph");
     }
 }

@@ -7,7 +7,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | Configure which AI provider to use and its settings
-    | Supported: ollama, openai, anthropic
+    | Supported: ollama, openai, anthropic, mock (mock needs no live
+    | provider -- same deterministic responses as demo_mode below, useful
+    | for local dev/CI; see AiService::generateMock()).
     |
     */
 
@@ -30,7 +32,7 @@ return [
         ],
         'anthropic' => [
             'api_key' => env('ANTHROPIC_API_KEY'),
-            'model' => env('ANTHROPIC_MODEL', 'claude-3-sonnet-20240229'),
+            'model' => env('ANTHROPIC_MODEL', 'claude-3-5-sonnet-latest'),
         ],
     ],
 

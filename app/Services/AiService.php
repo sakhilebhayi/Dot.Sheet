@@ -37,17 +37,28 @@ class AiService
 
     protected $cacheTtl = 3600; // 1 hour
 
-    public function __construct()
+    public function __construct(?Client $client = null)
     {
         $this->provider = config('ai.provider', 'ollama');
-        $this->model = config('ai.model', 'mistral');
-        $this->baseUrl = config('ai.base_url', 'http://localhost:11434');
-        $this->apiKey = config('ai.api_key');
+
+        // Each provider has its own model/base_url/api_key under
+        // ai.providers.{provider} (see config/ai.php) -- this used to
+        // always read the generic ai.model/ai.base_url/ai.api_key keys
+        // instead, which don't exist for anthropic/openai. Setting
+        // AI_PROVIDER=anthropic and ANTHROPIC_API_KEY was silently
+        // ignored: $this->apiKey stayed null (from the unset ai.api_key/
+        // AI_API_KEY key) and every Anthropic call failed with "API key
+        // not configured" regardless of what was actually in .env.
+        $providerConfig = config("ai.providers.{$this->provider}", []);
+
+        $this->model = $providerConfig['model'] ?? config('ai.model', 'mistral');
+        $this->baseUrl = $providerConfig['base_url'] ?? config('ai.base_url', 'http://localhost:11434');
+        $this->apiKey = $providerConfig['api_key'] ?? config('ai.api_key');
         $this->rateLimit = config('ai.rate_limit.requests_per_hour', 1000);
         $this->cacheEnabled = config('ai.caching.enabled', true);
         $this->cacheTtl = config('ai.caching.ttl', 3600);
 
-        $this->client = new Client([
+        $this->client = $client ?? new Client([
             'timeout' => 30,
             'connect_timeout' => 10,
         ]);
@@ -180,6 +191,20 @@ class AiService
     }
 
     /**
+     * AI_PROVIDER=mock: same deterministic responses as demo_mode, but
+     * selectable as an explicit provider rather than a separate global
+     * flag -- mirrors Dot.Press's AI_PROVIDER=mock convention. Useful as
+     * the safe default for local dev/CI so nothing tries to reach a real
+     * Ollama/Anthropic/OpenAI endpoint.
+     */
+    protected function generateMock(string $prompt, array $options = []): array
+    {
+        $response = $this->generateDemoResponse($prompt, $options);
+
+        return array_merge($response, ['provider' => 'mock', 'model' => 'mock']);
+    }
+
+    /**
      * Generate response using Ollama (local LLM)
      */
     protected function generateOllama(string $prompt, array $options = []): array
@@ -227,7 +252,7 @@ class AiService
                 'Content-Type' => 'application/json',
             ],
             'json' => [
-                'model' => $options['model'] ?? 'gpt-3.5-turbo',
+                'model' => $options['model'] ?? $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => 'You are a helpful spreadsheet assistant.'],
                     ['role' => 'user', 'content' => $prompt],
@@ -268,7 +293,7 @@ class AiService
                 'content-type' => 'application/json',
             ],
             'json' => [
-                'model' => $options['model'] ?? 'claude-3-sonnet-20240229',
+                'model' => $options['model'] ?? $this->model,
                 'max_tokens' => $options['max_tokens'] ?? $this->maxTokens,
                 'messages' => [
                     ['role' => 'user', 'content' => $prompt],

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Cell;
+use App\Models\NamedRange;
 use Illuminate\Support\Facades\Cache;
 
 class FormulaEvaluatorService
@@ -41,6 +42,12 @@ class FormulaEvaluatorService
             if (str_starts_with($formula, '=')) {
                 $formula = substr($formula, 1);
             }
+
+            // Expand any named range (e.g. "Revenue") into its A1-style
+            // reference (e.g. "A1:A40") before anything else touches the
+            // formula text, so every existing cell-ref/range code path
+            // below works unchanged.
+            $formula = $this->substituteNamedRanges($formula, $spreadsheetId, $sheetTabId);
 
             // Cache cell data for this spreadsheet tab
             $this->cacheSpreadsheetCells($spreadsheetId, $sheetTabId);
@@ -101,7 +108,8 @@ class FormulaEvaluatorService
 
                 foreach ($formulaCells as $cell) {
                     $dependentKey = "{$cell->row_index}_{$cell->col_index}";
-                    $refs = $this->extractFormulaReferences((string) $cell->formula);
+                    $expandedFormula = $this->substituteNamedRanges((string) $cell->formula, $spreadsheetId, $sheetTabId);
+                    $refs = $this->extractFormulaReferences($expandedFormula);
 
                     foreach ($refs as $refKey) {
                         if (! isset($graph[$refKey])) {
@@ -116,6 +124,49 @@ class FormulaEvaluatorService
                 return $graph;
             }
         );
+    }
+
+    /**
+     * Load this tab's named ranges as name (lowercase) => A1-style reference.
+     */
+    protected function loadNamedRanges($spreadsheetId, $sheetTabId = null): array
+    {
+        return Cache::remember(
+            "spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:named_ranges",
+            $this->cacheTtlSeconds,
+            fn () => NamedRange::where('spreadsheet_id', $spreadsheetId)
+                ->where('sheet_tab_id', $sheetTabId)
+                ->get()
+                ->mapWithKeys(fn (NamedRange $range) => [strtolower($range->name) => $range->toReferenceText()])
+                ->all()
+        );
+    }
+
+    /**
+     * Replace named-range identifiers (whole words, case-insensitive) in a
+     * formula with the A1-style reference they stand for, e.g. "Revenue"
+     * -> "A1:A40". Longer names are substituted first so one name can't be
+     * partially matched inside a longer one that starts the same way.
+     */
+    protected function substituteNamedRanges(string $formula, $spreadsheetId, $sheetTabId = null): string
+    {
+        $namedRanges = $this->loadNamedRanges($spreadsheetId, $sheetTabId);
+        if (empty($namedRanges)) {
+            return $formula;
+        }
+
+        $names = array_keys($namedRanges);
+        usort($names, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+        foreach ($names as $lowerName) {
+            $formula = preg_replace(
+                '/\b'.preg_quote($lowerName, '/').'\b/i',
+                $namedRanges[$lowerName],
+                $formula
+            );
+        }
+
+        return $formula;
     }
 
     /**
@@ -221,11 +272,11 @@ class FormulaEvaluatorService
             $args = $this->parseFunctionArgs($matches[2]);
 
             return match ($funcName) {
-                'SUM' => array_sum(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
-                'AVERAGE', 'AVG' => array_sum(array_map(fn ($a) => $this->evaluateExpression($a), $args)) / count($args),
-                'COUNT' => count($args),
-                'MAX' => max(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
-                'MIN' => min(array_map(fn ($a) => $this->evaluateExpression($a), $args)),
+                'SUM' => array_sum($this->resolveArgsToValues($args)),
+                'AVERAGE', 'AVG' => array_sum($this->resolveArgsToValues($args)) / max(1, count($this->resolveArgsToValues($args))),
+                'COUNT' => count($this->resolveArgsToValues($args)),
+                'MAX' => max($this->resolveArgsToValues($args)),
+                'MIN' => min($this->resolveArgsToValues($args)),
                 'ROUND' => round($this->evaluateExpression($args[0]), $args[1] ?? 0),
                 'ABS' => abs($this->evaluateExpression($args[0])),
                 'IF' => $this->evaluateExpression($args[0]) ? $this->evaluateExpression($args[1]) : $this->evaluateExpression($args[2]),
@@ -239,6 +290,48 @@ class FormulaEvaluatorService
 
         // For complex expressions, return 0 (will be enhanced in future)
         return 0;
+    }
+
+    /**
+     * Resolve a function's argument list into a flat list of numeric
+     * values -- a range argument (e.g. "A1:A40", what a named range
+     * expands to) is expanded into every cell in it rather than evaluated
+     * as one opaque expression, matching how SUM/AVERAGE/COUNT/MAX/MIN
+     * treat a range in a real spreadsheet.
+     *
+     * @param  list<string>  $args
+     * @return list<float>
+     */
+    protected function resolveArgsToValues(array $args): array
+    {
+        $values = [];
+
+        foreach ($args as $arg) {
+            $arg = trim($arg);
+
+            if (preg_match('/^([A-Z]{1,3}\d+):([A-Z]{1,3}\d+)$/i', $arg, $m)) {
+                foreach ($this->expandRangeToKeys(strtoupper($m[1]), strtoupper($m[2])) as $key) {
+                    $values[] = $this->getCellValueForKey($key);
+                }
+
+                continue;
+            }
+
+            $values[] = (float) $this->evaluateExpression($arg);
+        }
+
+        return $values;
+    }
+
+    protected function getCellValueForKey(string $key): float
+    {
+        if (! isset($this->cellCache[$key])) {
+            return 0.0;
+        }
+
+        $value = $this->cellCache[$key]['computed_value'] ?? $this->cellCache[$key]['raw_value'];
+
+        return is_numeric($value) ? (float) $value : 0.0;
     }
 
     /**

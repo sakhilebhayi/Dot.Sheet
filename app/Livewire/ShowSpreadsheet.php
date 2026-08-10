@@ -626,6 +626,7 @@ class ShowSpreadsheet extends Component
     }
 
     #[On('external-cell-updated')]
+    #[On('named-range-changed')]
     public function reloadFromBroadcast(): void
     {
         $this->loadedWindows = [];

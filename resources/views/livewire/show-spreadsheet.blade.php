@@ -356,6 +356,12 @@
                 @livewire('chart-builder', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('chart-builder-'.$activeSheetTabId))
             </div>
 
+            <!-- Pivot Tables Section -->
+            <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Pivot Tables</h3>
+                @livewire('pivot-table-builder', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('pivot-table-builder-'.$activeSheetTabId))
+            </div>
+
             <!-- Named Ranges Section -->
             <div class="p-3 border-b border-gray-200 dark:border-gray-700">
                 <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Named Ranges</h3>

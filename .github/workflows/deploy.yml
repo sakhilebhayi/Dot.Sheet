@@ -1,0 +1,355 @@
+name: Deploy to Production
+
+# Manual release of Dot.Sheet to sheets.infodot.co.za. Nothing deploys on a
+# push: run it from the Actions tab, or
+#   gh workflow run deploy.yml -f confirm=deploy
+#
+# Two modes, chosen by the `confirm` input:
+#   adopt   ONE TIME, and only if the live app folder is NOT already a git
+#           checkout (the drift report says which; an uploaded copy has an
+#           unknown code version). Run drift.yml first and read it. `adopt`
+#           takes a rollback copy of the whole folder, turns it
+#           into a checkout of origin/main WITHOUT deleting anything untracked
+#           (.env, storage/, database/, uploads) and then continues as a deploy,
+#           except that pending migrations are only LISTED unless `migrate` is
+#           also given (the rollback copy covers a SQLite file, not Postgres).
+#   deploy  Every release after that: needs the checkout adopt created.
+#
+# What a run does, in order:
+#   1. CI gate (ci.yml): tests, Pint, frontend build + Vite manifest check.
+#   2. Builds the frontend on the runner (the host has no Node) and syncs it to
+#      public/build.incoming on the host.
+#   3. On the host: rollback copy, maintenance mode, code to origin/main,
+#      composer install, production invariants (APP_DEBUG forced false; a
+#      warning, not a change, for APP_ENV=local or an http APP_URL), swap in the
+#      new public/build, keep the docroot's build/ in step, migrations, caches,
+#      back up.
+#   4. Installs the cron line (1: queue:work) through the shared crontab block, with its
+#      lock and verified read-back. First run: the account total grows by 1.
+#   5. Smoke check from the runner, like a browser: / and /login answer 200,
+#      the built CSS answers 200, /up answers 200, and a harmless POST /up (a
+#      405) does not return a debug page.
+#
+# A failure after maintenance mode starts LEAVES the site down on purpose, with
+# the rollback copy's name in the log, rather than guessing at an automatic
+# rollback (the Dot.Agents pipeline's rollback fired after failures that never
+# touched the server).
+#
+# Repository secrets: DEPLOY_HOST (sheets.infodot.co.za), DEPLOY_USER,
+# DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS. DEPLOY_PATH is optional: left unset, the
+# app folder is found as the one `artisan` under the docroot.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" for a release, or "adopt" for the one-time takeover of the hand-uploaded folder'
+        required: true
+      migrate:
+        description: 'adopt only: type "migrate" to also run pending migrations (a normal deploy always migrates)'
+        required: false
+
+concurrency:
+  group: sheet-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SITE_URL: https://sheets.infodot.co.za
+  REPO_URL: https://github.com/sakhilebhayi/Dot.Sheet.git
+
+jobs:
+  confirm:
+    name: Check the inputs
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.in.outputs.mode }}
+      migrate: ${{ steps.in.outputs.migrate }}
+    steps:
+      - id: in
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          MIGRATE_INPUT: ${{ github.event.inputs.migrate }}
+        run: |
+          case "$CONFIRM" in
+            deploy|adopt) ;;
+            *) echo '::error::Confirmation input must be exactly "deploy" or "adopt" -- aborting.'; exit 1 ;;
+          esac
+          echo "mode=$CONFIRM" >> "$GITHUB_OUTPUT"
+          # A normal release always migrates; the takeover only on request.
+          if [ "$CONFIRM" = "deploy" ] || [ "$MIGRATE_INPUT" = "migrate" ]; then
+            echo "migrate=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrate=no" >> "$GITHUB_OUTPUT"
+          fi
+
+  checks:
+    name: CI gate
+    needs: confirm
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: ${{ needs.confirm.outputs.mode }} sheets.infodot.co.za
+    needs: [confirm, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build the frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s public/build/manifest.json
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Locate the app on the host
+        # DEPLOY_PATH is optional. Without it the app is found as the single
+        # `artisan` within two levels of the docroot ~/<DEPLOY_HOST>; zero or
+        # several is an error, not a guess.
+        run: |
+          APP="${{ secrets.DEPLOY_PATH }}"
+          if [ -z "$APP" ]; then
+            APP="$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+                "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+                SITE="${{ secrets.DEPLOY_HOST }}" \
+                'bash -s' <<'FIND'
+          set -euo pipefail
+          D="$HOME/$SITE"
+          A="$(find "$D" -maxdepth 2 -name artisan -type f -exec dirname {} \; | sort -u)"
+          if [ "$(printf '%s\n' "$A" | grep -c .)" != 1 ]; then
+            echo "expected exactly one Laravel app under the docroot, found: ${A:-none}" >&2
+            exit 1
+          fi
+          printf '%s\n' "$A"
+          FIND
+            )"
+          fi
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+          echo "App directory: ${APP#/home/}"
+
+      # Staged beside the live build so the swap on the host is two renames,
+      # and a failed upload leaves the running site untouched.
+      - name: Upload the built frontend (staged)
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            public/build/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:$APP_PATH/public/build.incoming/"
+
+      - name: Deploy the code
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              DEPLOY_PATH="$APP_PATH" \
+              MODE="${{ needs.confirm.outputs.mode }}" \
+              MIGRATE="${{ needs.confirm.outputs.migrate }}" \
+              REPO_URL="$REPO_URL" \
+              'bash -s' <<'DEPLOY'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          PHP=php
+          DOCROOT="$(dirname "$DEPLOY_PATH")"
+          APPDIR="$(basename "$DEPLOY_PATH")"
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+
+          [ -f .env ] || { echo "::error::$DEPLOY_PATH has no .env. This pipeline updates a LIVE install; a first install needs its own bootstrap."; exit 1; }
+          [ -d public/build.incoming ] || { echo "::error::the staged frontend (public/build.incoming) is missing -- the upload step did not run."; exit 1; }
+
+          # ---- rollback copy, outside every web root; the newest three are kept
+          BACKUP="$HOME/dot-sheet-$MODE-$STAMP.tgz"
+          tar czf "$BACKUP" --exclude=./vendor --exclude=./node_modules --exclude=./storage/logs --exclude=./public/build --exclude=./public/build.incoming .
+          chmod 600 "$BACKUP"
+          ls -1t "$HOME"/dot-sheet-*.tgz | tail -n +4 | xargs -r rm -f
+          echo "== Rollback copy: $BACKUP ($(du -h "$BACKUP" | cut -f1))  [restore: stop writes, tar xzf it over $DEPLOY_PATH]"
+
+          # A failure leaves the site exactly as it is -- DOWN if maintenance
+          # mode had started -- and says which, with the way back.
+          trap 'if [ -f storage/framework/down ]; then echo "::error::The deploy failed AFTER maintenance mode started. The site was left DOWN on purpose. Rollback copy: $BACKUP. Inspect with server-logs.yml and run again, or restore the copy and run: php artisan up"; else echo "::error::The deploy failed BEFORE maintenance mode started; the site is still serving the previous release. Rollback copy: $BACKUP."; fi' ERR
+
+          # ---- code
+          if [ ! -d .git ]; then
+            if [ "$MODE" != "adopt" ]; then
+              echo "::error::$DEPLOY_PATH is not a git checkout yet. Run drift.yml, read it, then run this workflow once with confirm=adopt."; exit 1
+            fi
+            $PHP artisan down --retry=30 || true
+            git init -q
+            git remote add origin "$REPO_URL"
+            git fetch -q origin main
+            git reset -q origin/main
+            echo "== Tracked files that differ on the host (replaced by main; copies are in the rollback tar):"
+            git status --short | grep -v '^??' || echo "   (none)"
+            git checkout -q -- .
+            git checkout -q -B main origin/main
+          else
+            if [ "$MODE" = "adopt" ]; then
+              echo "::error::already a git checkout (HEAD $(git rev-parse --short HEAD)); use confirm=deploy."; exit 1
+            fi
+            echo "== Current release: $(git rev-parse --short HEAD)"
+            git fetch -q origin main
+            $PHP artisan down --retry=30 || true
+            git reset --hard origin/main
+          fi
+          echo "== Code: $(git rev-parse --short HEAD) ($(git status --short | grep -c '^??' || true) untracked path(s) kept)"
+
+          composer install --no-interaction --optimize-autoloader --no-dev
+
+          # ---- production invariants
+          # APP_DEBUG=true makes any error, even a harmless 405, answer every
+          # visitor with a ~840 KB debug page (ecosystem audit D9). Forced off
+          # BEFORE the config cache is built so a hand-edited .env cannot put
+          # it back.
+          if grep -q '^APP_DEBUG=' .env; then
+            sed -i 's/^APP_DEBUG=.*/APP_DEBUG=false/' .env
+          else
+            printf '\nAPP_DEBUG=false\n' >> .env
+          fi
+          echo "== APP_DEBUG forced to false: $(grep '^APP_DEBUG=' .env | tail -1)"
+          # Not changed here (it can alter behaviour), but never silent.
+          if grep -q '^APP_ENV=local' .env; then echo "::warning::APP_ENV=local in the production .env; set it to production."; fi
+          if grep -qE '^APP_URL=http://' .env; then echo "::warning::APP_URL is http://, not https://; set it to the https address."; fi
+
+          # ---- frontend: swap the staged build in, keep the docroot copy in step
+          # public/build is gitignored, so git never refreshes it. The docroot
+          # may serve its own build/ (a symlink, or on this host sometimes a
+          # separate copy: Dot.Doc 404'd assets for days that way), and the
+          # browser reads THAT one while @vite reads this app's manifest.
+          rm -rf public/build.old
+          [ -d public/build ] && mv public/build public/build.old
+          mv public/build.incoming public/build
+          rm -rf public/build.old
+          LINK="$DOCROOT/build"
+          if [ -L "$LINK" ]; then
+            echo "== docroot build/ is a symlink; nothing to copy"
+          elif [ -d "$LINK" ]; then
+            rsync -a --delete public/build/ "$LINK/"
+            echo "== docroot build/ is a real directory; mirrored from public/build"
+          else
+            ln -s "$APPDIR/public/build" "$LINK"
+            echo "== docroot build/ did not exist; linked to $APPDIR/public/build"
+          fi
+
+          # ---- database
+          echo "== Pending migrations:"
+          $PHP artisan migrate:status --pending 2>&1 | tail -25 || true
+          if [ "$MIGRATE" = "yes" ]; then
+            $PHP artisan migrate --force
+          else
+            echo "== Migrations NOT run (takeover). Read the list above; the next confirm=deploy runs them, or re-run with migrate=migrate."
+          fi
+
+          # Targeted clears, NOT optimize:clear: that also empties the cache
+          # store, which here is the database. If the host database lacks the
+          # cache table the deploy would crash with the site in maintenance
+          # mode (found by running this script against a fake host), and a
+          # release has no business flushing sessions' companions anyway.
+          $PHP artisan config:clear
+          $PHP artisan route:clear
+          $PHP artisan view:clear
+          $PHP artisan event:clear
+          # config:cache deliberately NOT run: this app calls env() outside config/,
+          # which returns the default once config is cached (the .env value would be
+          # ignored in production). config:clear above makes sure none is left over.
+          $PHP artisan route:cache
+          $PHP artisan view:cache
+          $PHP artisan event:cache
+
+          $PHP artisan up
+          trap - ERR
+          echo "== Deployed: $(git rev-parse --short HEAD)"
+          DEPLOY
+
+      - name: Install the scheduler cron line
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              DEPLOY_PATH="$APP_PATH" \
+              'bash -s' <<'CRON'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          PHP=php
+          # ---- crontab: repair this app's lines, never touch anyone else's ----
+          # Rule for this account: the crontab is written only by deploy
+          # workflows, each touches only lines carrying its own marker, and a
+          # write is verified before and after. 2026-08-31: a pipeline whose read
+          # failed installed an EMPTY crontab and silently killed Dot.Mines'
+          # scheduler for six weeks. cron runs with a minimal PATH, so lines carry
+          # the absolute PHP path and keep their last output in a log file.
+          MARK="# dot-sheet"
+          # One writer at a time on this account: deploys of different apps can
+          # coincide and would otherwise race on the single crontab.
+          command -v flock > /dev/null || { echo "::error::flock is not installed on the host; crontab writes cannot be serialised"; exit 1; }
+          exec 9>"$HOME/.dot-crontab.lock"; flock -w 120 9 || { echo "::error::could not take the crontab lock within 120 s (another deploy is writing the crontab)"; exit 1; }
+          PHP_BIN="$(command -v "${PHP:-php}")"
+          OLD="$(mktemp)"; NEW="$(mktemp)"; CHK="$(mktemp)"; ERR="$(mktemp)"
+          # crontab -l on this host can transiently answer empty (seen 2026-10-16,
+          # right after a write, under the lock). A read is trusted only when it
+          # is non-empty or the host says there is no crontab; otherwise retry.
+          read_crontab() {
+            local i
+            for i in 1 2 3 4 5; do
+              if crontab -l > "$1" 2> "$ERR"; then
+                [ -s "$1" ] && return 0
+              elif grep -qi "no crontab for" "$ERR"; then
+                : > "$1"; return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
+          if ! read_crontab "$OLD"; then
+            echo "::error::crontab -l answered empty or failed five times ($(cat "$ERR")). Refusing to write a crontab I could not read."; exit 1
+          fi
+          OTHERS=$(grep -v "$MARK" "$OLD" | grep -c . || true)
+          {
+            grep -v "$MARK" "$OLD" || true
+            echo "* * * * * cd $DEPLOY_PATH && $PHP_BIN artisan queue:work --stop-when-empty --tries=3 --max-time=50 > storage/logs/cron-queue.log 2>&1 $MARK"
+          } > "$NEW"
+          crontab "$NEW"
+          read_crontab "$CHK" || : > "$CHK"
+          AFTER=$(grep -v "$MARK" "$CHK" | grep -c . || true)
+          MINE=$(grep -c "$MARK" "$CHK" || true)
+          if [ "$AFTER" != "$OTHERS" ] || [ "$MINE" != "1" ]; then
+            crontab "$OLD"
+            echo "::error::crontab verification failed (other lines before=$OTHERS after=$AFTER, mine=$MINE); the previous crontab was restored."; exit 1
+          fi
+          rm -f "$OLD" "$NEW" "$CHK" "$ERR"; flock -u 9
+          echo "== crontab: $MINE line(s) for $MARK installed, $OTHERS other line(s) preserved"
+          CRON
+
+      - name: Smoke-check the live site
+        run: |
+          set -uo pipefail
+          WORK="$(mktemp -d)"
+          FAILED=0
+          for PAGE in "/" "/login" "/up"; do
+            CODE=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' "$SITE_URL$PAGE" || true)
+            if [ "$CODE" = "200" ]; then echo "200 $SITE_URL$PAGE"; else echo "::error::$SITE_URL$PAGE answered ${CODE:-no response} (expected 200)"; FAILED=1; fi
+          done
+          for ASSET in $(python3 -c "import json; m=json.load(open('public/build/manifest.json')); print(' '.join(sorted({v['file'] for v in m.values() if v.get('isEntry')} | {f for v in m.values() if v.get('isEntry') for f in v.get('css', [])})))"); do
+            CODE=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' "$SITE_URL/build/$ASSET" || true)
+            if [ "$CODE" = "200" ]; then echo "200 $SITE_URL/build/$ASSET"; else echo "::error::$SITE_URL/build/$ASSET answered ${CODE:-no response} (expected 200): the docroot is not serving the new build"; FAILED=1; fi
+          done
+          # A GET-only route answering POST is a harmless 405: ~1 KB in
+          # production, an ~840 KB stack-trace page when APP_DEBUG is on.
+          curl -s --max-time 30 -o "$WORK/probe.html" -X POST "$SITE_URL/up" || true
+          if grep -qiE 'vendor/laravel|stack trace' "$WORK/probe.html"; then
+            echo "::error::POST $SITE_URL/up answered with a debug error page: APP_DEBUG is still on."; FAILED=1
+          else
+            echo "No debug page on POST $SITE_URL/up ($(wc -c < "$WORK/probe.html" | tr -d ' ') bytes)"
+          fi
+          rm -rf "$WORK"
+          [ "$FAILED" -eq 0 ] || { echo "::error::Smoke check failed: the deploy is NOT healthy."; exit 1; }
+          echo "== Smoke check passed."

@@ -1,0 +1,113 @@
+name: Set APP_DEBUG=false
+
+# One-off hardening (ecosystem reliability audit 2026-10-17, defect D9).
+# With APP_DEBUG=true in the production .env, ANY error -- even a harmless 405
+# from `POST /up` -- answers with a ~840 KB debug page (source snippets, ~70
+# stack frames, server paths) to every visitor. This workflow sets exactly one
+# line, APP_DEBUG=false, and nothing else.
+#
+# Fixed commands only -- this workflow must never become a general remote
+# shell. What it does on the host:
+#   1. finds the Laravel app: exactly one `artisan` within two levels of the
+#      docroot ~/<DEPLOY_HOST>; zero or several is an error, not a guess;
+#   2. copies .env to ~/.env-backups/ (mode 600, outside every web root);
+#   3. rewrites the APP_DEBUG line (or appends it), keeping the rest of the
+#      file and its permissions byte for byte;
+#   4. rebuilds the config cache only if one exists (so a cached config
+#      cannot keep serving APP_DEBUG=true; an app that never cached config
+#      reads .env directly and is not given a cache it never had);
+#   5. from the runner, POSTs to /up (a GET-only route: a harmless 405) and
+#      fails if the answer is still a debug page.
+# Only the APP_DEBUG value is ever printed.
+#
+# Repository secrets needed: DEPLOY_HOST (the site's domain, e.g.
+# forms.infodot.co.za), DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "debug-off" to confirm setting APP_DEBUG=false in the production .env'
+        required: true
+
+concurrency:
+  group: set-app-debug
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    name: Set APP_DEBUG=false in the production .env
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Refuse unconfirmed runs
+        if: ${{ github.event.inputs.confirm != 'debug-off' }}
+        run: |
+          echo '::error::Confirmation input was not "debug-off" -- aborting.'
+          exit 1
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Set APP_DEBUG=false
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              SITE="${{ secrets.DEPLOY_HOST }}" \
+              'bash -s' <<'HARDEN'
+          set -euo pipefail
+          DOCROOT="$HOME/$SITE"
+          [ -d "$DOCROOT" ] || { echo "::error::docroot $DOCROOT does not exist"; exit 1; }
+
+          APPS="$(find "$DOCROOT" -maxdepth 2 -name artisan -type f -exec dirname {} \; | sort -u)"
+          COUNT="$(printf '%s\n' "$APPS" | grep -c . || true)"
+          if [ "$COUNT" != "1" ]; then
+            echo "::error::expected exactly one Laravel app under the docroot, found $COUNT:"
+            printf '%s\n' "$APPS"
+            exit 1
+          fi
+          cd "$APPS"
+          echo "== app directory: ${PWD#$HOME/}"
+          [ -f .env ] || { echo "::error::no .env in the app directory"; exit 1; }
+
+          echo "== APP_DEBUG before: $(grep '^APP_DEBUG=' .env | tail -1 || true)"
+          umask 077
+          mkdir -p "$HOME/.env-backups"
+          BACKUP="$HOME/.env-backups/${SITE}-$(date -u +%Y%m%dT%H%M%SZ).env"
+          cp -p .env "$BACKUP"
+          chmod 600 "$BACKUP"
+          echo "== .env backed up to ~/.env-backups/$(basename "$BACKUP")"
+
+          TMP="$(mktemp ./.env.tmp.XXXXXX)"
+          if grep -q '^APP_DEBUG=' .env; then
+            sed 's/^APP_DEBUG=.*/APP_DEBUG=false/' .env > "$TMP"
+          else
+            { cat .env; printf '\nAPP_DEBUG=false\n'; } > "$TMP"
+          fi
+          chmod --reference=.env "$TMP"
+          mv "$TMP" .env
+          echo "== APP_DEBUG after:  $(grep '^APP_DEBUG=' .env | tail -1)"
+
+          if [ -f bootstrap/cache/config.php ]; then
+            php artisan config:cache
+            echo "== config cache rebuilt"
+          else
+            echo "== config was not cached; the app reads .env directly"
+          fi
+          HARDEN
+
+      - name: Verify from outside
+        run: |
+          body="$(mktemp)"
+          code=$(curl -s -o "$body" -w '%{http_code}' --max-time 30 -X POST "https://${{ secrets.DEPLOY_HOST }}/up" || echo 000)
+          size=$(wc -c < "$body" | tr -d ' ')
+          echo "POST /up -> $code, $size bytes"
+          if grep -qiE 'vendor/laravel|stack trace' "$body"; then
+            echo "::error::The site still answers with a debug page. The config may be cached somewhere else, or the app reads a different .env."
+            exit 1
+          fi
+          echo "No debug page. APP_DEBUG is off."

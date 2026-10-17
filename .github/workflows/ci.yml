@@ -1,0 +1,129 @@
+name: CI
+
+# Runs on every pull request and push to main, and is called by deploy.yml
+# before anything is shipped. One required check, "Quality gate", sums it up.
+#
+# What gates and what only informs:
+#   gates:   the PHP test suite, Pint (code style), the frontend build and a
+#            check that the build's manifest contains every entry the views ask
+#            for (the missing-manifest 500 that broke the Dot.Projects login pages on 2026-10-17).
+#   informs: composer and npm audit. Both report real advisories today; making
+#            them blocking would turn every run red until they are cleared
+#            (Dot.Agents sat red for a month that way), so they warn instead.
+# PHPStan is not run: the repo's tool wrapper swallows its output, so a red
+# result would carry no explanation. Add it once that is sorted.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: PHP tests and code style
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, bcmath, gd, zip, xml, fileinfo
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Code style (Pint)
+        run: vendor/bin/pint --test
+
+      - name: Tests
+        run: php artisan test --compact
+
+  assets:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install and build
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      # Every @vite([...]) entry in the views must exist in the manifest, or
+      # the page that uses it answers 500 (ViteException). The deploy ships
+      # exactly this build, so checking it here catches the failure early.
+      - name: Manifest covers every Vite entry the views use
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re, sys
+          manifest = json.load(open('public/build/manifest.json'))
+          wanted = set()
+          for view in pathlib.Path('resources/views').rglob('*.php'):
+              for block in re.findall(r"@vite\(\s*\[([^\]]*)\]", view.read_text()):
+                  wanted.update(re.findall(r"['\"]([^'\"]+)['\"]", block))
+          problems = [f'{e} is not in the manifest' for e in sorted(wanted) if e not in manifest]
+          for entry, meta in manifest.items():
+              if not pathlib.Path('public/build', meta['file']).is_file():
+                  problems.append(f"{entry} points at {meta['file']}, which was not built")
+          print('entries the views ask for:', sorted(wanted))
+          print('entries in the manifest  :', sorted(manifest))
+          if not wanted:
+              problems.append('no @vite entries found in resources/views; the check itself is broken')
+          if problems:
+              print('::error::Vite manifest problem:', problems)
+              sys.exit(1)
+          print('OK')
+          PY
+
+  audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+      - name: Composer audit
+        continue-on-error: true
+        run: composer audit --no-interaction || echo "::warning::composer audit reports advisories (not blocking)"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: npm audit
+        continue-on-error: true
+        run: npm audit --audit-level=high || echo "::warning::npm audit reports high or critical advisories (not blocking)"
+
+  gate:
+    name: Quality gate (all checks must pass)
+    runs-on: ubuntu-latest
+    needs: [tests, assets]
+    if: always()
+    steps:
+      - name: Require tests and assets to have passed
+        run: |
+          echo "tests:  ${{ needs.tests.result }}"
+          echo "assets: ${{ needs.assets.result }}"
+          [ "${{ needs.tests.result }}" = "success" ] && [ "${{ needs.assets.result }}" = "success" ]

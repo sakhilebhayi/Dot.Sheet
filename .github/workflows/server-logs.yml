@@ -1,0 +1,63 @@
+name: Server Logs
+
+# Read-only: tail the newest Laravel log so failures are diagnosable without
+# shell access. Fixed command on purpose -- this workflow must never become a
+# general remote shell.
+on:
+  workflow_dispatch:
+
+jobs:
+  logs:
+    name: Tail latest Laravel log
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Locate the app on the host
+        # DEPLOY_PATH is optional. Without it the app is found as the single
+        # `artisan` within two levels of the docroot ~/<DEPLOY_HOST>; zero or
+        # several is an error, not a guess.
+        run: |
+          APP="${{ secrets.DEPLOY_PATH }}"
+          if [ -z "$APP" ]; then
+            APP="$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+                "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+                SITE="${{ secrets.DEPLOY_HOST }}" \
+                'bash -s' <<'FIND'
+          set -euo pipefail
+          D="$HOME/$SITE"
+          A="$(find "$D" -maxdepth 2 -name artisan -type f -exec dirname {} \; | sort -u)"
+          if [ "$(printf '%s\n' "$A" | grep -c .)" != 1 ]; then
+            echo "expected exactly one Laravel app under the docroot, found: ${A:-none}" >&2
+            exit 1
+          fi
+          printf '%s\n' "$A"
+          FIND
+            )"
+          fi
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+          echo "App directory: ${APP#/home/}"
+
+      - name: Tail log
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              DEPLOY_PATH="$APP_PATH" \
+              'bash -s' <<'LOGS'
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          latest=$(ls -1t storage/logs/*.log 2>/dev/null | head -1 || true)
+          if [ -z "$latest" ]; then
+            echo "No log files in storage/logs."
+            exit 0
+          fi
+          echo "== $latest (last 120 lines)"
+          tail -120 "$latest"
+          LOGS

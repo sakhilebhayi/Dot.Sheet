@@ -189,7 +189,28 @@ class RunBackupCommand extends Command
             return;
         }
 
-        File::copy($databasePath, $backupPath.DIRECTORY_SEPARATOR.'database.sqlite');
+        $target = $backupPath.DIRECTORY_SEPARATOR.'database.sqlite';
+
+        // SQLite's online backup API gives a consistent copy even while the app
+        // is writing. A plain file copy of a live database in write-ahead-log
+        // mode can miss recent commits or be torn.
+        if (class_exists(\SQLite3::class)) {
+            $from = new \SQLite3($databasePath, SQLITE3_OPEN_READONLY);
+            $to = new \SQLite3($target);
+            $copied = $from->backup($to);
+            $to->close();
+            $from->close();
+
+            if (! $copied) {
+                throw new \RuntimeException('SQLite backup API reported failure.');
+            }
+
+            $this->line('Copied SQLite database file (online backup API)');
+
+            return;
+        }
+
+        File::copy($databasePath, $target);
         $this->line('Copied SQLite database file');
     }
 

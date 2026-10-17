@@ -26,8 +26,9 @@ name: Deploy to Production
 #      warning, not a change, for APP_ENV=local or an http APP_URL), swap in the
 #      new public/build, keep the docroot's build/ in step, migrations, caches,
 #      back up.
-#   4. Installs the cron line (1: queue:work) through the shared crontab block, with its
-#      lock and verified read-back. First run: the account total grows by 1.
+#   4. Installs the cron lines (2: schedule:run, queue:work) through the shared crontab block, with its
+#      lock and verified read-back. The first run on a host that has only the old queue line adds
+#      the schedule:run line (account total +1).
 #   5. Smoke check from the runner, like a browser: / and /login answer 200,
 #      the built CSS answers 200, /up answers 200, and a harmless POST /up (a
 #      405) does not return a debug page.
@@ -358,13 +359,14 @@ jobs:
           OTHERS=$(grep -v "$MARK" "$OLD" | grep -c . || true)
           {
             grep -v "$MARK" "$OLD" || true
+            echo "* * * * * cd $DEPLOY_PATH && $PHP_BIN artisan schedule:run > storage/logs/cron-scheduler.log 2>&1 $MARK"
             echo "* * * * * cd $DEPLOY_PATH && $PHP_BIN artisan queue:work --stop-when-empty --tries=3 --max-time=50 > storage/logs/cron-queue.log 2>&1 $MARK"
           } > "$NEW"
           crontab "$NEW"
           read_crontab "$CHK" || : > "$CHK"
           AFTER=$(grep -v "$MARK" "$CHK" | grep -c . || true)
           MINE=$(grep -c "$MARK" "$CHK" || true)
-          if [ "$AFTER" != "$OTHERS" ] || [ "$MINE" != "1" ]; then
+          if [ "$AFTER" != "$OTHERS" ] || [ "$MINE" != "2" ]; then
             crontab "$OLD"
             echo "::error::crontab verification failed (other lines before=$OTHERS after=$AFTER, mine=$MINE); the previous crontab was restored."; exit 1
           fi

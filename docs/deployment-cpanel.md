@@ -29,7 +29,7 @@ Run **Deploy to Production** with `confirm=deploy` (`gh workflow run deploy.yml 
 - A rollback copy of the app folder (without `vendor/`, `node_modules/`, logs and the build) is written to `~/dot-sheet-<mode>-<time>.tgz`; the newest three are kept. To restore: stop writes, `tar xzf` it over the app folder, `php artisan up`.
 - A failure after maintenance mode starts **leaves the site down** and says so, with the copy's name. A failure before it says the site is untouched.
 - `APP_DEBUG` is forced to `false` on every run, because with it on any error prints a ~840 KB debug page to every visitor. `APP_ENV=local` and an `http://` `APP_URL` are reported as warnings, not changed.
-- Cron: no scheduled commands and 3 queued classes on the default queue (so a worker line, no schedule:run line). The deploy installs 1 line through the same locked, verified crontab block as the other Dot apps, so the account's crontab grows by 1 the first time. Every deploy log prints `== crontab: 1 line(s) for # dot-sheet installed, M other line(s) preserved`; M must not shrink.
+- Cron: `ops:backup` is scheduled daily in `bootstrap/app.php` (so `schedule:run` must run), plus 3 queued classes on the default queue (a worker line). The deploy installs 2 lines through the same locked, verified crontab block as the other Dot apps. The first release applied (queue line only) was missing `schedule:run`, so nothing ran the scheduler until this change; the account's crontab grows by 1 on the next deploy. Every deploy log prints `== crontab: 2 line(s) for # dot-sheet installed, M other line(s) preserved`; M must not shrink.
 - The smoke check requests `/`, `/login`, `/up`, the built CSS and a harmless `POST /up`, and fails the run if any is wrong or if a debug page is served.
 
 ## Known limits
@@ -39,3 +39,20 @@ Run **Deploy to Production** with `confirm=deploy` (`gh workflow run deploy.yml 
 ## Not covered yet
 
 PHPStan is not in CI. There is no health document for the Dot.Brain guardian, no nightly backup and no scheduler probe for Projects; the other Dot apps have all three.
+
+## Monitoring (Dot.Brain guardian)
+
+| What | Where | Auth |
+|---|---|---|
+| Scheduler liveness | `GET /up/scheduler`: 200 while the minute heartbeat is fresh, 503 when stale (and while the queue worker's five-minute heartbeat is fresh) | none |
+| Guardian report | `GET /guardian/health` (`dot-guardian/v1`, platform `dot-sheet`) | `Authorization: Bearer <GUARDIAN_TOKEN>`; 503 when no token is configured, 401 when wrong |
+| Alarm | `scheduler-watchdog.yml` asks `/up/scheduler` every 15 minutes (three tries) and fails the run, which GitHub emails | none |
+
+One-time provisioning, after the release that ships this is deployed:
+
+1. Generate a long random token and store it as the repository secret `GUARDIAN_TOKEN`.
+2. Run **Provision Guardian Token** (`confirm=provision`). It writes the token to the production `.env` and refreshes the config; the value is never printed. It then calls `/guardian/health` and expects 200.
+3. Enrolling the platform in Dot.Brain (registry entry and `DOT_SHEET_GUARDIAN_TOKEN`) is a separate change in that repository.
+
+Checks in the report: database, cache, scheduler, error rate, queue backlog and worker. A missing heartbeat is `unknown`, never a claim of health.
+

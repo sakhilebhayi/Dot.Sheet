@@ -91,4 +91,31 @@ class RunBackupCommandTest extends TestCase
         $this->assertDatabaseCount('backup_prune_proposals', 2);
         $this->assertSame(1, BackupPruneProposal::where('backup_path', $path)->where('status', 'pending')->count());
     }
+
+    public function test_the_sqlite_copy_is_a_consistent_online_backup(): void
+    {
+        $dir = sys_get_temp_dir().'/sheet-backup-'.uniqid();
+        mkdir($dir);
+        $db = $dir.'/live.sqlite';
+
+        $live = new \SQLite3($db);
+        $live->exec('create table t (id integer primary key, name text)');
+        $live->exec("insert into t (name) values ('kept')");
+        $live->close();
+
+        config()->set('database.default', 'sqlite');
+        config()->set('database.connections.sqlite.database', $db);
+
+        $this->artisan('ops:backup', ['--retention-days' => 14, '--skip-files' => true])
+            ->expectsOutputToContain('Copied SQLite database file')
+            ->assertExitCode(0);
+
+        $copies = glob($this->backupRoot.'/*/database.sqlite') ?: [];
+        $this->assertCount(1, $copies);
+
+        $copy = new \SQLite3($copies[0], SQLITE3_OPEN_READONLY);
+        $this->assertSame('kept', $copy->querySingle('select name from t'));
+        $this->assertSame('ok', $copy->querySingle('pragma integrity_check'));
+        $copy->close();
+    }
 }

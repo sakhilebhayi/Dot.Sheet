@@ -5,15 +5,17 @@ name: Deploy to Production
 #   gh workflow run deploy.yml -f confirm=deploy
 #
 # Two modes, chosen by the `confirm` input:
-#   adopt   ONE TIME, and only if the live app folder is NOT already a git
-#           checkout (the drift report says which; an uploaded copy has an
-#           unknown code version). Run drift.yml first and read it. `adopt`
-#           takes a rollback copy of the whole folder, turns it
-#           into a checkout of origin/main WITHOUT deleting anything untracked
+#   adopt   ONE TIME, for a live folder that is not yet on this pipeline:
+#           either an uploaded copy (no .git) or a checkout of the host's own
+#           history that was never pushed (drift.yml says which; the code
+#           version is unknown either way). Run drift.yml first and read it.
+#           `adopt` takes a rollback copy of the whole folder, turns it
+#           into a checkout of origin/main (host-only commits are kept on a
+#           local host-before-adopt-* branch) WITHOUT deleting anything untracked
 #           (.env, storage/, database/, uploads) and then continues as a deploy,
 #           except that pending migrations are only LISTED unless `migrate` is
 #           also given (the rollback copy covers a SQLite file, not Postgres).
-#   deploy  Every release after that: needs the checkout adopt created.
+#   deploy  Every release after that: needs the checkout on this pipeline.
 #
 # What a run does, in order:
 #   1. CI gate (ci.yml): tests, Pint, frontend build + Vite manifest check.
@@ -179,6 +181,11 @@ jobs:
           # mode had started -- and says which, with the way back.
           trap 'if [ -f storage/framework/down ]; then echo "::error::The deploy failed AFTER maintenance mode started. The site was left DOWN on purpose. Rollback copy: $BACKUP. Inspect with server-logs.yml and run again, or restore the copy and run: php artisan up"; else echo "::error::The deploy failed BEFORE maintenance mode started; the site is still serving the previous release. Rollback copy: $BACKUP."; fi' ERR
 
+          # Git hooks on the host never run during a release. The Forms host's old
+          # checkout carried a Git LFS post-checkout hook but no git-lfs, so its
+          # first adopt died on `git checkout` AFTER maintenance mode started.
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null
+
           # ---- code
           if [ ! -d .git ]; then
             if [ "$MODE" != "adopt" ]; then
@@ -194,13 +201,24 @@ jobs:
             git checkout -q -- .
             git checkout -q -B main origin/main
           else
-            if [ "$MODE" = "adopt" ]; then
-              echo "::error::already a git checkout (HEAD $(git rev-parse --short HEAD)); use confirm=deploy."; exit 1
-            fi
             echo "== Current release: $(git rev-parse --short HEAD)"
+            if [ "$MODE" = "adopt" ]; then
+              # The folder is already a checkout, but of the host's own history
+              # (commits that were never pushed). Keep that history on a branch
+              # before main replaces the files, so nothing is lost even if the
+              # rollback copy is later deleted.
+              KEEP="host-before-adopt-$STAMP"
+              git branch -f "$KEEP" HEAD
+              echo "== Host history kept on local branch $KEEP (also inside the rollback copy)."
+              echo "== Remote before: $(git remote get-url origin 2>/dev/null | sed 's#//[^@/]*@#//#' || echo none)"
+              if git remote get-url origin >/dev/null 2>&1; then git remote set-url origin "$REPO_URL"; else git remote add origin "$REPO_URL"; fi
+              echo "== Tracked files that differ or are deleted on the host (replaced by main; copies are in the rollback tar):"
+              git status --short | grep -v '^??' | head -40 || echo "   (none)"
+            fi
             git fetch -q origin main
             $PHP artisan down --retry=30 || true
             git reset --hard origin/main
+            git checkout -q -B main origin/main
           fi
           echo "== Code: $(git rev-parse --short HEAD)"
 

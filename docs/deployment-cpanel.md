@@ -17,7 +17,7 @@ Nothing in the repository says how the app folder on the host was put there, or 
 
 1. Set the repository secrets: `DEPLOY_HOST` (`sheets.infodot.co.za`), `DEPLOY_USER` (`infodotc`), `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`. `DEPLOY_PATH` is optional: left unset, the app folder is the one `artisan` found under the docroot.
 2. Run **Drift Report**. It says how many files differ and lists them. Read it.
-3. If the drift report says the folder is **not** a git checkout, run **Deploy to Production** with `confirm=adopt`; if it already is a checkout, go straight to `confirm=deploy` (adopt refuses a checkout). It makes a rollback copy, turns the folder into a checkout of `main` without deleting anything untracked (`.env`, `storage/`, `database/`), installs dependencies, ships the build, forces `APP_DEBUG=false`, lists pending migrations (it does **not** run them unless you also pass `migrate=migrate`), rebuilds the caches and checks the site.
+3. Run **Deploy to Production** with `confirm=adopt` once. It works on an uploaded copy (no `.git`) and on a checkout of the host's own history that was never pushed; for the latter it keeps that history on a local `host-before-adopt-*` branch. If the folder is already a checkout of this repo's `main`, use `confirm=deploy` instead. It makes a rollback copy, turns the folder into a checkout of `main` without deleting anything untracked (`.env`, `storage/`, `database/`), installs dependencies, ships the build, forces `APP_DEBUG=false`, lists pending migrations (it does **not** run them unless you also pass `migrate=migrate`), rebuilds the caches and checks the site.
 4. Check the pending-migrations list, then run `confirm=deploy` to apply them.
 
 ## Every release after that

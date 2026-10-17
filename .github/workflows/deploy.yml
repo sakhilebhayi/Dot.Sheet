@@ -202,7 +202,32 @@ jobs:
             $PHP artisan down --retry=30 || true
             git reset --hard origin/main
           fi
-          echo "== Code: $(git rev-parse --short HEAD) ($(git status --short | grep -c '^??' || true) untracked path(s) kept)"
+          echo "== Code: $(git rev-parse --short HEAD)"
+
+          # ---- files on the host that main does not have
+          # Untracked files survive a takeover on purpose (.env, uploads, local
+          # state), so say what they are instead of only counting them.
+          UNTRACKED="$(git ls-files --others --exclude-standard | grep -vE '^(storage/|bootstrap/cache/|public/build|database/[^/]*[.]sqlite)' || true)"
+          if [ -n "$UNTRACKED" ]; then
+            echo "== Files on the host that main does not have (kept; first 40):"
+            printf '%s\n' "$UNTRACKED" | head -40 | sed 's/^/   /'
+          fi
+          # A host-only MIGRATION is the exception: `migrate` would run it next to
+          # main's own files. On the real Dot.Projects host a leftover
+          # 2026_06_27_000001_create_projects_table sorts before main's
+          # create_projects migration, which is not guarded by hasTable, so a
+          # normal deploy would fail AFTER maintenance mode started (reproduced on a
+          # fake host). Move such files aside, never delete them; they are also
+          # in the rollback copy.
+          ORPHANS="$(git ls-files --others --exclude-standard -- database/migrations || true)"
+          if [ -n "$ORPHANS" ]; then
+            QUARANTINE="$HOME/dot-sheet-quarantine-$STAMP"
+            mkdir -p "$QUARANTINE"
+            printf '%s\n' "$ORPHANS" | while IFS= read -r f; do mv "$f" "$QUARANTINE/"; done
+            echo "== Moved host-only migration file(s) aside (not in main; they would run beside main's own):"
+            printf '%s\n' "$ORPHANS" | sed 's/^/   /'
+            echo "   now in $QUARANTINE"
+          fi
 
           composer install --no-interaction --optimize-autoloader --no-dev
 

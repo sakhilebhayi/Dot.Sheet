@@ -6,7 +6,9 @@ use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
+use App\Services\SheetStructureService;
 use App\Services\SpreadsheetImportExportService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -376,5 +378,93 @@ class SpreadsheetExportTest extends TestCase
             ['0_0' => 'Name', '0_1' => 'Qty', '1_0' => 'Widget', '1_1' => '3'],
             Cell::where('spreadsheet_id', $copy->id)->get()->mapWithKeys(fn ($c) => ["{$c->row_index}_{$c->col_index}" => $c->raw_value])->all()
         );
+    }
+
+    public function test_a_single_far_away_cell_is_capped_by_the_grid_it_would_make(): void
+    {
+        // One stored cell, but the writer would have to lay out 100 columns x 60,001 rows.
+        $this->cell(60000, 99, 'far');
+
+        $this->actingAs($this->user)
+            ->get(route('spreadsheets.export.excel', $this->spreadsheet))
+            ->assertStatus(413)
+            ->assertSee('Export it as CSV instead')
+            ->assertSee('grid of 6,000,100 cells');
+
+        $this->assertSame([], Storage::disk('local')->files('exports'));
+        // CSV has no such limit.
+        $this->actingAs($this->user)->get(route('spreadsheets.export.csv', $this->spreadsheet))->assertOk();
+    }
+
+    public function test_csv_round_trip_is_lossless_for_text_that_looks_like_a_formula(): void
+    {
+        $values = ['-5%', '@john', '- bullet', '=text', "'=quoted", "'+27 82", '+27 82 123 4567', "'plain", '-12.5', "\tindented", '+cmd|x', "it's"];
+        foreach ($values as $row => $value) {
+            $this->cell($row, 0, $value);
+        }
+        $service = app(SpreadsheetImportExportService::class);
+        $copy = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'name' => 'Copy']);
+
+        $service->importCsv($copy, $service->exportCsv($this->spreadsheet));
+
+        $imported = Cell::where('spreadsheet_id', $copy->id)->orderBy('row_index')->get();
+        $this->assertSame($values, $imported->pluck('raw_value')->all());
+        // ... and none of them became a formula.
+        $this->assertSame([], $imported->whereNotNull('formula')->pluck('formula')->all());
+    }
+
+    public function test_csv_import_still_reads_a_real_formula_as_a_formula(): void
+    {
+        app(SpreadsheetImportExportService::class)->importCsv($this->spreadsheet, "1,2,=A1+B1\n");
+
+        $this->assertSame('=A1+B1', Cell::where('col_index', 2)->value('formula'));
+    }
+
+    public function test_xlsx_import_keeps_text_that_starts_with_an_equals_sign_as_text(): void
+    {
+        $this->cell(0, 0, '=hello');
+        $this->cell(1, 0, '=SUM(1,2) is text here');
+        $this->cell(2, 0, '7');
+        $service = app(SpreadsheetImportExportService::class);
+
+        $path = $service->exportExcel($this->spreadsheet);
+        $copy = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'name' => 'Copy']);
+        $service->importFile($copy, new UploadedFile($path, 'data.xlsx', null, null, true));
+        @unlink($path);
+
+        $cells = Cell::where('spreadsheet_id', $copy->id)->orderBy('row_index')->get();
+        $this->assertSame(['=hello', '=SUM(1,2) is text here', '7'], $cells->pluck('raw_value')->all());
+        $this->assertSame([null, null, null], $cells->pluck('formula')->all());
+        $this->assertSame('=hello', $cells[0]->computed_value);
+    }
+
+    public function test_a_text_cell_starting_with_equals_is_not_rewritten_as_a_formula_on_insert(): void
+    {
+        $this->cell(0, 0, '=A2');
+        $this->cell(1, 0, '5');
+
+        app(SheetStructureService::class)->insertRow($this->spreadsheet->id, $this->tab->id, 0);
+
+        $this->assertSame('=A2', Cell::where('row_index', 1)->where('col_index', 0)->value('raw_value'));
+    }
+
+    public function test_the_prune_command_removes_only_old_export_files(): void
+    {
+        Storage::disk('local')->put('exports/old.xlsx', 'x');
+        Storage::disk('local')->put('exports/fresh.xlsx', 'x');
+        touch(Storage::disk('local')->path('exports/old.xlsx'), now()->subHours(2)->getTimestamp());
+
+        $this->artisan('sheet:prune-exports')->expectsOutputToContain('Deleted 1 old export file')->assertSuccessful();
+
+        $this->assertSame(['exports/fresh.xlsx'], Storage::disk('local')->files('exports'));
+    }
+
+    public function test_the_prune_command_is_scheduled_hourly(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($e) => str_contains((string) $e->command, 'sheet:prune-exports'));
+
+        $this->assertNotNull($event);
+        $this->assertSame('0 * * * *', $event->expression);
     }
 }

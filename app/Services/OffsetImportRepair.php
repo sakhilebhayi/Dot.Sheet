@@ -24,6 +24,11 @@ use RuntimeException;
  */
 class OffsetImportRepair
 {
+    /** Most cells one repair will handle: the backup is streamed, but the lift/drop UPDATEs hold the write lock. */
+    public const MAX_CELLS = 200000;
+
+    public function __construct(private int $maxCells = self::MAX_CELLS) {}
+
     /**
      * Tabs that look like an offset import, with how each was decided.
      *
@@ -74,11 +79,11 @@ class OffsetImportRepair
             return 'the first row and column are not both at index 1 (the editor shows a cell in row 1 or column A, or the data starts elsewhere)';
         }
 
-        $cellIds = Cell::where('sheet_tab_id', $tab->id)->pluck('id');
-        $edited = 0;
-        foreach ($cellIds->chunk(500) as $chunk) {
-            $edited += CellHistory::whereIn('cell_id', $chunk)->count();
+        if ((int) $bounds->n > $this->maxCells) {
+            return 'the tab has '.number_format((int) $bounds->n).' cells; this command moves at most '.number_format($this->maxCells).' in one go (it holds the database write lock while it does). Export the sheet as CSV and import it again instead';
         }
+
+        $edited = CellHistory::whereIn('cell_id', Cell::where('sheet_tab_id', $tab->id)->select('id'))->count();
         if ($edited > 0) {
             return "someone edited cells of this tab in the editor ({$edited} history rows); an import leaves none";
         }
@@ -138,8 +143,10 @@ class OffsetImportRepair
     }
 
     /**
-     * Every formula must evaluate without an error at its new place, and every cell it refers to
-     * must be inside the tab's data. Otherwise the transaction is rolled back.
+     * Every formula must evaluate at its new place, and a single-cell reference must not point beyond
+     * the tab's data (a range may run past it: SUM(B2:B50) over ten rows is fine). Otherwise the
+     * transaction is rolled back. Reads only the cells the formulas refer to, not the whole tab, and
+     * not through the cache.
      */
     protected function assertFormulasResolve(SheetTab $tab): int
     {
@@ -150,16 +157,35 @@ class OffsetImportRepair
         $maxRow = (int) Cell::where('sheet_tab_id', $tab->id)->max('row_index');
         $maxCol = (int) Cell::where('sheet_tab_id', $tab->id)->max('col_index');
         $evaluator = new FormulaEvaluatorService;
-        $count = 0;
+        $namedRanges = $evaluator->namedRangeMap($tab->spreadsheet_id, $tab->id);
 
-        Cell::where('sheet_tab_id', $tab->id)->whereNotNull('formula')->each(function (Cell $cell) use ($tab, $evaluator, $maxRow, $maxCol, &$count) {
-            $count++;
-            $result = $evaluator->evaluate($cell->formula, $tab->spreadsheet_id, $tab->id);
-            if ($result['error']) {
+        $formulas = DB::table('cells')->where('sheet_tab_id', $tab->id)->whereNotNull('formula')->select('row_index', 'col_index', 'formula')->get();
+
+        $needed = [];
+        foreach ($formulas as $cell) {
+            foreach ($evaluator->referencedKeys($cell->formula, $namedRanges) as $key) {
+                $needed[$key] = true;
+            }
+        }
+        $values = [];
+        foreach (DB::table('cells')->where('sheet_tab_id', $tab->id)->select('row_index', 'col_index', 'raw_value', 'computed_value')->cursor() as $cell) {
+            $key = $cell->row_index.'_'.$cell->col_index;
+            if (isset($needed[$key])) {
+                $values[$key] = $cell->computed_value ?? $cell->raw_value;
+            }
+        }
+
+        foreach ($formulas as $cell) {
+            $result = $evaluator->evaluateAgainst($cell->formula, $values, $namedRanges);
+            // Division by zero is a value in a spreadsheet, not a broken reference.
+            if ($result['error'] && ! str_contains(strtolower($result['errorMessage'] ?? ''), 'division by zero')) {
                 throw new RuntimeException("Formula {$cell->formula} at row {$cell->row_index}, column {$cell->col_index} does not evaluate after the move; nothing was changed.");
             }
 
-            preg_match_all('/(?<![A-Za-z0-9_.])([A-Za-z]{1,3})(\d+)(?![A-Za-z0-9_(])/', $cell->formula, $refs, PREG_SET_ORDER);
+            // Single-cell references only; text inside double quotes is not a reference.
+            $withoutText = preg_replace('/"[^"]*"/', '""', $cell->formula) ?? $cell->formula;
+            $withoutRanges = preg_replace('/[A-Za-z]{1,3}\d+:[A-Za-z]{1,3}\d+/', '', $withoutText) ?? $withoutText;
+            preg_match_all('/(?<![A-Za-z0-9_.])([A-Za-z]{1,3})(\d+)(?![A-Za-z0-9_(])/', $withoutRanges, $refs, PREG_SET_ORDER);
             foreach ($refs as [, $letters, $number]) {
                 $col = 0;
                 foreach (str_split(strtoupper($letters)) as $char) {
@@ -169,31 +195,47 @@ class OffsetImportRepair
                     throw new RuntimeException("Formula {$cell->formula} refers to {$letters}{$number}, outside the data of the tab after the move; nothing was changed.");
                 }
             }
-        });
+        }
 
-        return $count;
+        return $formulas->count();
     }
 
     /**
-     * Save the tab's cells as JSON under storage/app/private/backups, outside the database
-     * transaction, before anything is changed. Returns the path.
+     * Save the tab's cells under storage/app/private/backups, before anything is changed, one JSON
+     * object per line (a header line first), written with a cursor so a big tab never sits in memory.
+     * Returns the path.
      */
     protected function writeBackup(SheetTab $tab): string
     {
-        $path = 'backups/offset-imports/tab-'.$tab->id.'-'.now()->format('Ymd-His').'.json';
+        $path = 'backups/offset-imports/tab-'.$tab->id.'-'.now()->format('Ymd-His').'.jsonl';
+        Storage::disk('local')->makeDirectory('backups/offset-imports');
+        $full = Storage::disk('local')->path($path);
 
-        $cells = Cell::where('sheet_tab_id', $tab->id)
-            ->orderBy('row_index')->orderBy('col_index')
-            ->get(['id', 'spreadsheet_id', 'sheet_tab_id', 'row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting', 'updated_at']);
+        $handle = fopen($full, 'wb');
+        if ($handle === false) {
+            throw new RuntimeException('Could not write the backup file, so nothing was changed.');
+        }
 
-        Storage::disk('local')->put($path, json_encode([
-            'note' => 'Cells of one tab before sheet:fix-offset-imports moved them one row up and one column left. To undo: add 1 to row_index and col_index of every id below.',
-            'created_at' => now()->toIso8601String(),
-            'spreadsheet_id' => $tab->spreadsheet_id,
-            'sheet_tab_id' => $tab->id,
-            'cells' => $cells,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        try {
+            fwrite($handle, json_encode([
+                'note' => 'Cells of one tab before sheet:fix-offset-imports moved them one row up and one column left. One JSON object per line after this one. To undo: add 1 to row_index and col_index of every id below.',
+                'created_at' => now()->toIso8601String(),
+                'spreadsheet_id' => $tab->spreadsheet_id,
+                'sheet_tab_id' => $tab->id,
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n");
 
-        return Storage::disk('local')->path($path);
+            $cells = DB::table('cells')->where('sheet_tab_id', $tab->id)->orderBy('id')
+                ->select('id', 'spreadsheet_id', 'sheet_tab_id', 'row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting', 'updated_at')->cursor();
+
+            foreach ($cells as $cell) {
+                if (fwrite($handle, json_encode($cell, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)."\n") === false) {
+                    throw new RuntimeException('Could not write the whole backup file (disk full?), so nothing was changed.');
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        return $full;
     }
 }

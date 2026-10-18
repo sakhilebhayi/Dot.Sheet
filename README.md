@@ -92,9 +92,13 @@ php artisan serve
 
 ## Inserting and deleting rows and columns
 
-Inserting or deleting a row or column moves the cells of that tab, rewrites the A1-style references in that tab's formulas and named ranges (a reference to a deleted row or column becomes `#REF!`, a range grows and shrinks), and clears the undo history. A counter in the spreadsheet's settings (`structure_version`) goes up on every change; a browser that opened the sheet earlier is refused when it tries to write, reloads, and tells the person to repeat the change.
+Inserting or deleting a row or column moves the cells of that tab, rewrites the A1-style references in that tab's formulas and named ranges (a reference to a deleted row or column becomes `#REF!`, a range grows and shrinks), and clears the undo history. A counter column on the spreadsheet (`structure_version`, bumped by a single `UPDATE ... + 1` in the same transaction; never part of the settings JSON, so no settings writer can reset it) goes up on every insert, delete, sort, version restore and tab delete; a browser that opened the sheet earlier is refused when it tries to write, reloads, and tells the person to repeat the change.
+
+Sizes: an insert or delete is refused with a plain sentence above 1,000,000 cells, 100,000 formulas, 5,000 formulas that must be recomputed or 200,000 cells those formulas read (`SheetStructureService::MAX_*`, measured with SQLite WAL, `BEGIN IMMEDIATE`, `CACHE_STORE=database` and `memory_limit=128M`; see the pull request for the numbers). It holds the single SQLite write lock while it runs, so if another writer holds it past `busy_timeout` the person is told the sheet is busy instead of getting an error page.
 
 Known limits (older than this code, not changed by it):
+
+- **Sort moves rows but does not rewrite formula references** (it does bump the version and clear undo).
 
 - **No cascade recalculation.** Only formulas whose own range or named range changed are recomputed. A formula that depends on another formula's result is not recalculated when that result changes.
 - **References stay inside the tab and are relative.** A formula cannot refer to another tab, and `$A$1` style absolute references are not understood by the evaluator, so they are not treated specially when rows move.

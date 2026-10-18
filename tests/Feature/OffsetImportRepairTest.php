@@ -9,6 +9,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\FormulaEvaluatorService;
+use App\Services\OffsetImportRepair;
 use App\Services\StructureVersion;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -137,10 +138,12 @@ class OffsetImportRepairTest extends TestCase
 
         $files = Storage::disk('local')->allFiles('backups/offset-imports');
         $this->assertCount(1, $files);
-        $backup = json_decode(Storage::disk('local')->get($files[0]), true);
-        $this->assertSame($tab->id, $backup['sheet_tab_id']);
-        $this->assertCount(5, $backup['cells']);
-        $this->assertSame([1, 1], [$backup['cells'][0]['row_index'], $backup['cells'][0]['col_index']]);
+        $lines = array_filter(explode("\n", Storage::disk('local')->get($files[0])));
+        $header = json_decode(array_shift($lines), true);
+        $this->assertSame($tab->id, $header['sheet_tab_id']);
+        $this->assertCount(5, $lines);
+        $first = json_decode($lines[0], true);
+        $this->assertSame([1, 1], [$first['row_index'], $first['col_index']]);
     }
 
     public function test_fix_works_on_a_dense_block_where_every_target_is_an_existing_cell(): void
@@ -197,5 +200,48 @@ class OffsetImportRepairTest extends TestCase
         foreach (glob(database_path('migrations/*.php')) as $migration) {
             $this->assertStringNotContainsString('offset-imports', file_get_contents($migration));
         }
+    }
+
+    public function test_a_tab_above_the_cell_cap_is_left_alone_with_an_instruction(): void
+    {
+        $tab = $this->sheet();
+        $this->oldImport($tab);
+
+        $reason = (new OffsetImportRepair(maxCells: 3))->reasonToLeaveAlone($tab);
+
+        $this->assertStringContainsString('has 5 cells; this command moves at most 3', $reason);
+        $this->assertStringContainsString('Export the sheet as CSV and import it again', $reason);
+        $this->expectExceptionMessage('is not an offset import');
+        (new OffsetImportRepair(maxCells: 3))->repair($tab);
+    }
+
+    public function test_the_backup_is_one_json_object_per_line_written_from_a_cursor(): void
+    {
+        $tab = $this->sheet();
+        foreach (range(1, 300) as $r) {
+            $this->putCell($tab, $r, 1, "v{$r}");
+        }
+
+        $result = app(OffsetImportRepair::class)->repair($tab);
+
+        $this->assertStringEndsWith('.jsonl', $result['backup']);
+        $lines = array_filter(explode("\n", file_get_contents($result['backup'])));
+        $this->assertCount(301, $lines);   // header + 300 cells
+        $this->assertSame('v300', json_decode($lines[300], true)['raw_value']);
+        $this->assertSame(300, json_decode($lines[300], true)['row_index']);   // as it was before the move
+    }
+
+    public function test_formula_check_accepts_division_by_zero_ranges_past_the_data_and_text_that_looks_like_a_reference(): void
+    {
+        $tab = $this->sheet();
+        $this->oldImport($tab);
+        $this->putCell($tab, 4, 1, null, '=B2/0');
+        $this->putCell($tab, 5, 1, null, '=SUM(B2:B50)');
+        $this->putCell($tab, 6, 1, null, '=CONCAT("Z99",B2)');
+
+        $this->artisan('sheet:fix-offset-imports', ['--tab' => $tab->id, '--confirm' => true])->assertSuccessful();
+
+        $this->assertSame(8, Cell::where('sheet_tab_id', $tab->id)->count());
+        $this->assertSame(0, StructureVersion::current($tab->spreadsheet_id) - 1);
     }
 }

@@ -10,7 +10,7 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                     Last edited {{ $spreadsheet->updated_at->diffForHumans() }}
                 </p>
-                <div id="activeUsers" class="mt-1 flex items-center gap-1"></div>
+                <div id="activeUsers" wire:ignore class="mt-1 flex items-center gap-1"></div>
             </div>
             <div class="flex items-center gap-2">
                 <!-- Formula Bar -->
@@ -281,11 +281,11 @@
                         {{ $scrollRowOffset + 1 }}-{{ min($scrollRowOffset + $viewportRows, $totalRows) }} of {{ number_format($totalRows) }} rows
                     </div>
 
-                    <div id="bulkPasteProgress" class="absolute bottom-2 left-2 hidden text-xs px-2 py-1 rounded bg-indigo-600 text-white pointer-events-none"></div>
-                    <div id="importProgress" class="absolute bottom-8 left-2 hidden text-xs px-2 py-1 rounded bg-emerald-600 text-white pointer-events-none"></div>
+                    <div id="bulkPasteProgress" wire:ignore class="absolute bottom-2 left-2 hidden text-xs px-2 py-1 rounded bg-indigo-600 text-white pointer-events-none"></div>
+                    <div id="importProgress" wire:ignore class="absolute bottom-8 left-2 hidden text-xs px-2 py-1 rounded bg-emerald-600 text-white pointer-events-none"></div>
 
                     <!-- Remote collaborator cursors -->
-                    <div id="remoteCursorsLayer" class="absolute inset-0 pointer-events-none z-10"></div>
+                    <div id="remoteCursorsLayer" wire:ignore class="absolute inset-0 pointer-events-none z-10"></div>
                 </div>
             </div>
 
@@ -320,7 +320,7 @@
         </div>
 
         <!-- Right Sidebar - Analysis Panel (AI) -->
-        <aside id="analysisPanel" class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto hidden flex-shrink-0">
+        <aside id="analysisPanel" wire:ignore class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto hidden flex-shrink-0">
             @livewire('ai-analysis-panel', ['spreadsheet_id' => $spreadsheet->id])
         </aside>
 
@@ -397,7 +397,7 @@
         </aside>
     </div>
 
-<div id="spreadsheetContextMenu" class="fixed z-50 hidden min-w-[180px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
+<div id="spreadsheetContextMenu" wire:ignore class="fixed z-50 hidden min-w-[180px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-row-selected'); closeSpreadsheetContextMenu();">Insert Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('delete-row-selected'); closeSpreadsheetContextMenu();">Delete Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-column-selected'); closeSpreadsheetContextMenu();">Insert Column</button>
@@ -1049,7 +1049,7 @@
 @livewire('version-history-modal', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('version-history-modal-'.$activeSheetTabId))
 
 <!-- AI Natural Language Query Modal -->
-<div id="nlqModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">
+<div id="nlqModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-5/6 max-w-2xl" @click.stop>
         <div class="flex flex-col h-full">
             <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -1069,7 +1069,7 @@
 </div>
 
 <!-- Keyboard Shortcuts Modal -->
-<div id="shortcutsModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleShortcutsModal(false)">
+<div id="shortcutsModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleShortcutsModal(false)">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg mx-4">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Keyboard Shortcuts</h3>
@@ -1089,7 +1089,7 @@
 </div>
 
 <!-- Help Modal -->
-<div id="helpModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleHelpModal(false)">
+<div id="helpModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleHelpModal(false)">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mx-4">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Spreadsheet Help</h3>

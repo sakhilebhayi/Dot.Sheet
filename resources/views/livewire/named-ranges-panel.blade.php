@@ -1,4 +1,4 @@
-<!-- Named Ranges Panel -->
+{{-- Named Ranges Panel --}}
 <div>
     @if (count($ranges))
         <div class="flex flex-wrap gap-2 mb-3">

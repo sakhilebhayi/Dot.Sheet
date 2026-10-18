@@ -1,4 +1,4 @@
-<!-- Formatting Toolbar -->
+{{-- Formatting Toolbar --}}
 <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-1 flex items-center gap-1 flex-wrap text-sm select-none">
 
     <!-- Font Size -->

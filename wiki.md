@@ -39,7 +39,7 @@ Cross-checked against the real code this pass, with a specific eye for the patte
 | Layer | Technology | Notes |
 |---|---|---|
 | Framework | Laravel 13, PHP 8.4 | `composer.json`: `laravel/framework: ^13.0` |
-| UI | Jetstream 5 (Teams) · Livewire 3 · Alpine.js · Tailwind CSS | Server-rendered, virtual-scrolled grid — not a canvas/WASM spreadsheet engine |
+| UI | Jetstream 5 (Teams) · Livewire 3 · Alpine.js (bundled with Livewire) · Tailwind CSS (Vite: `app.css` for guest pages, `signed-in.css` for the signed-in layout) | Server-rendered, virtual-scrolled grid — not a canvas/WASM spreadsheet engine |
 | Database | PostgreSQL, shared `infodot` instance | `.env.example` fixed in this pass to set `DB_DATABASE=infodot` explicitly (it was previously commented out, silently defaulting to `laravel`) |
 | Auth | Laravel Sanctum + `EcosystemAuthController` | SSO handoff from the InfoDot hub at `/auth/ecosystem` — verified against the shared ecosystem contract (§5) |
 | Realtime | Laravel Reverb (broadcast driver) | Cell edits and cursor moves broadcast on a `PresenceChannel('spreadsheet.{id}')`, gated by the same `view` Policy check used everywhere else (`routes/channels.php`) |

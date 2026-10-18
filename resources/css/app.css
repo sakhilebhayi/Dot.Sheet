@@ -13,8 +13,7 @@
  *
  * Scope: this stylesheet is loaded by the guest layout (login, register, password
  * and legal pages), the welcome page and the error pages. The signed-in app layout
- * (layouts/app.blade.php) styles itself with the Tailwind Play CDN and does not
- * load this file.
+ * (layouts/app.blade.php) loads signed-in.css instead (no preflight, no plugins).
  */
 @import 'tailwindcss' source(none);
 @import './tailwind-v3-palette.css';

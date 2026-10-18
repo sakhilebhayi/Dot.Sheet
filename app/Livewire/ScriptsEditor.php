@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class ScriptsEditor extends Component
@@ -14,8 +15,12 @@ class ScriptsEditor extends Component
 
     protected ?Spreadsheet $spreadsheet = null;
 
+    // Locked: the lists are only ever changed by the actions below. A browser that could set
+    // them would get its own code stored the next time anything (a macro) is saved.
+    #[Locked]
     public $scripts = [];
 
+    #[Locked]
     public $scriptMacros = [];
 
     public $selectedScriptId = null;
@@ -183,9 +188,10 @@ class ScriptsEditor extends Component
     {
         $data = is_array($payload) ? $payload : [];
         $actions = $data['actions'] ?? [];
-        if (empty($actions)) {
+        if (empty($actions) || ! is_array($actions)) {
             return;
         }
+        $actions = array_slice($actions, 0, 1000);
 
         $name = trim($this->macroName) !== '' ? trim($this->macroName) : ('Macro '.now()->format('H:i:s'));
         $this->scriptMacros = collect($this->scriptMacros)
@@ -236,10 +242,18 @@ class ScriptsEditor extends Component
 
     protected function saveToSettings(): void
     {
-        $settings = $this->spreadsheet->settings ?? [];
-        $settings['scripts'] = $this->scripts;
+        // Write onto the stored settings, not the copy loaded earlier in the request, and leave
+        // the stored scripts alone unless scripts are on: with the flag off no action may add
+        // or change a script, whatever this component holds in memory.
+        $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
+        $settings = $spreadsheet->settings ?? [];
+
+        if ($this->scriptsEnabled()) {
+            $settings['scripts'] = $this->scripts;
+        }
         $settings['macros'] = $this->scriptMacros;
-        $this->spreadsheet->settings = $settings;
-        $this->spreadsheet->save();
+
+        $spreadsheet->settings = $settings;
+        $spreadsheet->save();
     }
 }

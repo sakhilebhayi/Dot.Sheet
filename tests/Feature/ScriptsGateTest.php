@@ -6,6 +6,7 @@ use App\Livewire\ScriptsEditor;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -131,5 +132,34 @@ class ScriptsGateTest extends TestCase
         $this->assertStringNotContainsString('const scriptSandboxWorker =', $js);
         $this->assertStringContainsString('export default FormulaParser', file_get_contents(resource_path('js/formula-parser.js')));
         $this->assertStringContainsString("import FormulaParser from './formula-parser';", $js);
+    }
+
+    public function test_the_script_list_cannot_be_set_from_the_browser(): void
+    {
+        $this->expectException(CannotUpdateLockedPropertyException::class);
+
+        $this->panel()->set('scripts', [['id' => 'evil', 'name' => 'Evil', 'body' => 'return [];']]);
+    }
+
+    public function test_while_off_saving_or_deleting_a_macro_never_writes_scripts(): void
+    {
+        $this->spreadsheet->update(['settings' => ['scripts' => [['id' => 'one', 'name' => 'Stored', 'body' => 'return [];', 'updated_at' => now()->toISOString()]]]]);
+        $panel = $this->panel();
+
+        // The stored list changes behind the component's back (another request, or a crafted one).
+        $this->spreadsheet->update(['settings' => ['scripts' => [['id' => 'two', 'name' => 'Other', 'body' => 'return [{}];', 'updated_at' => now()->toISOString()]]]]);
+
+        $panel->call('saveRecordedMacro', ['actions' => [['type' => 'select', 'row' => 0, 'col' => 0]]]);
+        $panel->call('deleteMacro', 'nothing');
+
+        $this->assertSame(['two'], array_column($this->spreadsheet->fresh()->settings['scripts'], 'id'));
+        $this->assertCount(1, $this->spreadsheet->fresh()->settings['macros']);
+    }
+
+    public function test_a_macro_cannot_carry_more_than_a_thousand_actions(): void
+    {
+        $this->panel()->call('saveRecordedMacro', ['actions' => array_fill(0, 5000, ['type' => 'select', 'row' => 0, 'col' => 0])]);
+
+        $this->assertCount(1000, $this->spreadsheet->fresh()->settings['macros'][0]['actions']);
     }
 }

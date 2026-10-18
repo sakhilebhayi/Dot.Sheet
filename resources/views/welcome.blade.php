@@ -75,14 +75,21 @@
             .nav-top .nav-cream { color: rgba(250, 247, 236, 0.82); }
             .nav-scrolled a, .nav-scrolled button { color: var(--ink); }
             .nav-scrolled .nav-cream { color: var(--slate); }
+            /* Scrolled bar: the paper tint at 95%, so page content shows faintly through the blur but never
+               competes with the ink-coloured links. (The old `bg-[var(--paper)]/95` utility emitted nothing in
+               Tailwind 3 and the bar was see-through.) The top state stays transparent over the dark hero. */
+            .nav-scrolled { background-color: color-mix(in srgb, var(--paper) 95%, transparent); }
+            /* Mobile menu panel is always solid paper, so its links need ink-family text in BOTH header states.
+               `.nav-top a` (paper) would otherwise win and render paper-on-paper until hovered; this selector is
+               more specific than both `.nav-top a` and `.nav-scrolled a`. */
+            .nav-top .mobile-menu a, .nav-scrolled .mobile-menu a { color: var(--slate); }
+            .nav-top .mobile-menu a:hover, .nav-scrolled .mobile-menu a:hover,
+            .nav-top .mobile-menu a:focus-visible, .nav-scrolled .mobile-menu a:focus-visible { color: var(--ink); }
         </style>
     </head>
     <body class="antialiased">
 
         <!-- Nav -->
-        {{-- The scrolled state used to carry `bg-[var(--paper)]/95`. Tailwind 3 cannot put an opacity on a var() and
-             silently emitted nothing, so the scrolled bar has always been see-through; Tailwind 4 would paint it, which
-             is a visible change, so the dead class is dropped here. To give the bar the paper tint, add it back. --}}
         <header
             x-data="{ scrolled: false, mobileMenuOpen: false }"
             @scroll.window="scrolled = window.pageYOffset > 24"
@@ -133,13 +140,13 @@
                  x-transition:leave="transition ease-in duration-100"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="md:hidden border-t border-[var(--line)] bg-[var(--paper)]"
+                 class="mobile-menu md:hidden border-t border-[var(--line)] bg-[var(--paper)]"
                  style="display: none;">
                 <div class="flex flex-col px-5 py-4 gap-1 font-mono text-sm uppercase tracking-wide">
-                    <a href="#capabilities" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Product</a>
-                    <a href="#features" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Features</a>
+                    <a href="#capabilities" class="px-3 py-2.5">Product</a>
+                    <a href="#features" class="px-3 py-2.5">Features</a>
                     @guest
-                        <a href="{{ route('login') }}" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Sign in</a>
+                        <a href="{{ route('login') }}" class="px-3 py-2.5">Sign in</a>
                     @endguest
                 </div>
             </div>

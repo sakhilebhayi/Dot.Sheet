@@ -440,6 +440,7 @@ class SpreadsheetExportTest extends TestCase
 
     public function test_a_text_cell_starting_with_equals_is_not_rewritten_as_a_formula_on_insert(): void
     {
+        config(['sheet.structure_ops_enabled' => true]);
         $this->cell(0, 0, '=A2');
         $this->cell(1, 0, '5');
 

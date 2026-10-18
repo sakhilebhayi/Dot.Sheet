@@ -42,6 +42,8 @@ class StructureChangeSafetyTest extends TestCase
     {
         parent::setUp();
 
+        config(['sheet.structure_ops_enabled' => true]);
+
         $this->user = User::factory()->withPersonalTeam()->create();
         $this->spreadsheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'name' => 'Safety']);
         $this->tab = $this->spreadsheet->defaultSheetTab();

@@ -6,6 +6,7 @@ use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
 use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Locked;
@@ -325,11 +326,12 @@ class AiAnalysisPanel extends Component
         try {
             [$startRow, $endRow, $startCol, $endCol] = $this->parseRangeBounds($this->selected_range);
 
-            $updated = 0;
+            $updated = new \ArrayObject(['count' => 0]);
 
             // Read and write under one lock, after checking the structure version: rows or columns
             // that moved since the editor loaded mean the range the person sees is not where the data is.
-            $written = StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, function () use ($startRow, $endRow, $startCol, $endCol, &$updated) {
+            $busy = false;
+            $written = WriteLock::guard(fn () => StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, function () use ($startRow, $endRow, $startCol, $endCol, &$updated) {
                 $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
                     ->whereBetween('row_index', [$startRow, $endRow])
                     ->whereBetween('col_index', [$startCol, $endCol])
@@ -348,9 +350,20 @@ class AiAnalysisPanel extends Component
                     $cell->raw_value = $trimmed;
                     $cell->updated_at = now();
                     $cell->save();
-                    $updated++;
+                    $updated['count']++;
                 }
+            }), function () use (&$busy) {
+                $busy = true;
+
+                return false;
             });
+
+            if ($busy) {
+                $this->loading = false;
+                $this->error = WriteLock::BUSY_MESSAGE;
+
+                return;
+            }
 
             if (! $written) {
                 $this->loading = false;
@@ -359,8 +372,8 @@ class AiAnalysisPanel extends Component
                 return;
             }
 
-            $this->success_message = $updated > 0
-                ? "Applied {$updated} cleaning fixes (trim/normalize spacing)."
+            $this->success_message = $updated['count'] > 0
+                ? "Applied {$updated['count']} cleaning fixes (trim/normalize spacing)."
                 : 'No automatic cleaning fixes were required.';
 
             $this->dispatch('external-cell-updated');
@@ -550,11 +563,14 @@ class AiAnalysisPanel extends Component
         $rules = $this->workflow_rules;
 
         // Merge one key into the stored settings under the write lock.
-        Spreadsheet::updateSettings((int) $spreadsheet->id, function (array $settings) use ($rules) {
-            $settings['ai_workflows'] = $rules;
+        WriteLock::guard(
+            fn () => Spreadsheet::updateSettings((int) $spreadsheet->id, function (array $settings) use ($rules) {
+                $settings['ai_workflows'] = $rules;
 
-            return $settings;
-        });
+                return $settings;
+            }),
+            fn () => $this->error = WriteLock::BUSY_MESSAGE
+        );
     }
 
     protected function normalizeArrayValue(mixed $value): array

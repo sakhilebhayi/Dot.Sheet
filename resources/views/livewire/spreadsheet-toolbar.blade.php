@@ -103,10 +103,12 @@
 
     <!-- Rows / Columns -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
+        @if (config('sheet.structure_ops_enabled'))
         <button wire:click="insertRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">+Row</button>
         <button wire:click="deleteRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">-Row</button>
         <button wire:click="insertColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">+Col</button>
         <button wire:click="deleteColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">-Col</button>
+        @endif
         <button wire:click="toggleHideRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide Row</button>
         <button wire:click="toggleHideColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide Col</button>
     </div>

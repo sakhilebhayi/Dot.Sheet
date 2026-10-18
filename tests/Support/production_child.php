@@ -11,6 +11,7 @@
  *   php production_child.php settings <n> <ssId>         n settings writes; exits 1 if the version ever went backwards
  */
 
+use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\User;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
@@ -69,6 +71,33 @@ if ($mode === 'settings') {
         usleep(1000);
     }
     echo $last;
+    exit(0);
+}
+
+if ($mode === 'insert-rows' || $mode === 'edit-rows') {
+    // Two real editors (Livewire components) in two processes. One inserts rows at the top, the other
+    // writes one cell per step at rows 10,000 apart. Refusals and busy answers are fine; errors are not.
+    [$n, $sheetId] = [(int) $argv[2], (int) $argv[3]];
+    $user = User::first();
+    config(['sheet.structure_ops_enabled' => true]);
+    $editor = Livewire::actingAs($user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $sheetId]);
+    $accepted = [];
+    $refused = 0;
+    for ($i = 0; $i < $n; $i++) {
+        if ($mode === 'insert-rows') {
+            $editor->set('selectedRow', 0)->call('insertRowSelected');
+        } else {
+            $editor->set('editingCell', ($i * 10000).'_1')->call('saveCell', "B{$i}");
+            // Only a write the editor accepted (empty notice) counts as accepted.
+            if ($editor->get('structureNotice') === '') {
+                $accepted[] = $i;
+            } else {
+                $refused++;
+            }
+        }
+        usleep(random_int(0, 3000));
+    }
+    echo json_encode(['accepted' => $accepted, 'refused' => $refused, 'version' => StructureVersion::current($sheetId)]);
     exit(0);
 }
 

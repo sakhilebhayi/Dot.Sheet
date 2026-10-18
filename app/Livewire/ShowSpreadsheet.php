@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Events\SpreadsheetCellUpdated;
 use App\Events\SpreadsheetCursorMoved;
+use App\Http\Controllers\SpreadsheetController;
 use App\Jobs\BulkPasteChunkJob;
 use App\Models\Cell;
 use App\Models\CellHistory;
@@ -17,12 +18,14 @@ use App\Services\SheetStructureService;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -190,8 +193,11 @@ class ShowSpreadsheet extends Component
 
     public function switchTab($sheetTabId): void
     {
-        if ($this->refuseWhenStructureIsStale()) {
-            return;
+        // Stale (something moved or a tab went away): reload first, then switch if the tab is still there.
+        // Switching writes nothing, so there is nothing to refuse and nothing to ask the person to repeat.
+        if ($this->staleReason() !== null) {
+            $this->resyncAfterStructureChange();
+            $this->structureNotice = '';
         }
 
         $tab = $this->findOwnTab((int) $sheetTabId);
@@ -351,6 +357,10 @@ class ShowSpreadsheet extends Component
             $this->structureNotice = $e->getMessage();
 
             return false;
+        } catch (StructureChangeRefused $e) {
+            $this->structureNotice = $e->getMessage();
+
+            return false;
         } catch (QueryException|\PDOException $e) {
             // Another writer held the SQLite write lock for longer than busy_timeout: nothing was written.
             if (! SheetStructureService::isLockTimeout($e)) {
@@ -401,6 +411,12 @@ class ShowSpreadsheet extends Component
         $this->structureNotice = $this->staleReason() ?? StructureVersion::STALE_MESSAGE;
     }
 
+    #[On('sheet-busy')]
+    public function showSheetBusy(): void
+    {
+        $this->structureNotice = WriteLock::BUSY_MESSAGE;
+    }
+
     public function dismissStructureNotice(): void
     {
         $this->structureNotice = '';
@@ -415,6 +431,12 @@ class ShowSpreadsheet extends Component
     protected function changeStructure(string $operation, string $axis): void
     {
         $this->authorize('update', $this->spreadsheet);
+
+        if (! config('sheet.structure_ops_enabled')) {
+            $this->structureNotice = SheetStructureService::DISABLED_MESSAGE;
+
+            return;
+        }
 
         if ($this->refuseWhenStructureIsStale()) {
             return;
@@ -448,68 +470,11 @@ class ShowSpreadsheet extends Component
         // Undo entries hold coordinates and would hit whatever moved there: drop them.
         $this->resyncAfterStructureChange();
         $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
-
-        if ($axis === 'row') {
-            $this->shiftRowSettings($operation, $index);
-        } else {
-            $this->shiftColumnSettings($operation, $index);
-        }
-        $this->saveFeatureSettings();
     }
 
-    /**
-     * @param  'insert'|'delete'  $operation
-     */
-    protected function shiftRowSettings(string $operation, int $row): void
+    protected function loadFeatureSettings(?array $stored = null): void
     {
-        $shifted = [];
-        foreach ($this->rowHeights as $r => $h) {
-            $key = (int) $r;
-            if ($operation === 'delete' && $key === $row) {
-                continue;
-            }
-            $shifted[$operation === 'insert' ? ($key >= $row ? $key + 1 : $key) : ($key > $row ? $key - 1 : $key)] = $h;
-        }
-        $this->rowHeights = $shifted;
-
-        $this->hiddenRows = array_values(array_filter(array_map(function ($r) use ($operation, $row) {
-            $r = (int) $r;
-            if ($operation === 'insert') {
-                return $r >= $row ? $r + 1 : $r;
-            }
-
-            return $r === $row ? null : ($r > $row ? $r - 1 : $r);
-        }, $this->hiddenRows), fn ($v) => $v !== null));
-    }
-
-    /**
-     * @param  'insert'|'delete'  $operation
-     */
-    protected function shiftColumnSettings(string $operation, int $col): void
-    {
-        $shifted = [];
-        foreach ($this->colWidths as $c => $w) {
-            $key = (int) $c;
-            if ($operation === 'delete' && $key === $col) {
-                continue;
-            }
-            $shifted[$operation === 'insert' ? ($key >= $col ? $key + 1 : $key) : ($key > $col ? $key - 1 : $key)] = $w;
-        }
-        $this->colWidths = $shifted;
-
-        $this->hiddenCols = array_values(array_filter(array_map(function ($c) use ($operation, $col) {
-            $c = (int) $c;
-            if ($operation === 'insert') {
-                return $c >= $col ? $c + 1 : $c;
-            }
-
-            return $c === $col ? null : ($c > $col ? $c - 1 : $c);
-        }, $this->hiddenCols), fn ($v) => $v !== null));
-    }
-
-    protected function loadFeatureSettings(): void
-    {
-        $settings = $this->normalizeArrayValue($this->spreadsheet->settings ?? []);
+        $settings = $this->normalizeArrayValue($stored ?? $this->spreadsheet->settings ?? []);
 
         $this->rowHeights = $this->normalizeArrayValue($settings['row_heights'] ?? []);
         $this->colWidths = $this->normalizeArrayValue($settings['col_widths'] ?? []);
@@ -520,30 +485,41 @@ class ShowSpreadsheet extends Component
         $this->filterRules = $this->normalizeArrayValue($settings['filter_rules'] ?? []);
     }
 
-    protected function saveFeatureSettings(): void
+    /**
+     * Change the layout settings (sizes, hidden rows and columns, rules): the change is applied to the
+     * STORED settings inside the write-locked updateSettings(), so it only touches what it changes and
+     * never writes back this component's older copy of what others changed; and it is checked against
+     * the structure version first, because these settings carry row and column numbers. The component
+     * then adopts the stored result. False (reloaded and told, or busy) when nothing was written.
+     *
+     * @param  callable(array<string, mixed>): array<string, mixed>  $change
+     */
+    protected function updateLayout(callable $change): bool
     {
-        $rowHeights = $this->rowHeights;
-        $colWidths = $this->colWidths;
-        $hiddenRows = array_values(array_unique(array_map('intval', $this->hiddenRows)));
-        $hiddenCols = array_values(array_unique(array_map('intval', $this->hiddenCols)));
-        $validation = $this->validationRules;
-        $conditional = $this->conditionalFormattingRules;
-        $filters = $this->filterRules;
+        $stored = null;
 
-        // Only these keys, merged into whatever is stored now (scripts, workflows ...), under the write lock.
-        Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($rowHeights, $colWidths, $hiddenRows, $hiddenCols, $validation, $conditional, $filters) {
-            $settings['row_heights'] = $rowHeights;
-            $settings['col_widths'] = $colWidths;
-            $settings['hidden_rows'] = $hiddenRows;
-            $settings['hidden_cols'] = $hiddenCols;
-            $settings['validation_rules'] = $validation;
-            $settings['conditional_formatting_rules'] = $conditional;
-            $settings['filter_rules'] = $filters;
+        $written = $this->guardedWrite(function () use ($change, &$stored) {
+            $stored = Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($change) {
+                $new = $change($settings);
 
-            return $settings;
+                foreach (SpreadsheetController::EDITABLE_SETTINGS_KEYS as $key) {
+                    if (strlen((string) json_encode($new[$key] ?? [])) > SpreadsheetController::MAX_SETTING_BYTES) {
+                        throw new StructureChangeRefused('The layout settings of this sheet are too large to add to.');
+                    }
+                }
+
+                return $new;
+            });
         });
 
+        if (! $written) {
+            return false;
+        }
+
         $this->spreadsheet->refresh();
+        $this->loadFeatureSettings($stored);
+
+        return true;
     }
 
     /**
@@ -730,7 +706,7 @@ class ShowSpreadsheet extends Component
         $this->ensureVisible($row, $col);
 
         // Notify sibling components (toolbar/comments) about selected cell
-        $this->dispatch('cell-selected', row: $row, col: $col);
+        $this->dispatch('cell-selected', row: $row, col: $col, sheetTabId: $this->activeSheetTabId);
 
         // Broadcast cursor movement to other connected collaborators
         if (Auth::check()) {
@@ -952,6 +928,8 @@ class ShowSpreadsheet extends Component
         $this->saveCell($text);
     }
 
+    public const AUTO_SNAPSHOT_MAX_CELLS = 20000;
+
     protected function createAutoSnapshotIfNeeded(): void
     {
         $latest = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
@@ -960,6 +938,16 @@ class ShowSpreadsheet extends Component
             ->first();
 
         if ($latest && $latest->created_at && $latest->created_at->gt(now()->subMinutes(5))) {
+            return;
+        }
+
+        // The snapshot is one JSON column built from every cell in memory: above this size the first edit
+        // of each five-minute window ran out of memory at 128 MB (about 50,000 cells). Skip, and say so
+        // in the log; a manual snapshot is still possible.
+        $count = $this->cellsQuery()->count();
+        if ($count > self::AUTO_SNAPSHOT_MAX_CELLS) {
+            Log::notice('Auto snapshot skipped: tab too large', ['spreadsheet_id' => $this->spreadsheet_id, 'sheet_tab_id' => $this->activeSheetTabId, 'cells' => $count, 'limit' => self::AUTO_SNAPSHOT_MAX_CELLS]);
+
             return;
         }
 
@@ -1047,11 +1035,19 @@ class ShowSpreadsheet extends Component
             return ['started' => false, 'message' => 'No writable cells in paste payload.'];
         }
 
-        // Small payloads skip queue overhead and apply immediately.
+        // Small payloads skip queue overhead and apply immediately: all of them in ONE guarded
+        // transaction, so a stale grid is refused as a whole (cell by cell, the first refusal reloaded
+        // the editor and the rest then passed the check and landed at the old coordinates).
         if (count($cellPayload) <= 25) {
-            foreach ($cellPayload as $cell) {
-                $this->editingCell = "{$cell['row_index']}_{$cell['col_index']}";
-                $this->saveCell($cell['value']);
+            $applied = $this->guardedWrite(function () use ($cellPayload) {
+                foreach ($cellPayload as $cell) {
+                    $this->editingCell = "{$cell['row_index']}_{$cell['col_index']}";
+                    $this->saveCell($cell['value']);
+                }
+            });
+
+            if (! $applied) {
+                return ['started' => false, 'message' => $this->structureNotice];
             }
 
             return [
@@ -1073,6 +1069,7 @@ class ShowSpreadsheet extends Component
             ->allowFailures()
             ->dispatch();
 
+        Cache::put("bulk-paste:{$batch->id}:cells", count($cellPayload), 86400);
         $this->bulkPasteBatchId = $batch->id;
         $this->bulkPasteStatus = 'running';
         $this->bulkPasteTotalJobs = count($jobs);
@@ -1104,11 +1101,26 @@ class ShowSpreadsheet extends Component
         $total = max(1, $batch->totalJobs);
         $progress = (int) floor(($processed / $total) * 100);
 
-        if ($batch->finished()) {
-            $this->bulkPasteStatus = $batch->cancelled() ? 'cancelled' : 'finished';
+        // A failed chunk with allowFailures() is never counted as done, so the batch would stay "running"
+        // for good: when only failures are left, it is over.
+        $failed = (int) $batch->failedJobs;
+        $failedAndDone = $failed > 0 && ((int) $batch->pendingJobs - $failed) <= 0;
+        $message = null;
 
-            if ($batch->cancelled() && Cache::get(BulkPasteChunkJob::cancelledKey($batch->id)) === 'structure') {
-                $this->structureNotice = 'The paste was cancelled because rows or columns moved while it was running. Part of it may already be on the sheet: check it and paste again.';
+        if ($batch->finished() || $batch->cancelled() || $failedAndDone) {
+            if ($failedAndDone && ! $batch->cancelled()) {
+                $batch->cancel();
+            }
+            $this->bulkPasteStatus = $failedAndDone ? 'failed' : ($batch->cancelled() ? 'cancelled' : 'finished');
+
+            if ($failedAndDone) {
+                $cells = (int) Cache::get("bulk-paste:{$batch->id}:cells", 0);
+                $written = min($cells, max(0, $total - $failed) * 500);
+                $message = "Paste failed after {$written} of {$cells} cells; the cells already written are kept.";
+                $this->structureNotice = $message;
+            } elseif ($batch->cancelled() && Cache::get(BulkPasteChunkJob::cancelledKey($batch->id)) === 'structure') {
+                $message = 'The paste was cancelled because rows or columns moved while it was running. Part of it may already be on the sheet: check it and paste again.';
+                $this->structureNotice = $message;
             }
             $this->bulkPasteProcessedJobs = $processed;
 
@@ -1124,6 +1136,7 @@ class ShowSpreadsheet extends Component
                 'processed' => $processed,
                 'total' => $total,
                 'progress' => 100,
+                'message' => $message,
             ];
         }
 
@@ -1212,6 +1225,25 @@ class ShowSpreadsheet extends Component
         }
 
         $applied = 0;
+
+        // All the actions in ONE guarded transaction: all or nothing against a stale grid.
+        $ran = $this->guardedWrite(function () use ($actions, &$applied) {
+            $applied = $this->runScriptActions($actions);
+        });
+
+        if (! $ran) {
+            return ['applied' => 0, 'message' => $this->structureNotice];
+        }
+
+        return ['applied' => $applied];
+    }
+
+    /**
+     * @param  array<int, mixed>  $actions
+     */
+    protected function runScriptActions(array $actions): int
+    {
+        $applied = 0;
         foreach (array_slice($actions, 0, 1000) as $action) {
             if (! is_array($action)) {
                 continue;
@@ -1249,7 +1281,7 @@ class ShowSpreadsheet extends Component
             }
         }
 
-        return ['applied' => $applied];
+        return $applied;
     }
 
     protected function resolveScriptTarget(array $action): ?array
@@ -1424,25 +1456,29 @@ class ShowSpreadsheet extends Component
     #[On('toggle-hide-row-selected')]
     public function toggleHideRowSelected(): void
     {
-        $row = (int) $this->selectedRow;
-        if (in_array($row, $this->hiddenRows, true)) {
-            $this->hiddenRows = array_values(array_filter($this->hiddenRows, fn ($r) => $r !== $row));
-        } else {
-            $this->hiddenRows[] = $row;
-        }
-        $this->saveFeatureSettings();
+        $row = max(0, (int) $this->selectedRow);
+        $this->updateLayout(function (array $settings) use ($row) {
+            $hidden = array_map('intval', is_array($settings['hidden_rows'] ?? null) ? $settings['hidden_rows'] : []);
+            $settings['hidden_rows'] = in_array($row, $hidden, true)
+                ? array_values(array_filter($hidden, fn ($r) => $r !== $row))
+                : array_values(array_unique([...$hidden, $row]));
+
+            return $settings;
+        });
     }
 
     #[On('toggle-hide-column-selected')]
     public function toggleHideColumnSelected(): void
     {
-        $col = (int) $this->selectedCol;
-        if (in_array($col, $this->hiddenCols, true)) {
-            $this->hiddenCols = array_values(array_filter($this->hiddenCols, fn ($c) => $c !== $col));
-        } else {
-            $this->hiddenCols[] = $col;
-        }
-        $this->saveFeatureSettings();
+        $col = max(0, (int) $this->selectedCol);
+        $this->updateLayout(function (array $settings) use ($col) {
+            $hidden = array_map('intval', is_array($settings['hidden_cols'] ?? null) ? $settings['hidden_cols'] : []);
+            $settings['hidden_cols'] = in_array($col, $hidden, true)
+                ? array_values(array_filter($hidden, fn ($c) => $c !== $col))
+                : array_values(array_unique([...$hidden, $col]));
+
+            return $settings;
+        });
     }
 
     #[On('resize-row-selected')]
@@ -1454,9 +1490,14 @@ class ShowSpreadsheet extends Component
         }
 
         $height = max(18, min(120, (int) ($data['height'] ?? $this->rowHeight)));
-        $row = isset($data['row']) ? (int) $data['row'] : (int) $this->selectedRow;
-        $this->rowHeights[$row] = $height;
-        $this->saveFeatureSettings();
+        $row = max(0, isset($data['row']) ? (int) $data['row'] : (int) $this->selectedRow);
+        $this->updateLayout(function (array $settings) use ($row, $height) {
+            $heights = is_array($settings['row_heights'] ?? null) ? $settings['row_heights'] : [];
+            $heights[$row] = $height;
+            $settings['row_heights'] = $heights;
+
+            return $settings;
+        });
     }
 
     #[On('resize-column-selected')]
@@ -1468,9 +1509,14 @@ class ShowSpreadsheet extends Component
         }
 
         $width = max(48, min(420, (int) ($data['width'] ?? $this->colWidth)));
-        $col = isset($data['col']) ? (int) $data['col'] : (int) $this->selectedCol;
-        $this->colWidths[$col] = $width;
-        $this->saveFeatureSettings();
+        $col = max(0, isset($data['col']) ? (int) $data['col'] : (int) $this->selectedCol);
+        $this->updateLayout(function (array $settings) use ($col, $width) {
+            $widths = is_array($settings['col_widths'] ?? null) ? $settings['col_widths'] : [];
+            $widths[$col] = $width;
+            $settings['col_widths'] = $widths;
+
+            return $settings;
+        });
     }
 
     #[On('add-validation-rule-selected')]
@@ -1481,17 +1527,21 @@ class ShowSpreadsheet extends Component
             $data = $data[0];
         }
 
-        $this->validationRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
-            'row' => (int) $this->selectedRow,
-            'col' => (int) $this->selectedCol,
+            'row' => max(0, (int) $this->selectedRow),
+            'col' => max(0, (int) $this->selectedCol),
             'type' => $data['type'] ?? 'number',
             'min' => $data['min'] ?? null,
             'max' => $data['max'] ?? null,
             'items' => $data['items'] ?? null,
         ];
 
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) use ($rule) {
+            $settings['validation_rules'] = [...(is_array($settings['validation_rules'] ?? null) ? $settings['validation_rules'] : []), $rule];
+
+            return $settings;
+        });
     }
 
     #[On('add-conditional-rule-selected')]
@@ -1502,17 +1552,21 @@ class ShowSpreadsheet extends Component
             $data = $data[0];
         }
 
-        $this->conditionalFormattingRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
             'target' => $data['target'] ?? 'cell',
-            'row' => (int) $this->selectedRow,
-            'col' => (int) $this->selectedCol,
+            'row' => max(0, (int) $this->selectedRow),
+            'col' => max(0, (int) $this->selectedCol),
             'operator' => $data['operator'] ?? '>',
             'value' => $data['value'] ?? '0',
             'color' => $data['color'] ?? '#FEE2E2',
         ];
 
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) use ($rule) {
+            $settings['conditional_formatting_rules'] = [...(is_array($settings['conditional_formatting_rules'] ?? null) ? $settings['conditional_formatting_rules'] : []), $rule];
+
+            return $settings;
+        });
     }
 
     #[On('add-filter-rule')]
@@ -1529,7 +1583,7 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $this->filterRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
             'col' => $col,
             'type' => $data['type'] ?? 'contains',
@@ -1539,16 +1593,30 @@ class ShowSpreadsheet extends Component
             'color' => $data['color'] ?? null,
         ];
 
+        // The rows the filter hides are worked out from the data against ALL stored rules plus this one.
+        $stored = is_array($this->spreadsheet->fresh()?->settings['filter_rules'] ?? null) ? $this->spreadsheet->fresh()->settings['filter_rules'] : [];
+        $this->filterRules = [...$stored, $rule];
         $this->applyFilterRules();
-        $this->saveFeatureSettings();
+        $rules = $this->filterRules;
+        $hidden = array_values(array_unique(array_map('intval', $this->hiddenRows)));
+
+        $this->updateLayout(function (array $settings) use ($rules, $hidden) {
+            $settings['filter_rules'] = $rules;
+            $settings['hidden_rows'] = $hidden;
+
+            return $settings;
+        });
     }
 
     #[On('clear-filter-rules')]
     public function clearFilterRules(): void
     {
-        $this->filterRules = [];
-        $this->hiddenRows = [];
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) {
+            $settings['filter_rules'] = [];
+            $settings['hidden_rows'] = [];
+
+            return $settings;
+        });
     }
 
     #[On('sort-selected-column')]

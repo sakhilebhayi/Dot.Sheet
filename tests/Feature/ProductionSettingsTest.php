@@ -44,7 +44,7 @@ class ProductionSettingsTest extends TestCase
     {
         return new Process([PHP_BINARY, '-d', "memory_limit={$memoryLimit}", base_path('tests/Support/production_child.php'), ...$arguments], base_path(), [
             'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $this->file, 'DB_JOURNAL_MODE' => 'wal', 'DB_TRANSACTION_MODE' => 'IMMEDIATE',
-            'DB_BUSY_TIMEOUT' => '5000', 'CACHE_STORE' => 'database', 'APP_ENV' => 'production', 'DB_URL' => '',
+            'DB_BUSY_TIMEOUT' => '5000', 'SHEET_STRUCTURE_OPS_ENABLED' => 'true', 'CACHE_STORE' => 'database', 'APP_ENV' => 'production', 'DB_URL' => '',
         ], null, 120);
     }
 
@@ -124,6 +124,7 @@ class ProductionSettingsTest extends TestCase
     {
         [$sheetId, $tabId] = $this->setUpSheet();
 
+        config(['sheet.structure_ops_enabled' => true]);
         Config::set('database.connections.locked', array_merge(config('database.connections.sqlite'), ['database' => $this->file, 'busy_timeout' => 200]));
         Config::set('database.default', 'locked');
         DB::purge('locked');
@@ -145,5 +146,38 @@ class ProductionSettingsTest extends TestCase
         // Once the lock is free the same insert goes through, and nothing was half done.
         app(SheetStructureService::class)->insertRow($sheetId, $tabId, 0);
         $this->assertSame(1, StructureVersion::current($sheetId));
+    }
+
+    public function test_two_editors_race_an_inserter_and_a_writer_in_separate_processes_with_the_switch_on(): void
+    {
+        [$sheetId, $tabId] = $this->setUpSheet();
+
+        $inserter = $this->child(['insert-rows', '40', (string) $sheetId], '512M');
+        $writer = $this->child(['edit-rows', '60', (string) $sheetId], '512M');
+        $settings = $this->child(['settings', '200', (string) $sheetId], '512M');
+        foreach ([$inserter, $writer, $settings] as $process) {
+            $process->start();
+        }
+        foreach ([$inserter, $writer, $settings] as $process) {
+            $process->wait();
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+        }
+
+        $written = json_decode($writer->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        $inserts = json_decode($inserter->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+
+        Config::set('database.connections.child', array_merge(config('database.connections.sqlite'), ['database' => $this->file]));
+        $stored = DB::connection('child')->table('cells')->where('sheet_tab_id', $tabId)->pluck('raw_value')->all();
+        sort($stored);
+        $expected = array_map(fn ($i) => "B{$i}", $written['accepted']);
+        sort($expected);
+
+        // Every write the writer was told succeeded is stored exactly once and none it was told was refused is:
+        // no stale write landed, none was lost, none overwrote another.
+        $this->assertSame($expected, $stored);
+        $this->assertSame(60, count($written['accepted']) + $written['refused']);
+        $version = (int) DB::connection('child')->table('spreadsheets')->where('id', $sheetId)->value('structure_version');
+        $this->assertSame(40, $version, 'every one of the 40 inserts committed and the counter never went backwards');
+        $this->assertGreaterThan(0, count($written['accepted']));
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Spreadsheet;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -138,8 +139,7 @@ class ScriptsEditor extends Component
         }
 
         $this->scripts = $scripts->values()->toArray();
-        $this->saveToSettings();
-        $this->status = 'Script saved.';
+        $this->status = $this->saveToSettings() ? 'Script saved.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function deleteScript(string $id): void
@@ -157,8 +157,7 @@ class ScriptsEditor extends Component
             $this->newScript();
         }
 
-        $this->saveToSettings();
-        $this->status = 'Script deleted.';
+        $this->status = $this->saveToSettings() ? 'Script deleted.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function dispatchRunScript(): void
@@ -205,8 +204,7 @@ class ScriptsEditor extends Component
             ->toArray();
 
         $this->macroName = '';
-        $this->saveToSettings();
-        $this->status = 'Macro saved.';
+        $this->status = $this->saveToSettings() ? 'Macro saved.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function playMacro(string $id): void
@@ -229,8 +227,7 @@ class ScriptsEditor extends Component
             ->values()
             ->toArray();
 
-        $this->saveToSettings();
-        $this->status = 'Macro deleted.';
+        $this->status = $this->saveToSettings() ? 'Macro deleted.' : WriteLock::BUSY_MESSAGE;
     }
 
     protected function loadFromSettings(): void
@@ -240,7 +237,7 @@ class ScriptsEditor extends Component
         $this->scriptMacros = $settings['macros'] ?? [];
     }
 
-    protected function saveToSettings(): void
+    protected function saveToSettings(): bool
     {
         // Merge into the stored settings under the write lock, and leave the stored scripts alone
         // unless scripts are on: with the flag off no action may add or change a script, whatever
@@ -249,13 +246,20 @@ class ScriptsEditor extends Component
         $macros = $this->scriptMacros;
         $scriptsEnabled = $this->scriptsEnabled();
 
-        Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($scripts, $macros, $scriptsEnabled) {
-            if ($scriptsEnabled) {
-                $settings['scripts'] = $scripts;
-            }
-            $settings['macros'] = $macros;
+        return WriteLock::guard(
+            function () use ($scripts, $macros, $scriptsEnabled) {
+                Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($scripts, $macros, $scriptsEnabled) {
+                    if ($scriptsEnabled) {
+                        $settings['scripts'] = $scripts;
+                    }
+                    $settings['macros'] = $macros;
 
-            return $settings;
-        });
+                    return $settings;
+                });
+
+                return true;
+            },
+            fn () => false
+        );
     }
 }

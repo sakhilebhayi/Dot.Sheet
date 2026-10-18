@@ -7,6 +7,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -109,7 +110,8 @@ class VersionHistoryModal extends Component
             return;
         }
 
-        DB::transaction(function () use ($version) {
+        $busy = false;
+        WriteLock::guard(fn () => DB::transaction(function () use ($version) {
             Cell::where('spreadsheet_id', $this->spreadsheet_id)
                 ->where('sheet_tab_id', $this->sheet_tab_id)
                 ->delete();
@@ -130,7 +132,16 @@ class VersionHistoryModal extends Component
 
             // Every cell may have moved: editors that had the old grid open must reload.
             StructureVersion::bump((int) $this->spreadsheet_id);
+        }), function () use (&$busy) {
+            $busy = true;
         });
+
+        if ($busy) {
+            $this->open = false;
+            $this->dispatch('sheet-busy');
+
+            return;
+        }
 
         $this->dispatch('external-cell-updated');
         $this->loadVersions();

@@ -34,6 +34,8 @@ class InsertDeleteRowColumnTest extends TestCase
     {
         parent::setUp();
 
+        config(['sheet.structure_ops_enabled' => true]);
+
         $this->user = User::factory()->create();
         $this->spreadsheet = Spreadsheet::create([
             'uuid' => (string) str()->uuid(),

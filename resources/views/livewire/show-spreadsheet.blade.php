@@ -404,10 +404,12 @@
     </div>
 
 <div id="spreadsheetContextMenu" wire:ignore class="fixed z-50 hidden min-w-[180px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
+    @if (config('sheet.structure_ops_enabled'))
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-row-selected'); closeSpreadsheetContextMenu();">Insert Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('delete-row-selected'); closeSpreadsheetContextMenu();">Delete Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-column-selected'); closeSpreadsheetContextMenu();">Insert Column</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('delete-column-selected'); closeSpreadsheetContextMenu();">Delete Column</button>
+    @endif
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('toggle-hide-row-selected'); closeSpreadsheetContextMenu();">Hide/Unhide Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('toggle-hide-column-selected'); closeSpreadsheetContextMenu();">Hide/Unhide Column</button>
 </div>
@@ -787,11 +789,13 @@
                 return;
             }
 
-            if (status.status === 'cancelled' || status.status === 'missing') {
-                progressEl.textContent = 'Bulk paste stopped';
+            if (status.status === 'cancelled' || status.status === 'failed' || status.status === 'missing') {
+                progressEl.textContent = status.message || 'Bulk paste stopped';
                 clearInterval(bulkPastePollHandle);
                 bulkPastePollHandle = null;
-                setTimeout(() => progressEl.classList.add('hidden'), 1400);
+                if (!status.message) {
+                    setTimeout(() => progressEl.classList.add('hidden'), 1400);
+                }
             }
         }, 900);
     }
@@ -842,10 +846,15 @@
                     return;
                 }
 
-                progressEl.textContent = 'Import stopped';
+                // cancelled or failed: say why and leave the message on screen
+                progressEl.textContent = status.message || 'Import stopped';
                 clearInterval(importPollHandle);
                 importPollHandle = null;
-                setTimeout(() => progressEl.classList.add('hidden'), 1600);
+                if (status.message) {
+                    alert(status.message);
+                } else {
+                    setTimeout(() => progressEl.classList.add('hidden'), 1600);
+                }
             } catch (_) {
                 progressEl.textContent = 'Import poll error';
                 clearInterval(importPollHandle);

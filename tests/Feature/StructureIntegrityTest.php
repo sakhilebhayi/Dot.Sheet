@@ -48,6 +48,8 @@ class StructureIntegrityTest extends TestCase
     {
         parent::setUp();
 
+        config(['sheet.structure_ops_enabled' => true]);
+
         $this->user = User::factory()->withPersonalTeam()->create();
         $this->spreadsheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'name' => 'Integrity']);
         $this->tab = $this->spreadsheet->defaultSheetTab();
@@ -108,7 +110,7 @@ class StructureIntegrityTest extends TestCase
         $this->assertSame([0 => 10], $settings['row_heights']);
     }
 
-    public function test_the_editors_scripts_and_ai_panels_settings_saves_leave_the_counter_alone(): void
+    public function test_the_scripts_and_ai_panels_settings_saves_leave_the_counter_alone_and_a_stale_layout_write_is_refused(): void
     {
         $editor = $this->editor();
         $scripts = Livewire::actingAs($this->user)->test(ScriptsEditor::class, ['spreadsheet_id' => $this->spreadsheet->id]);
@@ -116,14 +118,20 @@ class StructureIntegrityTest extends TestCase
 
         StructureVersion::bump($this->spreadsheet->id);   // a structure change elsewhere, after all three loaded
 
-        $editor->call('toggleHideRowSelected');
         $scripts->call('saveRecordedMacro', ['actions' => [['type' => 'select', 'row' => 0, 'col' => 0]]]);
-        $ai->set('workflow_name', 'W')->set('workflow_column', 'A')->set('workflow_operator', '>')->set('workflow_value', '1')->call('addWorkflowRule');
+        $ai->set('workflow_name', 'Warn')->set('workflow_column', 'A')->set('workflow_operator', '>')->set('workflow_value', '1')->call('addWorkflowRule');
+        // Hiding a row names a row number: with a stale grid it is refused, not written.
+        $editor->call('toggleHideRowSelected')->assertSet('structureNotice', StructureVersion::STALE_MESSAGE);
 
         $this->assertSame(1, $this->version());
         $settings = $this->spreadsheet->fresh()->settings;
         $this->assertNotEmpty($settings['macros']);
-        $this->assertArrayHasKey('hidden_rows', $settings);
+        $this->assertNotEmpty($settings['ai_workflows']);
+        $this->assertArrayNotHasKey('hidden_rows', $settings);
+
+        // After the reload it goes through.
+        $editor->call('toggleHideRowSelected')->assertSet('structureNotice', '');
+        $this->assertSame([0], $this->spreadsheet->fresh()->settings['hidden_rows']);
     }
 
     public function test_a_request_cannot_replace_the_settings_json_or_set_scripts(): void
@@ -335,7 +343,7 @@ class StructureIntegrityTest extends TestCase
 
         // Rows move before the worker gets to it.
         StructureVersion::bump($this->spreadsheet->id);
-        Artisan::call('queue:work', ['--stop-when-empty' => true, '--quiet' => true]);
+        Artisan::call('queue:work', ['--stop-when-empty' => true, '--memory' => 4096, '--quiet' => true]);
 
         $this->assertSame(0, Cell::count());
         $editor->call('getBulkPasteBatchStatus')
@@ -350,7 +358,7 @@ class StructureIntegrityTest extends TestCase
         $matrix = implode("\n", array_map(fn ($r) => "a{$r}\tb{$r}", range(0, 29)));
 
         $editor->call('bulkPasteFromText', $matrix);
-        Artisan::call('queue:work', ['--stop-when-empty' => true, '--quiet' => true]);
+        Artisan::call('queue:work', ['--stop-when-empty' => true, '--memory' => 4096, '--quiet' => true]);
 
         $this->assertSame(60, Cell::count());
         $editor->call('getBulkPasteBatchStatus')->assertSet('bulkPasteStatus', 'finished');
@@ -363,21 +371,38 @@ class StructureIntegrityTest extends TestCase
         $this->assertContains(Batchable::class, class_uses_recursive(BulkPasteChunkJob::class));
     }
 
-    public function test_the_service_still_refuses_to_recompute_an_unreasonable_number_of_formulas(): void
+    public function test_the_service_refuses_a_change_above_its_work_budget_and_rolls_back_whole(): void
     {
         $rows = [];
-        for ($r = 0; $r <= SheetStructureService::MAX_RECOMPUTED_FORMULAS; $r++) {
+        for ($r = 0; $r < 300; $r++) {
             $rows[] = ['spreadsheet_id' => $this->spreadsheet->id, 'sheet_tab_id' => $this->tab->id, 'row_index' => $r, 'col_index' => 0, 'raw_value' => '', 'computed_value' => '0', 'formula' => '=SUM(B1:B'.($r + 2).')', 'updated_at' => now()];
         }
-        foreach (array_chunk($rows, 500) as $chunk) {
-            Cell::insert($chunk);
-        }
+        Cell::insert($rows);
 
+        // Every range is cut by an insert at row 1: 300 recomputations of about 150 cells each. The estimate made
+        // before the lock (about 7,500) fits 9,000; the recompute work found inside the transaction does not.
+        $this->app->instance(SheetStructureService::class, (new SheetStructureService)->withBudget(9000, 2.0));
         $this->editor()->set('selectedRow', 1)->call('insertRowSelected')->assertSet('structureNotice', SheetStructureService::TOO_LARGE_MESSAGE);
 
-        // Rolled back whole: same positions, same text, same version.
-        $this->assertSame(SheetStructureService::MAX_RECOMPUTED_FORMULAS + 1, Cell::where('row_index', '<=', SheetStructureService::MAX_RECOMPUTED_FORMULAS)->count());
         $this->assertSame('=SUM(B1:B2)', Cell::where('row_index', 0)->value('formula'));
+        $this->assertSame(300, Cell::count());
+        $this->assertSame(0, $this->version());
+
+        // The same change fits a normal budget.
+        $this->app->instance(SheetStructureService::class, new SheetStructureService);
+        $this->editor()->set('selectedRow', 1)->call('insertRowSelected')->assertSet('structureNotice', '');
+        $this->assertSame(1, $this->version());
+    }
+
+    public function test_the_service_aborts_when_the_clock_runs_out_inside_the_transaction(): void
+    {
+        $this->cell(0, 0, 'a');
+        $this->cell(1, 0, 'b');
+
+        $this->app->instance(SheetStructureService::class, (new SheetStructureService)->withBudget(SheetStructureService::WORK_BUDGET, -1.0));
+        $this->editor()->set('selectedRow', 0)->call('insertRowSelected')->assertSet('structureNotice', SheetStructureService::TOO_LARGE_MESSAGE);
+
+        $this->assertSame(['a', 'b'], [$this->raw(0, 0), $this->raw(1, 0)]);
         $this->assertSame(0, $this->version());
     }
 }

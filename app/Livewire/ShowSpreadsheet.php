@@ -13,6 +13,7 @@ use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\FormulaEvaluatorService;
+use App\Services\SheetStructureService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
@@ -1081,9 +1082,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $row = (int) $this->selectedRow;
-        $this->cellsQuery()
-            ->where('row_index', '>=', $row)
-            ->increment('row_index');
+        app(SheetStructureService::class)->insertRow((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, $row);
 
         $shifted = [];
         foreach ($this->rowHeights as $r => $h) {
@@ -1103,13 +1102,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $row = (int) $this->selectedRow;
-        $this->cellsQuery()
-            ->where('row_index', $row)
-            ->delete();
-
-        $this->cellsQuery()
-            ->where('row_index', '>', $row)
-            ->decrement('row_index');
+        app(SheetStructureService::class)->deleteRow((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, $row);
 
         $shifted = [];
         foreach ($this->rowHeights as $r => $h) {
@@ -1138,9 +1131,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $col = (int) $this->selectedCol;
-        $this->cellsQuery()
-            ->where('col_index', '>=', $col)
-            ->increment('col_index');
+        app(SheetStructureService::class)->insertColumn((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, $col);
 
         $shifted = [];
         foreach ($this->colWidths as $c => $w) {
@@ -1160,13 +1151,7 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $col = (int) $this->selectedCol;
-        $this->cellsQuery()
-            ->where('col_index', $col)
-            ->delete();
-
-        $this->cellsQuery()
-            ->where('col_index', '>', $col)
-            ->decrement('col_index');
+        app(SheetStructureService::class)->deleteColumn((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, $col);
 
         $shifted = [];
         foreach ($this->colWidths as $c => $w) {

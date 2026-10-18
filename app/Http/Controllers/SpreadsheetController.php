@@ -280,7 +280,12 @@ class SpreadsheetController extends Controller
             abort(410, 'This public link has expired.');
         }
 
-        $cells = Cell::where('spreadsheet_id', $spreadsheet->id)->get();
+        // A share link shows the first tab only. Cells of every tab used to be merged into one grid,
+        // so values from different tabs landed on top of each other.
+        $tab = $spreadsheet->defaultSheetTab();
+        $cells = $tab
+            ? Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $tab->id)->get()
+            : collect();
 
         if ($cells->isEmpty()) {
             return view('spreadsheets.public-show', [

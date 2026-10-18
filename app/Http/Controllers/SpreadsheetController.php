@@ -8,6 +8,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
 use App\Services\SpreadsheetImportExportService;
+use App\Services\StructureVersion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Str;
@@ -136,7 +137,14 @@ class SpreadsheetController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
             'sheet_tab_id' => 'nullable|integer|exists:sheet_tabs,id',
+            'structure_version' => 'nullable|integer',
         ]);
+
+        // The editor sends the structure version it loaded; if rows or columns moved since, the
+        // coordinates in its view are out of date and the import must not run on top of them.
+        if ($request->filled('structure_version') && (int) $request->input('structure_version') !== StructureVersion::current($spreadsheet->id)) {
+            return response()->json(['success' => false, 'stale' => true, 'error' => StructureVersion::STALE_MESSAGE], 409);
+        }
 
         $service = new SpreadsheetImportExportService;
         $result = $service->importFile($spreadsheet, $request->file('file'), $this->resolveSheetTab($request, $spreadsheet));

@@ -5,8 +5,10 @@ namespace App\Livewire;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
+use App\Services\StructureVersion;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -62,7 +64,17 @@ class AiAnalysisPanel extends Component
 
     protected ?AiService $ai_service = null;
 
-    protected $listeners = ['range-selected' => 'analyzeRange'];
+    protected $listeners = [
+        'range-selected' => 'analyzeRange',
+        'structure-synced' => 'syncStructureVersion',
+    ];
+
+    /**
+     * The structure version (see StructureVersion) the editor's grid was at when this panel
+     * last heard from it. Locked: the browser may not set it.
+     */
+    #[Locked]
+    public int $structureVersion = 0;
 
     public function mount($spreadsheet_id = null)
     {
@@ -71,8 +83,14 @@ class AiAnalysisPanel extends Component
         }
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->structureVersion = $spreadsheet_id ? StructureVersion::current((int) $spreadsheet_id) : 0;
         $this->ai_service = new AiService;
         $this->loadWorkflowRules();
+    }
+
+    public function syncStructureVersion(int $version): void
+    {
+        $this->structureVersion = $version;
     }
 
     public function hydrate(): void
@@ -297,6 +315,14 @@ class AiAnalysisPanel extends Component
         }
 
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
+        // Rows or columns moved since the editor loaded: the range the person sees is not where
+        // that data is any more. Tell the editor, which reloads and explains.
+        if (StructureVersion::current((int) $this->spreadsheet_id) !== $this->structureVersion) {
+            $this->dispatch('structure-stale');
+
+            return;
+        }
 
         $this->loading = true;
 

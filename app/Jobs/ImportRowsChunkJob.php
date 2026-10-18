@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\Cell;
+use App\Services\SpreadsheetImportExportService;
+use App\Services\StructureVersion;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -24,10 +26,17 @@ class ImportRowsChunkJob implements ShouldQueue
         public ?int $sheetTabId,
         public array $rows,
         public int $startRowIndex = 0,
+        public ?int $structureVersion = null,
+        public bool $valuesAreText = false,
     ) {}
 
     public function handle(): void
     {
+        // Rows or columns moved after the import was queued: its coordinates are out of date.
+        if ($this->structureVersion !== null && $this->structureVersion !== StructureVersion::current($this->spreadsheetId)) {
+            return;
+        }
+
         foreach ($this->rows as $offset => $row) {
             if (empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))) {
                 continue;
@@ -35,12 +44,11 @@ class ImportRowsChunkJob implements ShouldQueue
 
             $rowNumber = $this->startRowIndex + $offset;
             foreach ((array) $row as $colIndex => $value) {
-                $value = (string) ($value ?? '');
-                if ($value === '') {
+                $attributes = SpreadsheetImportExportService::importedCellAttributes($value, $this->valuesAreText);
+                if ($attributes === null) {
                     continue;
                 }
 
-                $isFormula = str_starts_with($value, '=');
                 Cell::updateOrCreate(
                     [
                         'spreadsheet_id' => $this->spreadsheetId,
@@ -48,12 +56,7 @@ class ImportRowsChunkJob implements ShouldQueue
                         'row_index' => $rowNumber,
                         'col_index' => $colIndex,
                     ],
-                    [
-                        'raw_value' => $value,
-                        'computed_value' => $isFormula ? null : $value,
-                        'formula' => $isFormula ? $value : null,
-                        'updated_at' => now(),
-                    ]
+                    $attributes
                 );
             }
         }

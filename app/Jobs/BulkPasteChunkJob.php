@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Cell;
 use App\Models\CellHistory;
+use App\Services\StructureVersion;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,11 +25,17 @@ class BulkPasteChunkJob implements ShouldQueue
         public ?int $sheetTabId,
         public array $cells,
         public ?int $userId = null,
+        public ?int $structureVersion = null,
     ) {}
 
     public function handle(): void
     {
         if ($this->batch()?->cancelled()) {
+            return;
+        }
+
+        // Rows or columns moved after the paste was queued: its coordinates are out of date.
+        if ($this->structureVersion !== null && $this->structureVersion !== StructureVersion::current($this->spreadsheetId)) {
             return;
         }
 

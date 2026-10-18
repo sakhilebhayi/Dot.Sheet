@@ -26,6 +26,18 @@ class SheetStructureService
 {
     public const REF_ERROR = '#REF!';
 
+    /** The editor's grid: ShowSpreadsheet::$totalRows and $totalCols. */
+    public const GRID_ROWS = 1000000;
+
+    public const GRID_COLS = 100;
+
+    /**
+     * Every key FormulaEvaluatorService keeps in the cache for a tab. Forgetting only some of
+     * them leaves the evaluator working from the layout before the change (named_ranges had a
+     * five minute life, so a fresh =SUM(Sales) was computed over the old range).
+     */
+    public const CACHE_KEYS = ['cell_values', 'formula_dependency_graph', 'named_ranges'];
+
     public function insertRow(int $spreadsheetId, int $sheetTabId, int $row): void
     {
         $this->insert($spreadsheetId, $sheetTabId, 'row_index', $row);
@@ -48,25 +60,52 @@ class SheetStructureService
 
     protected function insert(int $spreadsheetId, int $sheetTabId, string $axis, int $index): void
     {
-        DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
-            $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index, 1);
-            $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
-            $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1);
-        });
+        $this->refuseWhenDataWouldLeaveTheSheet($spreadsheetId, $sheetTabId, $axis, $index);
 
-        $this->forgetCaches($spreadsheetId, $sheetTabId);
+        try {
+            DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
+                $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index, 1);
+                $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
+                $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
+                StructureVersion::bump($spreadsheetId);
+            });
+        } finally {
+            // Also after a rollback: the evaluator may have cached the half-done layout.
+            $this->forgetCaches($spreadsheetId, $sheetTabId);
+        }
     }
 
     protected function delete(int $spreadsheetId, int $sheetTabId, string $axis, int $index): void
     {
-        DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
-            $this->cells($spreadsheetId, $sheetTabId)->where($axis, $index)->delete();
-            $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index + 1, -1);
-            $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
-            $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1);
-        });
+        try {
+            DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
+                $this->cells($spreadsheetId, $sheetTabId)->where($axis, $index)->delete();
+                $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index + 1, -1);
+                $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
+                $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
+                StructureVersion::bump($spreadsheetId);
+            });
+        } finally {
+            $this->forgetCaches($spreadsheetId, $sheetTabId);
+        }
+    }
 
-        $this->forgetCaches($spreadsheetId, $sheetTabId);
+    /**
+     * An insert pushes everything at or after $index one step on. Data that would land beyond
+     * the editor's last row or column could never be seen again, so refuse, as Excel does.
+     */
+    protected function refuseWhenDataWouldLeaveTheSheet(int $spreadsheetId, int $sheetTabId, string $axis, int $index): void
+    {
+        $limit = $axis === 'row_index' ? self::GRID_ROWS : self::GRID_COLS;
+        $max = $this->cells($spreadsheetId, $sheetTabId)->max($axis);
+
+        if ($max === null || (int) $max < $index || (int) $max < $limit - 1) {
+            return;
+        }
+
+        throw new StructureChangeRefused($axis === 'row_index'
+            ? 'Can not insert a row: there is data in the last row of the sheet and it would be pushed off the end. Clear or move it first.'
+            : 'Can not insert a column: there is data in the last column of the sheet and it would be pushed off the end. Clear or move it first.');
     }
 
     protected function cells(int $spreadsheetId, int $sheetTabId)
@@ -94,26 +133,40 @@ class SheetStructureService
         $this->cells($spreadsheetId, $sheetTabId)->where($axis, '>=', $from + $lift)->update([$axis => DB::raw("{$axis} - {$drop}")]);
     }
 
-    protected function shiftNamedRanges(int $spreadsheetId, int $sheetTabId, string $axis, int $index, int $delta): void
+    /**
+     * @return list<string> lower-case names of the named ranges that grew, shrank or went away:
+     *                      formulas that use them change value although their text does not
+     */
+    protected function shiftNamedRanges(int $spreadsheetId, int $sheetTabId, string $axis, int $index, int $delta): array
     {
         $startField = $axis === 'row_index' ? 'start_row' : 'start_col';
         $endField = $axis === 'row_index' ? 'end_row' : 'end_col';
+        $resized = [];
 
         NamedRange::where('spreadsheet_id', $spreadsheetId)
             ->where('sheet_tab_id', $sheetTabId)
             ->get()
-            ->each(function (NamedRange $range) use ($startField, $endField, $index, $delta) {
-                $bounds = $this->shiftSpan((int) $range->{$startField}, (int) $range->{$endField}, $index, $delta);
+            ->each(function (NamedRange $range) use ($startField, $endField, $index, $delta, &$resized) {
+                $start = (int) $range->{$startField};
+                $end = (int) $range->{$endField};
+                $bounds = $this->shiftSpan($start, $end, $index, $delta);
 
                 if ($bounds === null) {
+                    $resized[] = strtolower($range->name);
                     $range->delete();
 
                     return;
                 }
 
+                if ($end - $start !== $bounds[1] - $bounds[0]) {
+                    $resized[] = strtolower($range->name);
+                }
+
                 [$range->{$startField}, $range->{$endField}] = $bounds;
                 $range->save();
             });
+
+        return $resized;
     }
 
     /**
@@ -135,47 +188,58 @@ class SheetStructureService
         return [$start > $index ? $start - 1 : $start, $end >= $index ? $end - 1 : $end];
     }
 
-    protected function rewriteFormulas(int $spreadsheetId, int $sheetTabId, string $axis, int $index, int $delta): void
+    /**
+     * Rewrite every reference first, then recompute only the formulas whose answer can have
+     * changed: a range that grew or shrank, a reference that was deleted, or a name that now
+     * points somewhere else. A formula that only moved keeps its stored value. (Recomputing
+     * each changed formula and clearing the cache after every one took 45 s for 500 formulas.)
+     *
+     * @param  list<string>  $resizedNames
+     */
+    protected function rewriteFormulas(int $spreadsheetId, int $sheetTabId, string $axis, int $index, int $delta, array $resizedNames): void
     {
-        $changed = [];
+        $recompute = [];
 
         $this->cells($spreadsheetId, $sheetTabId)
-            ->where(fn ($q) => $q->whereNotNull('formula')->orWhere('raw_value', 'like', '=%'))
-            ->get()
-            ->each(function (Cell $cell) use ($axis, $index, $delta, &$changed) {
-                $updates = [];
+            // Only real formulas. A text cell that starts with "=" (formula column empty) is data.
+            ->whereNotNull('formula')
+            ->chunkById(500, function ($cells) use ($axis, $index, $delta, $resizedNames, &$recompute) {
+                foreach ($cells as $cell) {
+                    $updates = [];
+                    $answerChanges = false;
 
-                foreach (['formula', 'raw_value'] as $field) {
-                    $text = $cell->{$field};
-                    if (! is_string($text) || ! str_starts_with($text, '=')) {
-                        continue;
+                    $original = (string) $cell->formula;
+                    [$rewritten, $changesAnswer] = $this->rewriteReferencesDetailed($original, $axis, $index, $delta);
+                    $answerChanges = $changesAnswer;
+                    if ($rewritten !== $original) {
+                        $updates['formula'] = $rewritten;
+                        // Imported formulas also keep their text in raw_value.
+                        if ($cell->raw_value === $original) {
+                            $updates['raw_value'] = $rewritten;
+                        }
                     }
 
-                    $rewritten = $this->rewriteReferences($text, $axis, $index, $delta);
-                    if ($rewritten !== $text) {
-                        $updates[$field] = $rewritten;
+                    if ($updates !== []) {
+                        $cell->forceFill($updates)->save();
+                    }
+
+                    if ($answerChanges || $this->usesAnyName((string) $cell->formula, $resizedNames)) {
+                        $recompute[] = $cell;
                     }
                 }
-
-                if ($updates === []) {
-                    return;
-                }
-
-                $cell->forceFill($updates)->save();
-                $changed[] = $cell;
             });
 
-        if ($changed === []) {
+        if ($recompute === []) {
             return;
         }
 
-        // Moving a reference does not change what it points at, but a range that grew or
-        // shrank, or a reference that was deleted, does change the answer.
+        // One cache clear and one evaluator for the whole pass; the evaluator reads the cells
+        // and named ranges once and keeps them.
         $this->forgetCaches($spreadsheetId, $sheetTabId);
         $evaluator = new FormulaEvaluatorService;
 
-        foreach ($changed as $cell) {
-            $text = (string) ($cell->formula ?? $cell->raw_value);
+        foreach ($recompute as $cell) {
+            $text = (string) $cell->formula;
 
             if (str_contains($text, self::REF_ERROR)) {
                 $computed = self::REF_ERROR;
@@ -185,8 +249,21 @@ class SheetStructureService
             }
 
             $cell->forceFill(['computed_value' => $computed])->save();
-            $this->forgetCaches($spreadsheetId, $sheetTabId);
         }
+    }
+
+    /**
+     * @param  list<string>  $names
+     */
+    protected function usesAnyName(string $formula, array $names): bool
+    {
+        foreach ($names as $name) {
+            if (preg_match('/(?<![A-Za-z0-9_.])'.preg_quote($name, '/').'(?![A-Za-z0-9_(])/i', $formula) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -195,39 +272,64 @@ class SheetStructureService
      */
     public function rewriteReferences(string $formula, string $axis, int $index, int $delta): string
     {
+        return $this->rewriteReferencesDetailed($formula, $axis, $index, $delta)[0];
+    }
+
+    /**
+     * @return array{0: string, 1: bool} the new text, and whether the answer can differ from
+     *                                   the stored one (a range changed size or a reference was deleted)
+     */
+    public function rewriteReferencesDetailed(string $formula, string $axis, int $index, int $delta): array
+    {
+        $changesAnswer = false;
         $ref = '(?<![A-Za-z0-9_.])([A-Za-z]{1,3})(\d+)(?![A-Za-z0-9_(])';
         // Text inside double quotes is a string, not a reference.
         $pattern = "/\"[^\"]*\"(*SKIP)(*FAIL)|{$ref}(?::([A-Za-z]{1,3})(\\d+)(?![A-Za-z0-9_(]))?/";
 
-        return preg_replace_callback($pattern, function (array $m) use ($axis, $index, $delta) {
+        $text = preg_replace_callback($pattern, function (array $m) use ($axis, $index, $delta, &$changesAnswer) {
             $startCol = $this->letterToIndex($m[1]);
             $startRow = (int) $m[2] - 1;
             $isRange = isset($m[3]) && $m[3] !== '';
             $endCol = $isRange ? $this->letterToIndex($m[3]) : $startCol;
             $endRow = $isRange ? (int) $m[4] - 1 : $startRow;
 
+            $lowRowIn = min($startRow, $endRow);
+            $highRowIn = max($startRow, $endRow);
+            $lowColIn = min($startCol, $endCol);
+            $highColIn = max($startCol, $endCol);
+
             if ($axis === 'row_index') {
-                $span = $this->shiftSpan(min($startRow, $endRow), max($startRow, $endRow), $index, $delta);
+                $span = $this->shiftSpan($lowRowIn, $highRowIn, $index, $delta);
                 if ($span === null) {
+                    $changesAnswer = true;
+
                     return self::REF_ERROR;
                 }
                 [$lowRow, $highRow] = $span;
-                [$lowCol, $highCol] = [min($startCol, $endCol), max($startCol, $endCol)];
+                [$lowCol, $highCol] = [$lowColIn, $highColIn];
+                $resized = ($highRow - $lowRow) !== ($highRowIn - $lowRowIn);
             } else {
-                $span = $this->shiftSpan(min($startCol, $endCol), max($startCol, $endCol), $index, $delta);
+                $span = $this->shiftSpan($lowColIn, $highColIn, $index, $delta);
                 if ($span === null) {
+                    $changesAnswer = true;
+
                     return self::REF_ERROR;
                 }
                 [$lowCol, $highCol] = $span;
-                [$lowRow, $highRow] = [min($startRow, $endRow), max($startRow, $endRow)];
+                [$lowRow, $highRow] = [$lowRowIn, $highRowIn];
+                $resized = ($highCol - $lowCol) !== ($highColIn - $lowColIn);
             }
+
+            $changesAnswer = $changesAnswer || $resized;
 
             $first = $this->indexToLetter($lowCol).($lowRow + 1);
             $rewritten = $isRange ? $first.':'.$this->indexToLetter($highCol).($highRow + 1) : $first;
 
             // Leave a reference that did not move exactly as the user typed it (a1 stays a1).
             return strcasecmp($rewritten, $m[0]) === 0 ? $m[0] : $rewritten;
-        }, $formula) ?? $formula;
+        }, $formula);
+
+        return [$text ?? $formula, $changesAnswer];
     }
 
     protected function letterToIndex(string $letters): int
@@ -252,7 +354,8 @@ class SheetStructureService
 
     protected function forgetCaches(int $spreadsheetId, int $sheetTabId): void
     {
-        Cache::forget("spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:cell_values");
-        Cache::forget("spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:formula_dependency_graph");
+        foreach (self::CACHE_KEYS as $key) {
+            Cache::forget("spreadsheet:{$spreadsheetId}:tab:{$sheetTabId}:{$key}");
+        }
     }
 }

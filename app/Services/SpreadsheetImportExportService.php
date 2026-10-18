@@ -7,6 +7,7 @@ use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -62,10 +63,14 @@ class SpreadsheetImportExportService
         $limit = (int) config('sheet.export_excel_max_cells');
         $cellCount = Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab?->id)->count();
         if ($limit > 0 && $cellCount > $limit) {
-            throw new ExportTooLargeException($cellCount, $limit);
+            throw ExportTooLargeException::forCells($cellCount, $limit);
         }
 
         $bounds = $this->exportBounds($spreadsheet, $sheetTab);
+        if ($bounds !== null && $limit > 0 && ($bounds['maxRow'] + 1) * ($bounds['maxCol'] + 1) > $limit) {
+            throw ExportTooLargeException::forGrid($bounds['maxRow'] + 1, $bounds['maxCol'] + 1, $limit);
+        }
+
         $rows = $bounds === null ? [[]] : iterator_to_array($this->exportRows($spreadsheet, $sheetTab, $bounds), false);
 
         $fileName = 'spreadsheet_'.$spreadsheet->id.'_'.now()->format('YmdHis').'_'.Str::random(8).'.xlsx';
@@ -173,6 +178,12 @@ class SpreadsheetImportExportService
             return $value;
         }
 
+        // Text that already starts with an apostrophe and then one of the characters below gets
+        // one more, so importCsv() removing exactly one gives the original back.
+        if (preg_match('/^\'+[=+\-@\t\r]/', $value) === 1) {
+            return "'".$value;
+        }
+
         if (preg_match('/^[=@\t\r]/', $value)) {
             return "'".$value;
         }
@@ -185,10 +196,39 @@ class SpreadsheetImportExportService
     }
 
     /**
+     * What to store for one imported value, or null for an empty one. A value starting with "="
+     * is a formula unless the importer says the file holds values only ($valuesAreText) or the
+     * cell is marked as text (['text' => value], see parseCsv()).
+     *
+     * @return array{raw_value: string, computed_value: string|null, formula: string|null, updated_at: Carbon}|null
+     */
+    public static function importedCellAttributes(mixed $value, bool $valuesAreText = false): ?array
+    {
+        if (is_array($value)) {
+            $valuesAreText = true;
+            $value = $value['text'] ?? '';
+        }
+
+        $value = (string) ($value ?? '');
+        if ($value === '') {
+            return null;
+        }
+
+        $isFormula = ! $valuesAreText && str_starts_with($value, '=');
+
+        return [
+            'raw_value' => $value,
+            'computed_value' => $isFormula ? null : $value,
+            'formula' => $isFormula ? $value : null,
+            'updated_at' => now(),
+        ];
+    }
+
+    /**
      * Parse CSV text into rows. Quoted fields may hold commas, quotes and line breaks, and
      * both \n and \r\n end a row (splitting on "\n" left a stray "\r" on every last field).
      *
-     * @return list<list<string|null>>
+     * @return list<list<string|array{text: string}|null>> a cell that must stay text is ['text' => value]
      */
     protected function parseCsv(string $csvContent): array
     {
@@ -203,7 +243,12 @@ class SpreadsheetImportExportService
             if ($row === [null]) {
                 $row = [];
             }
-            $rows[] = $row;
+            // Undo the apostrophe exportCsv() put in front of text Excel would run as a formula.
+            // The cell comes back as text, not as a formula.
+            $rows[] = array_map(
+                fn ($field) => is_string($field) && preg_match('/^\'+[=+\-@\t\r]/', $field) === 1 ? ['text' => substr($field, 1)] : $field,
+                $row
+            );
         }
         fclose($stream);
 
@@ -229,6 +274,9 @@ class SpreadsheetImportExportService
 
         $ext = strtolower($file->getClientOriginalExtension());
         $rows = null;
+        // Cells read from an Excel file are values (formulas are read as their result): a text
+        // cell that happens to start with "=" must stay text, not become a formula.
+        $valuesAreText = false;
 
         if ($ext === 'csv') {
             $content = file_get_contents($file->getRealPath());
@@ -245,6 +293,7 @@ class SpreadsheetImportExportService
                     }
                 }, $file);
                 $rows = $data[0] ?? [];
+                $valuesAreText = true;
             } catch (\Exception $e) {
                 return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
             }
@@ -266,6 +315,8 @@ class SpreadsheetImportExportService
                     sheetTabId: $sheetTab?->id,
                     rows: $chunk,
                     startRowIndex: $index * $chunkSize,
+                    structureVersion: StructureVersion::current($spreadsheet->id),
+                    valuesAreText: $valuesAreText,
                 );
             }
 
@@ -284,7 +335,7 @@ class SpreadsheetImportExportService
             ];
         }
 
-        return $this->insertRows($spreadsheet, $rows, $sheetTab);
+        return $this->insertRows($spreadsheet, $rows, $sheetTab, $valuesAreText);
     }
 
     /**
@@ -312,7 +363,7 @@ class SpreadsheetImportExportService
     /**
      * Insert rows into spreadsheet cells
      */
-    protected function insertRows(Spreadsheet $spreadsheet, array $rows, ?SheetTab $sheetTab = null): array
+    protected function insertRows(Spreadsheet $spreadsheet, array $rows, ?SheetTab $sheetTab = null, bool $valuesAreText = false): array
     {
         $sheetTab ??= $spreadsheet->defaultSheetTab();
 
@@ -332,13 +383,10 @@ class SpreadsheetImportExportService
                 $rowCount++;
 
                 foreach ((array) $row as $colIndex => $value) {
-                    $value = (string) ($value ?? '');
-
-                    if ($value === '') {
+                    $attributes = self::importedCellAttributes($value, $valuesAreText);
+                    if ($attributes === null) {
                         continue;
                     }
-
-                    $isFormula = str_starts_with($value, '=');
 
                     Cell::updateOrCreate(
                         [
@@ -347,12 +395,7 @@ class SpreadsheetImportExportService
                             'row_index' => $rowNumber,
                             'col_index' => $colIndex,
                         ],
-                        [
-                            'raw_value' => $value,
-                            'computed_value' => $isFormula ? null : $value,
-                            'formula' => $isFormula ? $value : null,
-                            'updated_at' => now(),
-                        ]
+                        $attributes
                     );
 
                     $cellCount++;

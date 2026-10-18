@@ -4,7 +4,9 @@ namespace App\Livewire;
 
 use App\Models\Cell;
 use App\Models\Spreadsheet;
+use App\Services\StructureVersion;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class SpreadsheetToolbar extends Component
@@ -79,13 +81,44 @@ class SpreadsheetToolbar extends Component
 
     public $filter_color = '#FEE2E2';
 
-    protected $listeners = ['cell-selected' => 'loadCellFormatting'];
+    protected $listeners = [
+        'cell-selected' => 'loadCellFormatting',
+        'structure-synced' => 'syncStructureVersion',
+    ];
+
+    /**
+     * The structure version (see StructureVersion) the editor's grid was at when this toolbar
+     * last heard from it. Locked: the browser may not set it.
+     */
+    #[Locked]
+    public int $structureVersion = 0;
 
     public function mount($spreadsheet_id)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->structureVersion = StructureVersion::current((int) $spreadsheet_id);
+    }
+
+    public function syncStructureVersion(int $version): void
+    {
+        $this->structureVersion = $version;
+    }
+
+    /**
+     * Rows or columns moved since the editor loaded: the selected cell's coordinates are
+     * out of date, so do not write to them. Tells the editor, which reloads and explains.
+     */
+    protected function refuseWhenStructureIsStale(): bool
+    {
+        if (StructureVersion::current((int) $this->spreadsheet_id) === $this->structureVersion) {
+            return false;
+        }
+
+        $this->dispatch('structure-stale');
+
+        return true;
     }
 
     public function render()
@@ -177,6 +210,10 @@ class SpreadsheetToolbar extends Component
     {
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
         $formatting = [
             'bold' => $this->bold,
             'italic' => $this->italic,
@@ -212,6 +249,10 @@ class SpreadsheetToolbar extends Component
     public function clearFormatting()
     {
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
 
         $this->resetFormatting();
 

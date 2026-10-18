@@ -51,7 +51,7 @@ As implemented in `app/Models/` (single-tab grid, not a multi-tab workbook — t
 
 | Layer | Technology |
 |---|---|
-| Framework | Laravel 13, PHP 8.3+ |
+| Framework | Laravel 13, PHP 8.4 |
 | Frontend | Jetstream 5 (Teams) · Livewire 3 · Alpine.js 3 · Tailwind CSS 4 |
 | Database | PostgreSQL (shared `infodot` instance across the ecosystem) |
 | Realtime | Laravel Reverb (broadcast driver, Pusher-protocol-compatible via `pusher/pusher-php-server`) |

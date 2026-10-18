@@ -7,6 +7,8 @@ use Illuminate\View\View;
 
 class PublicLayout extends Component
 {
+    public function __construct(public string $title = 'Dot.Sheet') {}
+
     /**
      * Get the view / contents that represents the component.
      */

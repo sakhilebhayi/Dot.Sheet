@@ -48,6 +48,7 @@ class PublicShareTest extends TestCase
         $response->assertOk();
         $response->assertSee('Revenue');
         $response->assertSee('Public view-only link');
+        $response->assertSee('<title>Budget &lt;b&gt;2026&lt;/b&gt; - Dot.Sheet</title>', false);
         // Name is escaped, not injected as markup.
         $response->assertDontSee('<b>2026</b>', false);
         $response->assertSee('Budget &lt;b&gt;2026&lt;/b&gt;', false);

@@ -7,7 +7,7 @@
          the Referer header, and load nothing from third parties and nothing that talks to the server. --}}
     <meta name="robots" content="noindex, nofollow, noarchive">
     <meta name="referrer" content="no-referrer">
-    <title>{{ $title ?? 'Dot.Sheet' }}</title>
+    <title>{{ $title }}</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">

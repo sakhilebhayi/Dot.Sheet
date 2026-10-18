@@ -8,7 +8,7 @@
 
 <br />
 
-![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?style=flat-square&logo=laravel&logoColor=white) ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?style=flat-square&logo=php&logoColor=white) ![Livewire](https://img.shields.io/badge/Livewire-3-FB70A9?style=flat-square) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=flat-square&logo=postgresql&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?style=flat-square&logo=laravel&logoColor=white) ![PHP](https://img.shields.io/badge/PHP-8.4-777BB4?style=flat-square&logo=php&logoColor=white) ![Livewire](https://img.shields.io/badge/Livewire-3-FB70A9?style=flat-square) ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
 <br /><br />
 
@@ -26,7 +26,7 @@ Dot.Sheet is the collaborative data platform in the InfoDot ecosystem. Spreadshe
 
 - Virtual-scrolled grid editor (viewport + prefetch loading, not a full 1M-row fetch) with formulas, conditional formatting, and data validation rules
 - AI formula assistant, natural-language query, data cleaning, OCR-to-cell, and sentiment analysis panels — all routed through the generic `AiService` (provider/model configured via `config('ai.*')`, defaults to a local Ollama endpoint, not a confirmed hosted-Claude integration)
-- Real-time collaborative cell/cursor broadcasting via Laravel Reverb
+- Optional real-time cell/cursor broadcasting via Laravel Reverb or Pusher (off in production: there is no websocket server; `BROADCAST_CONNECTION=null`)
 - Chart generation (bar/line/pie/doughnut/scatter/area) from a cell range — no pivot-table feature exists
 - Import CSV / XLSX (queued in chunks for large files) and export back to either format
 - Threaded, cell-anchored comments with @mention notifications, and version history (auto-snapshot + manual + restore) — no named-ranges feature exists
@@ -53,13 +53,13 @@ As implemented in `app/Models/` (single-tab grid, not a multi-tab workbook — t
 |---|---|
 | Framework | Laravel 13, PHP 8.4 |
 | Frontend | Jetstream 5 (Teams) · Livewire 3 · Alpine.js 3 · Tailwind CSS 4 |
-| Database | PostgreSQL (shared `infodot` instance across the ecosystem) |
-| Realtime | Laravel Reverb (broadcast driver, Pusher-protocol-compatible via `pusher/pusher-php-server`) |
+| Database | SQLite, in production too (WAL, busy timeout and `IMMEDIATE` transactions are set in `config/database.php`, see `.env.production.example`). The mysql/mariadb/pgsql/sqlsrv entries are stock Laravel and not used in production |
+| Realtime | Off in production (`BROADCAST_CONNECTION=null`, no websocket server on the host). Laravel Reverb / Pusher can be switched on in an environment that has a server |
 | Auth | Laravel Sanctum + `EcosystemAuthController` (InfoDot hub SSO handoff) |
 | AI | `App\Services\AiService` — see note below |
 | Import/Export | `maatwebsite/excel` (CSV/XLSX) |
 | Storage | Local disk (Flysystem) — no S3 driver is configured in this repo |
-| Queue | Database driver by default (`.env.example`); Redis is available but not required |
+| Queue | Database driver (`queue:work` from cron on the host). Redis is not used in production |
 
 There is no Laravel Scout, Meilisearch, or Horizon dependency in `composer.json` — search and queue-dashboard tooling described in earlier planning docs were not actually added. `AiService` is not yet verified against a specific live model/provider in this pass; treat "AI-generated formulas/insights" as backed by whatever `AiService` is configured to call, not a confirmed `claude-sonnet-4-6` integration.
 
@@ -88,11 +88,11 @@ php artisan migrate
 php artisan serve
 ```
 
-> **Ecosystem SSO:** Set `DB_*` env vars to the shared InfoDot PostgreSQL instance and `APP_URL=https://sheet.infodot.app`. Users authenticated through InfoDot gain access automatically via Sanctum handoff tokens.
+> **Ecosystem SSO:** Set `APP_URL` to the deployed host (https://sheets.infodot.co.za in production). Users authenticated through InfoDot gain access automatically via Sanctum handoff tokens.
 
 ## Ecosystem
 
-**Dot.Sheet** is one of the platforms registered in `InfoDot/config/ecosystem.php`, connected via shared PostgreSQL and Sanctum SSO. Visit [InfoDot](https://github.com/sakhileb/InfoDot) to explore the full platform map.
+**Dot.Sheet** is one of the platforms registered in `InfoDot/config/ecosystem.php`, connected via Sanctum SSO. Visit [InfoDot](https://github.com/sakhileb/InfoDot) to explore the full platform map.
 
 ## License
 

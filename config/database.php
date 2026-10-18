@@ -10,6 +10,9 @@ return [
     | Default Database Connection Name
     |--------------------------------------------------------------------------
     |
+    | Dot.Sheet runs on SQLite in production (the mysql, mariadb, pgsql and
+    | sqlsrv entries below are stock Laravel and not used in production).
+    |
     | Here you may specify which of the database connections below you wish
     | to use as your default connection for database operations. This is
     | the connection which will be utilized unless another connection
@@ -38,10 +41,16 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // Production is SQLite with the web workers, queue:work and the
+            // cron scheduler all writing to one file. WAL lets readers and the
+            // single writer proceed together, busy_timeout makes a blocked
+            // writer wait (ms) instead of failing with "database is locked",
+            // and IMMEDIATE takes the write lock when a transaction begins so
+            // a read-then-write transaction cannot deadlock on upgrade.
+            'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
+            'journal_mode' => env('DB_JOURNAL_MODE', 'wal'),
+            'synchronous' => env('DB_SYNCHRONOUS', 'normal'),
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'IMMEDIATE'),
         ],
 
         'mysql' => [

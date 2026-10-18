@@ -3,25 +3,58 @@
 namespace App\Services;
 
 use App\Models\Spreadsheet;
+use Illuminate\Support\Facades\DB;
 
 /**
- * A counter that goes up every time a row or column is inserted or deleted in any tab of a
- * spreadsheet. It lives in the spreadsheet's settings JSON (no column, no migration).
+ * A counter (column spreadsheets.structure_version) that goes up every time rows or columns of any
+ * tab of a spreadsheet move: insert, delete, sort, version restore, tab delete.
  *
- * A browser that opened the sheet before the change still shows cells at their old
- * coordinates. Every component that writes cells remembers the version it loaded and
- * compares it with the stored one first; when they differ the write is refused and the grid
- * is reloaded, so a stale screen can never overwrite data that has moved.
+ * A browser that opened the sheet before the change still shows cells at their old coordinates.
+ * Every component that writes cells remembers the version it loaded and compares it with the stored
+ * one first, inside the transaction that writes; when they differ the write is refused and the
+ * grid is reloaded, so a stale screen can never overwrite data that has moved.
+ *
+ * It only ever changes through bump(), a single UPDATE ... SET structure_version = structure_version + 1,
+ * and is not part of the settings JSON, so no settings writer can reset it.
  */
 class StructureVersion
 {
     public const STALE_MESSAGE = 'Rows or columns were inserted or deleted elsewhere. The sheet was reloaded; please repeat your change.';
 
-    public static function current(int $spreadsheetId): int
-    {
-        $settings = Spreadsheet::query()->whereKey($spreadsheetId)->first(['id', 'settings'])?->settings;
+    public const TAB_GONE_MESSAGE = 'This tab no longer exists; the sheet was reloaded.';
 
-        return is_array($settings) ? (int) ($settings['structure_version'] ?? 0) : 0;
+    /**
+     * @param  bool  $lock  take the row lock where the engine has one (SQLite already holds the whole-database write lock inside an IMMEDIATE transaction)
+     */
+    public static function current(int $spreadsheetId, bool $lock = false): int
+    {
+        $query = Spreadsheet::query()->whereKey($spreadsheetId);
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return (int) $query->value('structure_version');
+    }
+
+    /**
+     * Run $write in one transaction that first compares the version the caller loaded with the stored
+     * one under the write lock. False (nothing written) when they differ.
+     */
+    public static function writeIfCurrent(int $spreadsheetId, int $loadedVersion, callable $write): bool
+    {
+        try {
+            DB::transaction(function () use ($spreadsheetId, $loadedVersion, $write) {
+                if (self::current($spreadsheetId, lock: true) !== $loadedVersion) {
+                    throw new StaleStructure(self::STALE_MESSAGE);
+                }
+
+                $write();
+            });
+        } catch (StaleStructure) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -29,14 +62,8 @@ class StructureVersion
      */
     public static function bump(int $spreadsheetId): int
     {
-        $spreadsheet = Spreadsheet::query()->lockForUpdate()->findOrFail($spreadsheetId);
+        Spreadsheet::query()->whereKey($spreadsheetId)->update(['structure_version' => DB::raw('structure_version + 1')]);
 
-        $settings = is_array($spreadsheet->settings) ? $spreadsheet->settings : [];
-        $settings['structure_version'] = (int) ($settings['structure_version'] ?? 0) + 1;
-
-        $spreadsheet->settings = $settings;
-        $spreadsheet->save();
-
-        return $settings['structure_version'];
+        return self::current($spreadsheetId);
     }
 }

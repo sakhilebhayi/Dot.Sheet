@@ -8,13 +8,19 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
 use App\Services\SpreadsheetImportExportService;
-use App\Services\StructureVersion;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Str;
 
 class SpreadsheetController extends Controller
 {
+    /** Keys of the settings JSON a request may set. */
+    public const EDITABLE_SETTINGS_KEYS = [
+        'row_heights', 'col_widths', 'hidden_rows', 'hidden_cols',
+        'validation_rules', 'conditional_formatting_rules', 'filter_rules',
+    ];
+
     /**
      * Display a listing of spreadsheets
      */
@@ -107,7 +113,17 @@ class SpreadsheetController extends Controller
             'settings' => 'nullable|array',
         ]);
 
-        $spreadsheet->update($validated);
+        $spreadsheet->update(['name' => $validated['name']]);
+
+        // Only the editor's layout keys can be set here, merged into what is stored. Scripts, macros and
+        // workflows have their own panels (and scripts their own switch); replacing the whole JSON from
+        // a request would also wipe them.
+        if (! empty($validated['settings'])) {
+            $layout = Arr::only($validated['settings'], self::EDITABLE_SETTINGS_KEYS);
+            if ($layout !== []) {
+                Spreadsheet::updateSettings($spreadsheet->id, fn (array $settings) => array_replace($settings, $layout));
+            }
+        }
 
         return redirect()->route('spreadsheets.show', $spreadsheet)
             ->with('success', 'Spreadsheet updated successfully!');
@@ -137,14 +153,7 @@ class SpreadsheetController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
             'sheet_tab_id' => 'nullable|integer|exists:sheet_tabs,id',
-            'structure_version' => 'nullable|integer',
         ]);
-
-        // The editor sends the structure version it loaded; if rows or columns moved since, the
-        // coordinates in its view are out of date and the import must not run on top of them.
-        if ($request->filled('structure_version') && (int) $request->input('structure_version') !== StructureVersion::current($spreadsheet->id)) {
-            return response()->json(['success' => false, 'stale' => true, 'error' => StructureVersion::STALE_MESSAGE], 409);
-        }
 
         $service = new SpreadsheetImportExportService;
         $result = $service->importFile($spreadsheet, $request->file('file'), $this->resolveSheetTab($request, $spreadsheet));

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Spreadsheet extends Model
 {
@@ -93,6 +94,29 @@ class Spreadsheet extends Model
     public function workflowExecutionLogs(): HasMany
     {
         return $this->hasMany(WorkflowExecutionLog::class);
+    }
+
+    /**
+     * Change the settings JSON without losing anyone else's keys: read, change and write inside one
+     * transaction that holds the write lock (BEGIN IMMEDIATE on SQLite, a row lock elsewhere), so two
+     * writers cannot both start from the same old copy and the later one overwrite the earlier.
+     *
+     * @param  callable(array<string, mixed>): array<string, mixed>  $change  receives the stored settings, returns the new ones
+     * @return array<string, mixed> the stored settings after the change
+     */
+    public static function updateSettings(int $id, callable $change): array
+    {
+        return DB::transaction(function () use ($id, $change) {
+            $spreadsheet = static::query()->lockForUpdate()->findOrFail($id);
+            $settings = is_array($spreadsheet->settings) ? $spreadsheet->settings : [];
+
+            $new = $change($settings);
+
+            $spreadsheet->settings = $new;
+            $spreadsheet->save();
+
+            return $new;
+        });
     }
 
     public function publicLinkIsActive(): bool

@@ -242,18 +242,20 @@ class ScriptsEditor extends Component
 
     protected function saveToSettings(): void
     {
-        // Write onto the stored settings, not the copy loaded earlier in the request, and leave
-        // the stored scripts alone unless scripts are on: with the flag off no action may add
-        // or change a script, whatever this component holds in memory.
-        $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        $settings = $spreadsheet->settings ?? [];
+        // Merge into the stored settings under the write lock, and leave the stored scripts alone
+        // unless scripts are on: with the flag off no action may add or change a script, whatever
+        // this component holds in memory.
+        $scripts = $this->scripts;
+        $macros = $this->scriptMacros;
+        $scriptsEnabled = $this->scriptsEnabled();
 
-        if ($this->scriptsEnabled()) {
-            $settings['scripts'] = $this->scripts;
-        }
-        $settings['macros'] = $this->scriptMacros;
+        Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($scripts, $macros, $scriptsEnabled) {
+            if ($scriptsEnabled) {
+                $settings['scripts'] = $scripts;
+            }
+            $settings['macros'] = $macros;
 
-        $spreadsheet->settings = $settings;
-        $spreadsheet->save();
+            return $settings;
+        });
     }
 }

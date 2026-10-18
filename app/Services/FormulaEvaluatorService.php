@@ -52,9 +52,6 @@ class FormulaEvaluatorService
             // Cache cell data for this spreadsheet tab
             $this->cacheSpreadsheetCells($spreadsheetId, $sheetTabId);
 
-            // Build and cache dependency graph for recalculation planning
-            $this->dependencyGraph = $this->getDependencyGraph($spreadsheetId, $sheetTabId);
-
             // Evaluate the expression
             $result = $this->evaluateExpression($formula);
 
@@ -127,6 +124,62 @@ class FormulaEvaluatorService
     }
 
     /**
+     * An entry of the cell cache is either [raw_value, computed_value] (what evaluate() caches) or, for
+     * evaluateAgainst(), the bare value.
+     */
+    protected function valueOfCacheEntry(mixed $entry): mixed
+    {
+        return is_array($entry) ? ($entry['computed_value'] ?? $entry['raw_value'] ?? null) : $entry;
+    }
+
+    /**
+     * This tab's named ranges straight from the database, no cache: lower-case name => A1-style reference.
+     *
+     * @return array<string, string>
+     */
+    public function namedRangeMap(int $spreadsheetId, ?int $sheetTabId): array
+    {
+        return NamedRange::where('spreadsheet_id', $spreadsheetId)
+            ->where('sheet_tab_id', $sheetTabId)
+            ->get()
+            ->mapWithKeys(fn (NamedRange $range) => [strtolower($range->name) => $range->toReferenceText()])
+            ->all();
+    }
+
+    /**
+     * The cell keys (row_col) a formula reads, after named ranges are expanded.
+     *
+     * @param  array<string, string>  $namedRanges
+     * @return list<string>
+     */
+    public function referencedKeys(string $formula, array $namedRanges): array
+    {
+        return $this->extractFormulaReferences($this->applyNamedRanges(ltrim($formula, '='), $namedRanges));
+    }
+
+    /**
+     * Evaluate against cell values the caller loaded, with no cache round trips and no database
+     * access: for passes over many formulas, where evaluate() would read the whole tab from the
+     * cache for each one.
+     *
+     * @param  array<string, mixed>  $cells  "row_col" => value (computed, else raw)
+     * @param  array<string, string>  $namedRanges
+     * @return array{value: mixed, error: bool, errorMessage?: string}
+     */
+    public function evaluateAgainst(string $formula, array $cells, array $namedRanges): array
+    {
+        try {
+            $this->cellCache = $cells;
+
+            return ['value' => $this->evaluateExpression($this->applyNamedRanges(ltrim($formula, '='), $namedRanges)), 'error' => false];
+        } catch (\Throwable $e) {
+            return ['value' => 0, 'error' => true, 'errorMessage' => $e->getMessage()];
+        } finally {
+            $this->cellCache = [];
+        }
+    }
+
+    /**
      * Load this tab's named ranges as name (lowercase) => A1-style reference.
      */
     protected function loadNamedRanges($spreadsheetId, $sheetTabId = null): array
@@ -150,7 +203,14 @@ class FormulaEvaluatorService
      */
     protected function substituteNamedRanges(string $formula, $spreadsheetId, $sheetTabId = null): string
     {
-        $namedRanges = $this->loadNamedRanges($spreadsheetId, $sheetTabId);
+        return $this->applyNamedRanges($formula, $this->loadNamedRanges($spreadsheetId, $sheetTabId));
+    }
+
+    /**
+     * @param  array<string, string>  $namedRanges  lower-case name => A1-style reference
+     */
+    protected function applyNamedRanges(string $formula, array $namedRanges): string
+    {
         if (empty($namedRanges)) {
             return $formula;
         }
@@ -329,7 +389,7 @@ class FormulaEvaluatorService
             return 0.0;
         }
 
-        $value = $this->cellCache[$key]['computed_value'] ?? $this->cellCache[$key]['raw_value'];
+        $value = $this->valueOfCacheEntry($this->cellCache[$key]);
 
         return is_numeric($value) ? (float) $value : 0.0;
     }
@@ -351,7 +411,7 @@ class FormulaEvaluatorService
         $key = "{$row}_{$col}";
 
         if (isset($this->cellCache[$key])) {
-            $value = $this->cellCache[$key]['computed_value'] ?? $this->cellCache[$key]['raw_value'];
+            $value = $this->valueOfCacheEntry($this->cellCache[$key]);
 
             return is_numeric($value) ? (float) $value : 0;
         }

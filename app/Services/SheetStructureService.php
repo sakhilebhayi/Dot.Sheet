@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Cell;
 use App\Models\NamedRange;
+use App\Models\SheetTab;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -36,57 +38,119 @@ class SheetStructureService
      * them leaves the evaluator working from the layout before the change (named_ranges had a
      * five minute life, so a fresh =SUM(Sales) was computed over the old range).
      */
+    /**
+     * Largest tab an insert or delete will work on, measured with the production settings (SQLite WAL,
+     * IMMEDIATE transactions, busy_timeout 5000, CACHE_STORE=database, memory_limit 128M): see the
+     * table in the pull request. Above these the change is refused with a plain sentence rather than
+     * running out of memory halfway or holding the one SQLite write lock for tens of seconds.
+     */
+    public const MAX_CELLS = 1000000;
+
+    public const MAX_FORMULAS = 100000;
+
+    /** Formulas that must be recomputed (a range changed size) in one change. */
+    public const MAX_RECOMPUTED_FORMULAS = 5000;
+
+    /** Cells the recomputed formulas read; they are held in memory while recomputing. */
+    public const MAX_REFERENCED_CELLS = 200000;
+
+    public const TOO_LARGE_MESSAGE = 'This sheet is too large to insert or delete rows or columns here. Export it as CSV, make the change, and import it again.';
+
+    public const BUSY_MESSAGE = 'The sheet is busy; try again in a moment.';
+
     public const CACHE_KEYS = ['cell_values', 'formula_dependency_graph', 'named_ranges'];
 
-    public function insertRow(int $spreadsheetId, int $sheetTabId, int $row): void
+    public function insertRow(int $spreadsheetId, int $sheetTabId, int $row, ?int $expectedVersion = null): void
     {
-        $this->insert($spreadsheetId, $sheetTabId, 'row_index', $row);
+        $this->insert($spreadsheetId, $sheetTabId, 'row_index', $row, $expectedVersion);
     }
 
-    public function deleteRow(int $spreadsheetId, int $sheetTabId, int $row): void
+    public function deleteRow(int $spreadsheetId, int $sheetTabId, int $row, ?int $expectedVersion = null): void
     {
-        $this->delete($spreadsheetId, $sheetTabId, 'row_index', $row);
+        $this->delete($spreadsheetId, $sheetTabId, 'row_index', $row, $expectedVersion);
     }
 
-    public function insertColumn(int $spreadsheetId, int $sheetTabId, int $col): void
+    public function insertColumn(int $spreadsheetId, int $sheetTabId, int $col, ?int $expectedVersion = null): void
     {
-        $this->insert($spreadsheetId, $sheetTabId, 'col_index', $col);
+        $this->insert($spreadsheetId, $sheetTabId, 'col_index', $col, $expectedVersion);
     }
 
-    public function deleteColumn(int $spreadsheetId, int $sheetTabId, int $col): void
+    public function deleteColumn(int $spreadsheetId, int $sheetTabId, int $col, ?int $expectedVersion = null): void
     {
-        $this->delete($spreadsheetId, $sheetTabId, 'col_index', $col);
+        $this->delete($spreadsheetId, $sheetTabId, 'col_index', $col, $expectedVersion);
     }
 
-    protected function insert(int $spreadsheetId, int $sheetTabId, string $axis, int $index): void
+    protected function insert(int $spreadsheetId, int $sheetTabId, string $axis, int $index, ?int $expectedVersion = null): void
     {
+        $this->refuseWhenTooLarge($spreadsheetId, $sheetTabId);
         $this->refuseWhenDataWouldLeaveTheSheet($spreadsheetId, $sheetTabId, $axis, $index);
 
+        $this->inShortTransaction($spreadsheetId, $sheetTabId, $expectedVersion, function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
+            $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index, 1);
+            $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
+            $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
+            StructureVersion::bump($spreadsheetId);
+        });
+    }
+
+    protected function delete(int $spreadsheetId, int $sheetTabId, string $axis, int $index, ?int $expectedVersion = null): void
+    {
+        $this->refuseWhenTooLarge($spreadsheetId, $sheetTabId);
+
+        $this->inShortTransaction($spreadsheetId, $sheetTabId, $expectedVersion, function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
+            $this->cells($spreadsheetId, $sheetTabId)->where($axis, $index)->delete();
+            $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index + 1, -1);
+            $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
+            $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
+            StructureVersion::bump($spreadsheetId);
+        });
+    }
+
+    /**
+     * One transaction (BEGIN IMMEDIATE on SQLite: the whole database is write-locked until it ends, so it
+     * must stay short). When another writer holds the lock for longer than busy_timeout, say so politely
+     * instead of answering 500. Caches are cleared afterwards, also after a rollback.
+     */
+    protected function inShortTransaction(int $spreadsheetId, int $sheetTabId, ?int $expectedVersion, callable $work): void
+    {
         try {
-            DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
-                $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index, 1);
-                $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
-                $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
-                StructureVersion::bump($spreadsheetId);
+            DB::transaction(function () use ($spreadsheetId, $sheetTabId, $expectedVersion, $work) {
+                // The caller's check happened before the lock; this one is under it.
+                if ($expectedVersion !== null) {
+                    if (! SheetTab::whereKey($sheetTabId)->exists()) {
+                        throw new StaleStructure(StructureVersion::TAB_GONE_MESSAGE);
+                    }
+                    if (StructureVersion::current($spreadsheetId, true) !== $expectedVersion) {
+                        throw new StaleStructure(StructureVersion::STALE_MESSAGE);
+                    }
+                }
+
+                $work();
             });
+        } catch (QueryException|\PDOException $e) {
+            if (self::isLockTimeout($e)) {
+                throw new StructureChangeRefused(self::BUSY_MESSAGE, 0, $e);
+            }
+
+            throw $e;
         } finally {
-            // Also after a rollback: the evaluator may have cached the half-done layout.
             $this->forgetCaches($spreadsheetId, $sheetTabId);
         }
     }
 
-    protected function delete(int $spreadsheetId, int $sheetTabId, string $axis, int $index): void
+    public static function isLockTimeout(\Throwable $e): bool
     {
-        try {
-            DB::transaction(function () use ($spreadsheetId, $sheetTabId, $axis, $index) {
-                $this->cells($spreadsheetId, $sheetTabId)->where($axis, $index)->delete();
-                $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index + 1, -1);
-                $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
-                $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
-                StructureVersion::bump($spreadsheetId);
-            });
-        } finally {
-            $this->forgetCaches($spreadsheetId, $sheetTabId);
+        $message = strtolower($e->getMessage());
+
+        return str_contains($message, 'database is locked') || str_contains($message, 'database table is locked')
+            || str_contains($message, 'lock wait timeout') || str_contains($message, 'deadlock');
+    }
+
+    protected function refuseWhenTooLarge(int $spreadsheetId, int $sheetTabId): void
+    {
+        if ($this->cells($spreadsheetId, $sheetTabId)->count() > self::MAX_CELLS
+            || $this->cells($spreadsheetId, $sheetTabId)->whereNotNull('formula')->count() > self::MAX_FORMULAS) {
+            throw new StructureChangeRefused(self::TOO_LARGE_MESSAGE);
         }
     }
 
@@ -191,40 +255,45 @@ class SheetStructureService
     /**
      * Rewrite every reference first, then recompute only the formulas whose answer can have
      * changed: a range that grew or shrank, a reference that was deleted, or a name that now
-     * points somewhere else. A formula that only moved keeps its stored value. (Recomputing
-     * each changed formula and clearing the cache after every one took 45 s for 500 formulas.)
+     * points somewhere else. A formula that only moved keeps its stored value.
+     *
+     * Memory stays flat: formulas are read in chunks as bare rows (no models), the recompute list holds
+     * only id, position and text, and the evaluator gets just the cells those formulas read (one pass with
+     * a cursor), not the whole tab and not through the cache (with CACHE_STORE=database every evaluate()
+     * unserialised the entire tab: 167 MB for 1,000 running totals).
      *
      * @param  list<string>  $resizedNames
      */
     protected function rewriteFormulas(int $spreadsheetId, int $sheetTabId, string $axis, int $index, int $delta, array $resizedNames): void
     {
+        /** @var list<array{id: int, row: int, col: int, formula: string}> $recompute */
         $recompute = [];
 
-        $this->cells($spreadsheetId, $sheetTabId)
+        DB::table('cells')
+            ->where('spreadsheet_id', $spreadsheetId)
+            ->where('sheet_tab_id', $sheetTabId)
             // Only real formulas. A text cell that starts with "=" (formula column empty) is data.
             ->whereNotNull('formula')
-            ->chunkById(500, function ($cells) use ($axis, $index, $delta, $resizedNames, &$recompute) {
+            ->select('id', 'row_index', 'col_index', 'formula', 'raw_value')
+            ->chunkById(1000, function ($cells) use ($axis, $index, $delta, $resizedNames, &$recompute) {
                 foreach ($cells as $cell) {
-                    $updates = [];
-                    $answerChanges = false;
-
                     $original = (string) $cell->formula;
                     [$rewritten, $changesAnswer] = $this->rewriteReferencesDetailed($original, $axis, $index, $delta);
-                    $answerChanges = $changesAnswer;
+
                     if ($rewritten !== $original) {
-                        $updates['formula'] = $rewritten;
+                        $updates = ['formula' => $rewritten];
                         // Imported formulas also keep their text in raw_value.
                         if ($cell->raw_value === $original) {
                             $updates['raw_value'] = $rewritten;
                         }
+                        DB::table('cells')->where('id', $cell->id)->update($updates);
                     }
 
-                    if ($updates !== []) {
-                        $cell->forceFill($updates)->save();
-                    }
-
-                    if ($answerChanges || $this->usesAnyName((string) $cell->formula, $resizedNames)) {
-                        $recompute[] = $cell;
+                    if ($changesAnswer || $this->usesAnyName($rewritten, $resizedNames)) {
+                        $recompute[] = ['id' => (int) $cell->id, 'row' => (int) $cell->row_index, 'col' => (int) $cell->col_index, 'formula' => $rewritten];
+                        if (count($recompute) > self::MAX_RECOMPUTED_FORMULAS) {
+                            throw new StructureChangeRefused(self::TOO_LARGE_MESSAGE);
+                        }
                     }
                 }
             });
@@ -233,22 +302,47 @@ class SheetStructureService
             return;
         }
 
-        // One cache clear and one evaluator for the whole pass; the evaluator reads the cells
-        // and named ranges once and keeps them.
-        $this->forgetCaches($spreadsheetId, $sheetTabId);
         $evaluator = new FormulaEvaluatorService;
+        $namedRanges = $evaluator->namedRangeMap($spreadsheetId, $sheetTabId);
 
-        foreach ($recompute as $cell) {
-            $text = (string) $cell->formula;
+        $needed = [];
+        foreach ($recompute as $formula) {
+            if (! str_contains($formula['formula'], self::REF_ERROR)) {
+                foreach ($evaluator->referencedKeys($formula['formula'], $namedRanges) as $key) {
+                    $needed[$key] = true;
+                }
+            }
+            if (count($needed) > self::MAX_REFERENCED_CELLS) {
+                throw new StructureChangeRefused(self::TOO_LARGE_MESSAGE);
+            }
+        }
 
-            if (str_contains($text, self::REF_ERROR)) {
+        $values = [];
+        foreach (DB::table('cells')->where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $sheetTabId)
+            ->select('row_index', 'col_index', 'raw_value', 'computed_value')->cursor() as $cell) {
+            $key = $cell->row_index.'_'.$cell->col_index;
+            if (isset($needed[$key])) {
+                $values[$key] = $cell->computed_value ?? $cell->raw_value;
+            }
+        }
+
+        // In row order, so a formula that reads an earlier recomputed one sees its new value.
+        usort($recompute, fn ($a, $b) => [$a['row'], $a['col']] <=> [$b['row'], $b['col']]);
+
+        foreach ($recompute as $formula) {
+            if (str_contains($formula['formula'], self::REF_ERROR)) {
                 $computed = self::REF_ERROR;
             } else {
-                $result = $evaluator->evaluate($text, $spreadsheetId, $sheetTabId);
+                $result = $evaluator->evaluateAgainst($formula['formula'], $values, $namedRanges);
                 $computed = $result['error'] ? '#ERROR' : $result['value'];
             }
 
-            $cell->forceFill(['computed_value' => $computed])->save();
+            DB::table('cells')->where('id', $formula['id'])->update(['computed_value' => $computed]);
+
+            $key = $formula['row'].'_'.$formula['col'];
+            if (isset($needed[$key])) {
+                $values[$key] = $computed;
+            }
         }
     }
 

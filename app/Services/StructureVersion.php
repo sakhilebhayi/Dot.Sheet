@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  */
 class StructureVersion
 {
-    public const STALE_MESSAGE = 'Rows or columns were inserted or deleted elsewhere. The sheet was reloaded; please repeat your change.';
+    public const STALE_MESSAGE = 'The sheet structure changed elsewhere (rows or columns were inserted, deleted, sorted or restored). The sheet was reloaded; please repeat your change.';
 
     public const TAB_GONE_MESSAGE = 'This tab no longer exists; the sheet was reloaded.';
 

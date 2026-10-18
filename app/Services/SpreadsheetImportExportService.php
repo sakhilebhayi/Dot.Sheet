@@ -9,6 +9,7 @@ use App\Models\Spreadsheet;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -308,6 +309,7 @@ class SpreadsheetImportExportService
         if ($effectiveRows >= $largeImportThreshold) {
             $chunkSize = 500;
             $chunks = array_chunk($rows, $chunkSize);
+            $structureVersion = StructureVersion::current($spreadsheet->id);
             $jobs = [];
             foreach ($chunks as $index => $chunk) {
                 $jobs[] = new ImportRowsChunkJob(
@@ -316,6 +318,7 @@ class SpreadsheetImportExportService
                     rows: $chunk,
                     startRowIndex: $index * $chunkSize,
                     valuesAreText: $valuesAreText,
+                    structureVersion: $structureVersion,
                 );
             }
 
@@ -323,6 +326,9 @@ class SpreadsheetImportExportService
                 ->name("import:spreadsheet:{$spreadsheet->id}")
                 ->allowFailures()
                 ->dispatch();
+
+            // For the status endpoint's "failed after N of M rows".
+            Cache::put("import:{$batch->id}:rows", $effectiveRows, 86400);
 
             return [
                 'success' => true,

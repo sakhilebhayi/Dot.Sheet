@@ -56,7 +56,8 @@ class FormulaEvaluatorService
             $result = $this->evaluateExpression($formula);
 
             return ['value' => $result, 'error' => false];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // Throwable, not Exception: =MAX() with no arguments raises a ValueError, which is an Error.
             return ['value' => 0, 'error' => true, 'errorMessage' => $e->getMessage()];
         }
     }

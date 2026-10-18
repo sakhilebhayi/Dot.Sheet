@@ -39,18 +39,30 @@ class BulkPasteChunkJob implements ShouldQueue
             return;
         }
 
-        // Rows or columns moved after the paste was queued: its coordinates are out of date. Cancel the
-        // rest of the batch and leave a reason for the editor, which tells the person (a paste that
-        // stopped halfway must not look like one that finished).
-        if ($this->structureVersion !== null && $this->structureVersion !== StructureVersion::current($this->spreadsheetId)) {
-            if ($this->batch() !== null) {
-                Cache::put(self::cancelledKey($this->batch()->id), 'structure', 3600);
-                $this->batch()->cancel();
-            }
+        // The whole chunk is one transaction that first compares the version this paste was queued at
+        // with the stored one, under the write lock: a structure change cannot commit between the check
+        // and the cells landing. Rows or columns that moved mean its coordinates are out of date: cancel
+        // the rest of the batch and leave a reason for the editor, so a paste that stopped halfway cannot
+        // look like one that finished.
+        if ($this->structureVersion !== null) {
+            if (! StructureVersion::writeIfCurrent($this->spreadsheetId, $this->structureVersion, fn () => $this->writeChunk())) {
+                if ($this->batch() !== null) {
+                    Cache::put(self::cancelledKey($this->batch()->id), 'structure', 3600);
+                    $this->batch()->cancel();
+                }
 
-            return;
+                return;
+            }
+        } else {
+            $this->writeChunk();
         }
 
+        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:cell_values");
+        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:formula_dependency_graph");
+    }
+
+    protected function writeChunk(): void
+    {
         foreach ($this->cells as $entry) {
             $row = (int) $entry['row_index'];
             $col = (int) $entry['col_index'];
@@ -98,8 +110,5 @@ class BulkPasteChunkJob implements ShouldQueue
                 ]);
             }
         }
-
-        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:cell_values");
-        Cache::forget("spreadsheet:{$this->spreadsheetId}:tab:{$this->sheetTabId}:formula_dependency_graph");
     }
 }

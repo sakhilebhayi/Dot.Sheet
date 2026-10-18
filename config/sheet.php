@@ -31,4 +31,21 @@ return [
     */
     'scripts_enabled' => filter_var(env('SHEET_SCRIPTS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Insert and delete rows and columns
+    |--------------------------------------------------------------------------
+    |
+    | Off unless SHEET_STRUCTURE_OPS_ENABLED=true. Moving rows and columns under people who are
+    | editing the same sheet is the riskiest thing the editor does (stale grids, queued imports,
+    | formulas, the single SQLite write lock): the code is in place and tested, but the switch stays
+    | off until the multi-process race test (tests/Feature/ProductionSettingsTest.php) has been run
+    | against the target host. While off the context-menu items and toolbar buttons are hidden, every
+    | server handler refuses ("Inserting and deleting rows and columns is not available yet.") and
+    | nothing in SheetStructureService runs. Sort, editing, import, export, tab delete and version
+    | restore are not affected.
+    |
+    */
+    'structure_ops_enabled' => filter_var(env('SHEET_STRUCTURE_OPS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+
 ];

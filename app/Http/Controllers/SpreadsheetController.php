@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ImportRowsChunkJob;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -11,11 +12,16 @@ use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class SpreadsheetController extends Controller
 {
     /** Keys of the settings JSON a request may set. */
+    /** Largest JSON size of one of those keys. */
+    public const MAX_SETTING_BYTES = 100000;
+
     public const EDITABLE_SETTINGS_KEYS = [
         'row_heights', 'col_widths', 'hidden_rows', 'hidden_cols',
         'validation_rules', 'conditional_formatting_rules', 'filter_rules',
@@ -120,6 +126,11 @@ class SpreadsheetController extends Controller
         // a request would also wipe them.
         if (! empty($validated['settings'])) {
             $layout = Arr::only($validated['settings'], self::EDITABLE_SETTINGS_KEYS);
+            foreach ($layout as $key => $value) {
+                if (strlen((string) json_encode($value)) > self::MAX_SETTING_BYTES) {
+                    throw ValidationException::withMessages(["settings.{$key}" => 'This setting is too large (at most '.number_format(self::MAX_SETTING_BYTES).' bytes).']);
+                }
+            }
             if ($layout !== []) {
                 Spreadsheet::updateSettings($spreadsheet->id, fn (array $settings) => array_replace($settings, $layout));
             }
@@ -196,28 +207,40 @@ class SpreadsheetController extends Controller
         }
 
         $total = max(1, (int) $batch->totalJobs);
+        $failed = (int) $batch->failedJobs;
         $processed = (int) $batch->processedJobs();
-        $progress = (int) floor(($processed / $total) * 100);
+        $payload = ['batch_id' => $batchId, 'total' => $total, 'processed' => $processed, 'failed' => $failed];
 
-        if ($batch->finished()) {
-            return response()->json([
-                'status' => $batch->cancelled() ? 'cancelled' : 'finished',
-                'batch_id' => $batchId,
-                'total' => $total,
-                'processed' => $processed,
-                'progress' => 100,
-                'failed' => (int) $batch->failedJobs,
+        // Rows or columns moved while the import was queued: the rest was cancelled, say so.
+        if (Cache::get(ImportRowsChunkJob::cancelledKey($batchId)) === 'structure') {
+            return response()->json($payload + [
+                'status' => 'cancelled', 'progress' => 100,
+                'message' => 'The import was cancelled because rows or columns moved while it was running. Part of it may already be on the sheet: check it and import again.',
             ]);
         }
 
-        return response()->json([
-            'status' => 'running',
-            'batch_id' => $batchId,
-            'total' => $total,
-            'processed' => $processed,
-            'progress' => $progress,
-            'failed' => (int) $batch->failedJobs,
-        ]);
+        // A failed chunk with allowFailures() leaves the batch "pending" for good (the failed job is never
+        // counted as done), which showed as running forever. Nothing left to run but the failures: it is over.
+        if ($failed > 0 && ((int) $batch->pendingJobs - $failed) <= 0) {
+            if (! $batch->cancelled()) {
+                $batch->cancel();
+            }
+            $rows = (int) Cache::get("import:{$batchId}:rows", 0);
+            $written = min($rows, max(0, $total - $failed) * 500);
+
+            return response()->json($payload + [
+                'status' => 'failed', 'progress' => 100, 'rows' => $rows,
+                'message' => "Import failed after {$written} of {$rows} rows; the rows already written are kept.",
+            ]);
+        }
+
+        $progress = (int) floor(($processed / $total) * 100);
+
+        if ($batch->finished()) {
+            return response()->json($payload + ['status' => $batch->cancelled() ? 'cancelled' : 'finished', 'progress' => 100]);
+        }
+
+        return response()->json($payload + ['status' => 'running', 'progress' => $progress]);
     }
 
     /**

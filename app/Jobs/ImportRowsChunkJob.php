@@ -23,7 +23,7 @@ class ImportRowsChunkJob implements ShouldQueue
         public int $spreadsheetId,
         public ?int $sheetTabId,
         public array $rows,
-        public int $startRowIndex = 1,
+        public int $startRowIndex = 0,
     ) {}
 
     public function handle(): void
@@ -46,7 +46,7 @@ class ImportRowsChunkJob implements ShouldQueue
                         'spreadsheet_id' => $this->spreadsheetId,
                         'sheet_tab_id' => $this->sheetTabId,
                         'row_index' => $rowNumber,
-                        'col_index' => $colIndex + 1,
+                        'col_index' => $colIndex,
                     ],
                     [
                         'raw_value' => $value,

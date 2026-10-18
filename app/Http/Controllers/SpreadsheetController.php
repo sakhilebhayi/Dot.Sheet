@@ -6,6 +6,7 @@ use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
+use App\Services\ExportTooLargeException;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -228,7 +229,12 @@ class SpreadsheetController extends Controller
         $this->authorize('view', $spreadsheet);
 
         $service = new SpreadsheetImportExportService;
-        $filePath = $service->exportExcel($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
+
+        try {
+            $filePath = $service->exportExcel($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
+        } catch (ExportTooLargeException $e) {
+            abort(413, $e->getMessage());
+        }
 
         $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.xlsx';
 

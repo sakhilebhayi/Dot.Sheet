@@ -90,6 +90,28 @@ php artisan serve
 
 > **Ecosystem SSO:** Set `APP_URL` to the deployed host (https://sheets.infodot.co.za in production). Users authenticated through InfoDot gain access automatically via Sanctum handoff tokens.
 
+## Inserting and deleting rows and columns
+
+Inserting or deleting a row or column moves the cells of that tab, rewrites the A1-style references in that tab's formulas and named ranges (a reference to a deleted row or column becomes `#REF!`, a range grows and shrinks), and clears the undo history. A counter in the spreadsheet's settings (`structure_version`) goes up on every change; a browser that opened the sheet earlier is refused when it tries to write, reloads, and tells the person to repeat the change.
+
+Known limits (older than this code, not changed by it):
+
+- **No cascade recalculation.** Only formulas whose own range or named range changed are recomputed. A formula that depends on another formula's result is not recalculated when that result changes.
+- **References stay inside the tab and are relative.** A formula cannot refer to another tab, and `$A$1` style absolute references are not understood by the evaluator, so they are not treated specially when rows move.
+- Comments, validation and conditional-format rules, chart ranges and pivot sources keep their old coordinates after an insert or delete.
+
+## Sheets imported before the 0-based import fix
+
+Imports used to count rows and columns from 1 while the editor counts from 0, so every imported cell sits one row and one column off (the file's A1 is at B2). Nothing fixes this automatically. On the server:
+
+```
+php artisan sheet:detect-offset-imports                              # read-only list, explains how it decided
+php artisan sheet:fix-offset-imports --tab=<id>                      # dry run
+php artisan sheet:fix-offset-imports --tab=<id> --confirm            # backup, then move, in one transaction
+```
+
+The fix writes the tab's cells to `storage/app/private/backups/offset-imports/` first, moves cell positions only (imported formulas already use the file's coordinates), checks every formula still evaluates, and rolls back if one does not. Tabs that someone edited in the editor (cell history), or that have comments, named ranges or charts, are never listed.
+
 ## Ecosystem
 
 **Dot.Sheet** is one of the platforms registered in `InfoDot/config/ecosystem.php`, connected via Sanctum SSO. Visit [InfoDot](https://github.com/sakhileb/InfoDot) to explore the full platform map.

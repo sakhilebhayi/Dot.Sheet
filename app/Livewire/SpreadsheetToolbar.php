@@ -101,24 +101,13 @@ class SpreadsheetToolbar extends Component
         $this->structureVersion = StructureVersion::current((int) $spreadsheet_id);
     }
 
-    public function syncStructureVersion(int $version): void
-    {
-        $this->structureVersion = $version;
-    }
-
     /**
-     * Rows or columns moved since the editor loaded: the selected cell's coordinates are
-     * out of date, so do not write to them. Tells the editor, which reloads and explains.
+     * The editor reloaded and says so (event structure-synced): take the stored version. Nothing the
+     * browser sends is used.
      */
-    protected function refuseWhenStructureIsStale(): bool
+    public function syncStructureVersion(): void
     {
-        if (StructureVersion::current((int) $this->spreadsheet_id) === $this->structureVersion) {
-            return false;
-        }
-
-        $this->dispatch('structure-stale');
-
-        return true;
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
     }
 
     public function render()
@@ -210,10 +199,6 @@ class SpreadsheetToolbar extends Component
     {
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
-        if ($this->refuseWhenStructureIsStale()) {
-            return;
-        }
-
         $formatting = [
             'bold' => $this->bold,
             'italic' => $this->italic,
@@ -226,14 +211,20 @@ class SpreadsheetToolbar extends Component
             'number_format' => $this->number_format,
         ];
 
-        Cell::updateOrCreate(
+        $written = StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, fn () => Cell::updateOrCreate(
             [
                 'spreadsheet_id' => $this->spreadsheet_id,
                 'row_index' => $this->selected_row,
                 'col_index' => $this->selected_col,
             ],
             ['formatting' => $formatting]
-        );
+        ));
+
+        if (! $written) {
+            $this->dispatch('structure-stale');
+
+            return;
+        }
 
         // Notify grid to re-render this cell
         $this->dispatch('formatting-applied', [
@@ -250,16 +241,18 @@ class SpreadsheetToolbar extends Component
     {
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
-        if ($this->refuseWhenStructureIsStale()) {
-            return;
-        }
-
         $this->resetFormatting();
 
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
+        $written = StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, fn () => Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('row_index', $this->selected_row)
             ->where('col_index', $this->selected_col)
-            ->update(['formatting' => null]);
+            ->update(['formatting' => null]));
+
+        if (! $written) {
+            $this->dispatch('structure-stale');
+
+            return;
+        }
 
         $this->dispatch('formatting-applied', [
             'row' => $this->selected_row,

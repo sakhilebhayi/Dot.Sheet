@@ -3,8 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\Cell;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
+use App\Services\StructureVersion;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +99,15 @@ class VersionHistoryModal extends Component
 
         $version = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
-            ->findOrFail($versionId);
+            ->find($versionId);
+
+        // The tab (and its versions) can be deleted from another browser while this modal is open.
+        if ($version === null || ! SheetTab::whereKey($this->sheet_tab_id)->exists()) {
+            $this->open = false;
+            $this->dispatch('structure-stale');
+
+            return;
+        }
 
         DB::transaction(function () use ($version) {
             Cell::where('spreadsheet_id', $this->spreadsheet_id)
@@ -117,6 +127,9 @@ class VersionHistoryModal extends Component
                     'updated_at' => now(),
                 ]);
             }
+
+            // Every cell may have moved: editors that had the old grid open must reload.
+            StructureVersion::bump((int) $this->spreadsheet_id);
         });
 
         $this->dispatch('external-cell-updated');

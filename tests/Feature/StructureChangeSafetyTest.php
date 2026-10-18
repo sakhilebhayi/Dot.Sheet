@@ -230,35 +230,28 @@ class StructureChangeSafetyTest extends TestCase
         $this->editor()->set('structureVersion', 99);
     }
 
-    public function test_the_import_endpoint_refuses_a_stale_page(): void
+    public function test_an_import_is_not_refused_because_the_page_is_stale(): void
     {
-        $file = UploadedFile::fake()->createWithContent('data.csv', "a,b\n");
+        // An import writes at the file's own coordinates from row 0: what the page shows is irrelevant.
         $stale = StructureVersion::current($this->spreadsheet->id);
         StructureVersion::bump($this->spreadsheet->id);
 
         $this->actingAs($this->user)
-            ->post(route('spreadsheets.import', $this->spreadsheet), ['file' => $file, 'structure_version' => $stale])
-            ->assertStatus(409)
-            ->assertJson(['success' => false, 'error' => StructureVersion::STALE_MESSAGE]);
-        $this->assertSame(0, $this->cellCount());
-
-        $this->actingAs($this->user)
-            ->post(route('spreadsheets.import', $this->spreadsheet), ['file' => UploadedFile::fake()->createWithContent('data.csv', "a,b\n"), 'structure_version' => StructureVersion::current($this->spreadsheet->id)])
+            ->post(route('spreadsheets.import', $this->spreadsheet), ['file' => UploadedFile::fake()->createWithContent('data.csv', "a,b\n"), 'structure_version' => $stale])
             ->assertOk()->assertJson(['success' => true]);
+
         $this->assertSame(2, $this->cellCount());
     }
 
-    public function test_queued_pastes_and_imports_skip_when_the_structure_moved(): void
+    public function test_queued_pastes_skip_when_the_structure_moved_but_queued_imports_do_not(): void
     {
         $version = StructureVersion::current($this->spreadsheet->id);
         StructureVersion::bump($this->spreadsheet->id);
 
         (new BulkPasteChunkJob($this->spreadsheet->id, $this->tab->id, [['row_index' => 0, 'col_index' => 0, 'value' => 'late']], $this->user->id, $version))->handle();
-        (new ImportRowsChunkJob($this->spreadsheet->id, $this->tab->id, [['late']], 0, $version))->handle();
-
         $this->assertSame(0, $this->cellCount());
 
-        (new ImportRowsChunkJob($this->spreadsheet->id, $this->tab->id, [['now']], 0, StructureVersion::current($this->spreadsheet->id)))->handle();
+        (new ImportRowsChunkJob($this->spreadsheet->id, $this->tab->id, [['now']], 0))->handle();
         $this->assertSame('now', $this->raw(0, 0));
     }
 

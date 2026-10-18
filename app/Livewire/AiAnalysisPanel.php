@@ -88,9 +88,13 @@ class AiAnalysisPanel extends Component
         $this->loadWorkflowRules();
     }
 
-    public function syncStructureVersion(int $version): void
+    /**
+     * The editor reloaded and says so (event structure-synced): take the stored version. Nothing the
+     * browser sends is used.
+     */
+    public function syncStructureVersion(): void
     {
-        $this->structureVersion = $version;
+        $this->structureVersion = $this->spreadsheet_id ? StructureVersion::current((int) $this->spreadsheet_id) : 0;
     }
 
     public function hydrate(): void
@@ -316,39 +320,43 @@ class AiAnalysisPanel extends Component
 
         $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
 
-        // Rows or columns moved since the editor loaded: the range the person sees is not where
-        // that data is any more. Tell the editor, which reloads and explains.
-        if (StructureVersion::current((int) $this->spreadsheet_id) !== $this->structureVersion) {
-            $this->dispatch('structure-stale');
-
-            return;
-        }
-
         $this->loading = true;
 
         try {
             [$startRow, $endRow, $startCol, $endCol] = $this->parseRangeBounds($this->selected_range);
 
-            $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-                ->whereBetween('row_index', [$startRow, $endRow])
-                ->whereBetween('col_index', [$startCol, $endCol])
-                ->get();
-
             $updated = 0;
-            foreach ($cells as $cell) {
-                if (! is_string($cell->raw_value)) {
-                    continue;
-                }
 
-                $trimmed = $this->ai_service->normalizeCellTextForCleaning($cell->raw_value);
-                if ($trimmed === $cell->raw_value) {
-                    continue;
-                }
+            // Read and write under one lock, after checking the structure version: rows or columns
+            // that moved since the editor loaded mean the range the person sees is not where the data is.
+            $written = StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, function () use ($startRow, $endRow, $startCol, $endCol, &$updated) {
+                $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+                    ->whereBetween('row_index', [$startRow, $endRow])
+                    ->whereBetween('col_index', [$startCol, $endCol])
+                    ->get();
 
-                $cell->raw_value = $trimmed;
-                $cell->updated_at = now();
-                $cell->save();
-                $updated++;
+                foreach ($cells as $cell) {
+                    if (! is_string($cell->raw_value)) {
+                        continue;
+                    }
+
+                    $trimmed = $this->ai_service->normalizeCellTextForCleaning($cell->raw_value);
+                    if ($trimmed === $cell->raw_value) {
+                        continue;
+                    }
+
+                    $cell->raw_value = $trimmed;
+                    $cell->updated_at = now();
+                    $cell->save();
+                    $updated++;
+                }
+            });
+
+            if (! $written) {
+                $this->loading = false;
+                $this->dispatch('structure-stale');
+
+                return;
             }
 
             $this->success_message = $updated > 0
@@ -539,10 +547,14 @@ class AiAnalysisPanel extends Component
             return;
         }
 
-        $settings = $this->normalizeArrayValue($spreadsheet->settings ?? []);
-        $settings['ai_workflows'] = $this->workflow_rules;
-        $spreadsheet->settings = $settings;
-        $spreadsheet->save();
+        $rules = $this->workflow_rules;
+
+        // Merge one key into the stored settings under the write lock.
+        Spreadsheet::updateSettings((int) $spreadsheet->id, function (array $settings) use ($rules) {
+            $settings['ai_workflows'] = $rules;
+
+            return $settings;
+        });
     }
 
     protected function normalizeArrayValue(mixed $value): array

@@ -1,6 +1,4 @@
 <div class="w-full h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-    {{-- The structure version this grid was loaded at; the import script sends it back so a stale page cannot import over moved rows. --}}
-    <span id="structureVersionBadge" data-version="{{ $structureVersion }}" hidden></span>
     @if ($structureNotice !== '')
         <div role="status" class="flex items-center justify-between gap-3 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 border-b border-amber-300 dark:border-amber-700 px-4 py-2 text-sm">
             <span>{{ $structureNotice }}</span>
@@ -1025,7 +1023,6 @@
         const formData = new FormData();
         formData.append('file', file);
         formData.append('sheet_tab_id', activeSheetTabId);
-        formData.append('structure_version', document.getElementById('structureVersionBadge')?.dataset.version ?? '');
         formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
 
         fetch('/spreadsheets/{{ $spreadsheet->id }}/import', {

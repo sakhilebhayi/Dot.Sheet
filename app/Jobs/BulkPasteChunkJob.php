@@ -28,14 +28,26 @@ class BulkPasteChunkJob implements ShouldQueue
         public ?int $structureVersion = null,
     ) {}
 
+    public static function cancelledKey(string $batchId): string
+    {
+        return "bulk-paste:{$batchId}:cancelled";
+    }
+
     public function handle(): void
     {
         if ($this->batch()?->cancelled()) {
             return;
         }
 
-        // Rows or columns moved after the paste was queued: its coordinates are out of date.
+        // Rows or columns moved after the paste was queued: its coordinates are out of date. Cancel the
+        // rest of the batch and leave a reason for the editor, which tells the person (a paste that
+        // stopped halfway must not look like one that finished).
         if ($this->structureVersion !== null && $this->structureVersion !== StructureVersion::current($this->spreadsheetId)) {
+            if ($this->batch() !== null) {
+                Cache::put(self::cancelledKey($this->batch()->id), 'structure', 3600);
+                $this->batch()->cancel();
+            }
+
             return;
         }
 

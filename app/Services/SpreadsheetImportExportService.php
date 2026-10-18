@@ -315,7 +315,6 @@ class SpreadsheetImportExportService
                     sheetTabId: $sheetTab?->id,
                     rows: $chunk,
                     startRowIndex: $index * $chunkSize,
-                    structureVersion: StructureVersion::current($spreadsheet->id),
                     valuesAreText: $valuesAreText,
                 );
             }

@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Cell;
 use App\Services\SpreadsheetImportExportService;
-use App\Services\StructureVersion;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,6 +13,7 @@ use Illuminate\Queue\SerializesModels;
 
 class ImportRowsChunkJob implements ShouldQueue
 {
+    use Batchable;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -26,14 +27,14 @@ class ImportRowsChunkJob implements ShouldQueue
         public ?int $sheetTabId,
         public array $rows,
         public int $startRowIndex = 0,
-        public ?int $structureVersion = null,
         public bool $valuesAreText = false,
     ) {}
 
     public function handle(): void
     {
-        // Rows or columns moved after the import was queued: its coordinates are out of date.
-        if ($this->structureVersion !== null && $this->structureVersion !== StructureVersion::current($this->spreadsheetId)) {
+        // An import writes at the file's own coordinates from row 0, so moving rows in the editor
+        // meanwhile does not make it stale (unlike a paste, which lands relative to the selection).
+        if ($this->batch()?->cancelled()) {
             return;
         }
 

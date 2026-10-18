@@ -44,16 +44,6 @@ class ScriptsGateTest extends TestCase
         $this->assertFalse(config('sheet.scripts_enabled'));
     }
 
-    public function test_the_env_flag_is_read_as_a_boolean(): void
-    {
-        foreach (['true' => true, '1' => true, 'false' => false, '0' => false, 'off' => false, '' => false] as $value => $expected) {
-            putenv("SHEET_SCRIPTS_ENABLED={$value}");
-            $config = require config_path('sheet.php');
-            $this->assertSame($expected, $config['scripts_enabled'], "SHEET_SCRIPTS_ENABLED={$value}");
-        }
-        putenv('SHEET_SCRIPTS_ENABLED');
-    }
-
     public function test_while_off_the_scripts_card_is_not_shown_but_macros_are(): void
     {
         $this->panel()

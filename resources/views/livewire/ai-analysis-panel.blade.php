@@ -1,4 +1,4 @@
-<!-- AI Analysis Panel Sidebar -->
+{{-- AI Analysis Panel Sidebar --}}
 <div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-screen overflow-hidden">
     
     <!-- Header -->

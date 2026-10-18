@@ -1,4 +1,4 @@
-<!-- Pivot Table Builder Panel -->
+{{-- Pivot Table Builder Panel --}}
 <div>
     @if (count($pivots))
         <div class="flex flex-wrap gap-2 mb-3">

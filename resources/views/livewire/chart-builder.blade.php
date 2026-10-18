@@ -1,4 +1,4 @@
-<!-- Chart Builder Panel -->
+{{-- Chart Builder Panel --}}
 <div>
     <!-- Saved Charts Badges -->
     @if (count($charts))

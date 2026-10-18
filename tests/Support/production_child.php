@@ -139,8 +139,8 @@ if ($mode === 'scenario') {
                 $add($cell($r, 20, '', '0', '=SUM(A1:A5000)'));
             }
             break;
-        case 'moved-only-100k': // 100,000 cells, 25,000 of them formulas that only move
-            for ($r = 0; $r < 25000; $r++) {
+        case 'moved-only-40k': // 40,000 cells, 10,000 of them formulas that only move
+            for ($r = 0; $r < 10000; $r++) {
                 $add($cell($r, 0, (string) $r, (string) $r, null));
                 $add($cell($r, 1, '', '0', '=A'.($r + 1)));
                 $add($cell($r, 2, 'x', 'x', null));

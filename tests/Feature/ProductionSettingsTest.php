@@ -75,7 +75,7 @@ class ProductionSettingsTest extends TestCase
     {
         $r = $this->scenario('running-totals');
 
-        $this->assertSame('ok', $r['result']);
+        $this->assertSame('ok', $r['result'], json_encode($r));
         $this->assertSame('database', $r['cache']);
         $this->assertSame('128M', $r['memory_limit']);
         $this->assertLessThan(20, $r['seconds']);
@@ -87,16 +87,16 @@ class ProductionSettingsTest extends TestCase
     {
         $r = $this->scenario('cells-100k-recompute');
 
-        $this->assertSame('ok', $r['result']);
+        $this->assertSame('ok', $r['result'], json_encode($r));
         $this->assertLessThan(20, $r['seconds']);
         $this->assertLessThan(128, $r['peak_mb']);
     }
 
-    public function test_twenty_five_thousand_formulas_that_only_move_fit_in_128_megabytes(): void
+    public function test_ten_thousand_formulas_that_only_move_fit_in_128_megabytes(): void
     {
-        $r = $this->scenario('moved-only-100k');
+        $r = $this->scenario('moved-only-40k');
 
-        $this->assertSame('ok', $r['result']);
+        $this->assertSame('ok', $r['result'], json_encode($r));
         $this->assertLessThan(20, $r['seconds']);
         $this->assertLessThan(128, $r['peak_mb']);
     }

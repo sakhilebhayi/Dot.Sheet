@@ -18,7 +18,7 @@ name: Deploy to Production
 #   deploy  Every release after that: needs the checkout on this pipeline.
 #
 # What a run does, in order:
-#   1. CI gate (ci.yml): tests, Pint, frontend build + Vite manifest check.
+#   1. CI gate (ci.yml): tests, Pint, PHPStan, frontend build + Vite manifest check.
 #   2. Builds the frontend on the runner (the host has no Node) and syncs it to
 #      public/build.incoming on the host.
 #   3. On the host: rollback copy, maintenance mode, code to origin/main,

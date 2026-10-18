@@ -134,7 +134,7 @@ class SpreadsheetImportExportService
             try {
                 $data = Excel::toArray(new class implements ToArray
                 {
-                    public function toArray(array $array): array
+                    public function array(array $array): array
                     {
                         return $array;
                     }
@@ -190,7 +190,7 @@ class SpreadsheetImportExportService
         try {
             $data = Excel::toArray(new class implements ToArray
             {
-                public function toArray(array $array): array
+                public function array(array $array): array
                 {
                     return $array;
                 }

@@ -152,6 +152,9 @@
             .ds-input:focus {
                 border-color: var(--gold);
                 box-shadow: 0 0 0 3px rgba(227, 171, 31, 0.22);
+                /* The forms plugin's transparent focus outline (what Tailwind 3 left in place over `outline: none` above; it still shows in forced-colors mode). */
+                outline: 2px solid transparent;
+                outline-offset: 2px;
             }
 
             .ds-input::placeholder { color: rgba(76, 95, 88, 0.55); }

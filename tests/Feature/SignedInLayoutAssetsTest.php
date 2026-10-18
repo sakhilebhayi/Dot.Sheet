@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Vite;
 use Tests\TestCase;
 
 /**
- * Every signed-in page (and the public share page, for a signed-in viewer) uses layouts/app.blade.php. It
+ * Every signed-in page uses layouts/app.blade.php (the public share page has its own script-free layout). It
  * must load the Vite-built stylesheet and script, not the Tailwind Play CDN and a
  * second, CDN copy of Alpine (Livewire already ships its own: a second one made
  * every Alpine component that touches Livewire fail). Tests run with Vite faked
@@ -77,7 +77,7 @@ class SignedInLayoutAssetsTest extends TestCase
         $this->assertBuiltAssetsOnly($html);
     }
 
-    public function test_the_public_share_page_loads_the_built_assets(): void
+    public function test_the_public_share_page_loads_the_built_stylesheet_and_no_script(): void
     {
         $owner = User::factory()->withPersonalTeam()->create();
         Spreadsheet::create([
@@ -89,13 +89,15 @@ class SignedInLayoutAssetsTest extends TestCase
             'public_token' => 'shared-token-123',
         ]);
 
-        // The page renders the Jetstream navigation menu, which needs a signed-in user.
-        $html = $this->withHotFile(fn () => $this->actingAs($owner)
-            ->get(route('spreadsheets.public', 'shared-token-123'))
+        // Opened without signing in: the page has its own layout, with the stylesheet but no script.
+        $html = $this->withHotFile(fn () => $this->get(route('spreadsheets.public', 'shared-token-123'))
             ->assertOk()
             ->getContent());
 
-        $this->assertBuiltAssetsOnly($html);
+        $this->assertStringContainsString('resources/css/signed-in.css', $html);
+        $this->assertStringNotContainsString('resources/js/app.js', $html);
+        $this->assertStringNotContainsString('cdn.tailwindcss.com', $html);
+        $this->assertStringNotContainsString('unpkg.com', $html);
     }
 
     public function test_the_layout_source_has_no_cdn_tailwind_or_alpine(): void

@@ -59,32 +59,32 @@
     <!-- Tab Navigation -->
     <div class="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
         <button wire:click="switchTab('insights')" 
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'insights' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'insights' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
             💡 Insights
         </button>
         <button wire:click="switchTab('cleaning')"
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'cleaning' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'cleaning' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
             🧹 Cleaning
         </button>
         <button wire:click="switchTab('charts')"
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'charts' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'charts' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
             📊 Charts
         </button>
         <button wire:click="switchTab('sentiment')"
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'sentiment' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'sentiment' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
             🙂 Sentiment
         </button>
         <button wire:click="switchTab('ocr')"
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'ocr' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'ocr' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
             🖼 OCR
         </button>
         <button wire:click="switchTab('workflows')"
-                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $this->active_tab === 'workflows' }"
+                :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'workflows' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
             ⚙ Workflows
         </button>
@@ -147,7 +147,7 @@
                     
                     @if ($selected_range && count($cleaning_suggestions) > 0)
                         <button wire:click="cleanData" class="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm"
-                                :disabled="$loading">
+                                :disabled="$wire.loading">
                             Apply AI Cleaning Fixes
                         </button>
                     @endif

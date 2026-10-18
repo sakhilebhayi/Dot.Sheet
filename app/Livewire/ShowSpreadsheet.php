@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Events\SpreadsheetCellUpdated;
 use App\Events\SpreadsheetCursorMoved;
+use App\Http\Controllers\SpreadsheetController;
 use App\Jobs\BulkPasteChunkJob;
 use App\Models\Cell;
 use App\Models\CellHistory;
@@ -13,10 +14,19 @@ use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\FormulaEvaluatorService;
+use App\Services\SheetStructureService;
+use App\Services\StaleStructure;
+use App\Services\StructureChangeRefused;
+use App\Services\StructureVersion;
+use App\Services\WriteLock;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -45,9 +55,9 @@ class ShowSpreadsheet extends Component
 
     public $scrollColOffset = 0;         // Current scroll position (columns)
 
-    public $totalRows = 1000000;         // Total rows in grid (1M+ target)
+    public $totalRows = SheetStructureService::GRID_ROWS;         // Total rows in grid (1M+ target)
 
-    public $totalCols = 100;             // Total columns (A-CV)
+    public $totalCols = SheetStructureService::GRID_COLS;             // Total columns (A-CV)
 
     public $rowHeight = 28;              // px
 
@@ -106,6 +116,17 @@ class ShowSpreadsheet extends Component
 
     public $filterRules = [];
 
+    /**
+     * The structure version (see StructureVersion) this component's grid was loaded at.
+     * Locked: the browser may not set it, or the stale-write check could be switched off.
+     */
+    #[Locked]
+    public int $structureVersion = 0;
+
+    // A sentence for the person at the keyboard: stale grid reloaded, undo history cleared,
+    // an insert refused.
+    public string $structureNotice = '';
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->spreadsheet_id = $spreadsheet_id;
@@ -126,6 +147,8 @@ class ShowSpreadsheet extends Component
 
         // Check authorization
         $this->authorize('view', $this->spreadsheet);
+
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
 
         $this->loadSheetTabs();
 
@@ -170,6 +193,13 @@ class ShowSpreadsheet extends Component
 
     public function switchTab($sheetTabId): void
     {
+        // Stale (something moved or a tab went away): reload first, then switch if the tab is still there.
+        // Switching writes nothing, so there is nothing to refuse and nothing to ask the person to repeat.
+        if ($this->staleReason() !== null) {
+            $this->resyncAfterStructureChange();
+            $this->structureNotice = '';
+        }
+
         $tab = $this->findOwnTab((int) $sheetTabId);
         if (! $tab || (int) $sheetTabId === (int) $this->activeSheetTabId) {
             return;
@@ -223,6 +253,10 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
         if (count($this->sheetTabs) <= 1 || ! $this->findOwnTab((int) $sheetTabId)) {
             // A workbook always needs at least one tab.
             return;
@@ -230,9 +264,25 @@ class ShowSpreadsheet extends Component
 
         $wasActive = (int) $sheetTabId === (int) $this->activeSheetTabId;
 
-        SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('id', $sheetTabId)
-            ->delete();
+        // Deleting a tab takes its cells with it: every editor still showing it must reload, so the
+        // structure version goes up with the delete, in the same transaction.
+        $deleted = false;
+        $this->guardedWrite(function () use ($sheetTabId, &$deleted) {
+            SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
+                ->where('id', $sheetTabId)
+                ->delete();
+            StructureVersion::bump((int) $this->spreadsheet_id);
+            $deleted = true;
+        });
+
+        if (! $deleted) {
+            return;
+        }
+
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
+        $this->undoStack = [];
+        $this->redoStack = [];
+        $this->dispatch('structure-synced');
 
         $this->loadSheetTabs();
 
@@ -251,9 +301,180 @@ class ShowSpreadsheet extends Component
         $this->loadViewportCells(true);
     }
 
-    protected function loadFeatureSettings(): void
+    /**
+     * Why this component's grid can no longer be written to, or null when it still matches the
+     * stored cells: rows or columns moved since it loaded, or its tab was deleted.
+     */
+    protected function staleReason(bool $lock = false): ?string
     {
-        $settings = $this->normalizeArrayValue($this->spreadsheet->settings ?? []);
+        if ($this->activeSheetTabId && ! SheetTab::whereKey($this->activeSheetTabId)->exists()) {
+            return StructureVersion::TAB_GONE_MESSAGE;
+        }
+
+        return StructureVersion::current((int) $this->spreadsheet_id, $lock) === $this->structureVersion
+            ? null
+            : StructureVersion::STALE_MESSAGE;
+    }
+
+    /**
+     * True (after reloading the grid and saying so) when rows or columns were inserted or deleted
+     * since this component loaded: its coordinates no longer match the stored cells, so the write
+     * that asked must not happen. A quick check before the work; the check that counts is the one
+     * guardedWrite() makes inside the transaction that writes.
+     */
+    protected function refuseWhenStructureIsStale(): bool
+    {
+        $reason = $this->staleReason();
+        if ($reason === null) {
+            return false;
+        }
+
+        $this->resyncAfterStructureChange();
+        $this->structureNotice = $reason;
+
+        return true;
+    }
+
+    /**
+     * Run a cell write inside one transaction (BEGIN IMMEDIATE on SQLite) that first re-checks the
+     * structure version under the write lock. A structure change committing between a check and the
+     * write used to let a stale write through: onto a moved cell (unique key error) or onto the old
+     * coordinate of an empty cell. Returns false, after reloading and saying so, when it refused.
+     */
+    protected function guardedWrite(callable $write): bool
+    {
+        try {
+            DB::transaction(function () use ($write) {
+                $reason = $this->staleReason(lock: true);
+                if ($reason !== null) {
+                    throw new StaleStructure($reason);
+                }
+
+                $write();
+            });
+        } catch (StaleStructure $e) {
+            $this->resyncAfterStructureChange();
+            $this->structureNotice = $e->getMessage();
+
+            return false;
+        } catch (StructureChangeRefused $e) {
+            $this->structureNotice = $e->getMessage();
+
+            return false;
+        } catch (QueryException|\PDOException $e) {
+            // Another writer held the SQLite write lock for longer than busy_timeout: nothing was written.
+            if (! SheetStructureService::isLockTimeout($e)) {
+                throw $e;
+            }
+            $this->structureNotice = SheetStructureService::BUSY_MESSAGE;
+
+            return false;
+        }
+
+        $this->structureNotice = '';
+
+        return true;
+    }
+
+    /**
+     * Reload everything that holds coordinates: the tab list, the grid, the per-row and per-column
+     * settings, the undo history (its entries point at coordinates that moved) and the child components.
+     */
+    protected function resyncAfterStructureChange(): void
+    {
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
+        $this->spreadsheet->refresh();
+        $this->loadSheetTabs();
+        if (! $this->findOwnTab((int) $this->activeSheetTabId)) {
+            $this->activeSheetTabId = $this->sheetTabs[0]['id'] ?? null;
+            $this->cellData = [];
+            $this->dispatch('sheet-tab-switched', sheetTabId: $this->activeSheetTabId);
+        }
+        $this->undoStack = [];
+        $this->redoStack = [];
+        $this->editingCell = null;
+        $this->editingValue = '';
+        $this->formulaErrors = [];
+        $this->loadFeatureSettings();
+        $this->loadedWindows = [];
+        $this->loadViewportCells(true);
+        $this->dispatch('structure-synced');
+    }
+
+    /**
+     * A child component (toolbar, AI panel) found out this page is stale.
+     */
+    #[On('structure-stale')]
+    public function reloadBecauseStructureChanged(): void
+    {
+        $this->resyncAfterStructureChange();
+        $this->structureNotice = $this->staleReason() ?? StructureVersion::STALE_MESSAGE;
+    }
+
+    #[On('sheet-busy')]
+    public function showSheetBusy(): void
+    {
+        $this->structureNotice = WriteLock::BUSY_MESSAGE;
+    }
+
+    public function dismissStructureNotice(): void
+    {
+        $this->structureNotice = '';
+    }
+
+    /**
+     * Run one insert/delete of a row or column and bring this component in line with it.
+     *
+     * @param  'insert'|'delete'  $operation
+     * @param  'row'|'col'  $axis
+     */
+    protected function changeStructure(string $operation, string $axis): void
+    {
+        $this->authorize('update', $this->spreadsheet);
+
+        if (! config('sheet.structure_ops_enabled')) {
+            $this->structureNotice = SheetStructureService::DISABLED_MESSAGE;
+
+            return;
+        }
+
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
+        $index = max(0, (int) ($axis === 'row' ? $this->selectedRow : $this->selectedCol));
+        $service = app(SheetStructureService::class);
+        $spreadsheetId = (int) $this->spreadsheet_id;
+        $tabId = (int) $this->activeSheetTabId;
+
+        try {
+            match ([$operation, $axis]) {
+                ['insert', 'row'] => $service->insertRow($spreadsheetId, $tabId, $index, $this->structureVersion),
+                ['delete', 'row'] => $service->deleteRow($spreadsheetId, $tabId, $index, $this->structureVersion),
+                ['insert', 'col'] => $service->insertColumn($spreadsheetId, $tabId, $index, $this->structureVersion),
+                ['delete', 'col'] => $service->deleteColumn($spreadsheetId, $tabId, $index, $this->structureVersion),
+            };
+        } catch (StaleStructure $e) {
+            $this->resyncAfterStructureChange();
+            $this->structureNotice = $e->getMessage();
+
+            return;
+        } catch (StructureChangeRefused $e) {
+            $this->structureNotice = $e->getMessage();
+
+            return;
+        }
+
+        $hadUndoHistory = $this->undoStack !== [] || $this->redoStack !== [];
+
+        // Undo entries hold coordinates and would hit whatever moved there: drop them.
+        $this->resyncAfterStructureChange();
+        $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
+    }
+
+    protected function loadFeatureSettings(?array $stored = null): void
+    {
+        $settings = $this->normalizeArrayValue($stored ?? $this->spreadsheet->settings ?? []);
 
         $this->rowHeights = $this->normalizeArrayValue($settings['row_heights'] ?? []);
         $this->colWidths = $this->normalizeArrayValue($settings['col_widths'] ?? []);
@@ -264,19 +485,41 @@ class ShowSpreadsheet extends Component
         $this->filterRules = $this->normalizeArrayValue($settings['filter_rules'] ?? []);
     }
 
-    protected function saveFeatureSettings(): void
+    /**
+     * Change the layout settings (sizes, hidden rows and columns, rules): the change is applied to the
+     * STORED settings inside the write-locked updateSettings(), so it only touches what it changes and
+     * never writes back this component's older copy of what others changed; and it is checked against
+     * the structure version first, because these settings carry row and column numbers. The component
+     * then adopts the stored result. False (reloaded and told, or busy) when nothing was written.
+     *
+     * @param  callable(array<string, mixed>): array<string, mixed>  $change
+     */
+    protected function updateLayout(callable $change): bool
     {
-        $settings = $this->normalizeArrayValue($this->spreadsheet->settings ?? []);
-        $settings['row_heights'] = $this->rowHeights;
-        $settings['col_widths'] = $this->colWidths;
-        $settings['hidden_rows'] = array_values(array_unique(array_map('intval', $this->hiddenRows)));
-        $settings['hidden_cols'] = array_values(array_unique(array_map('intval', $this->hiddenCols)));
-        $settings['validation_rules'] = $this->validationRules;
-        $settings['conditional_formatting_rules'] = $this->conditionalFormattingRules;
-        $settings['filter_rules'] = $this->filterRules;
+        $stored = null;
 
-        $this->spreadsheet->settings = $settings;
-        $this->spreadsheet->save();
+        $written = $this->guardedWrite(function () use ($change, &$stored) {
+            $stored = Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($change) {
+                $new = $change($settings);
+
+                foreach (SpreadsheetController::EDITABLE_SETTINGS_KEYS as $key) {
+                    if (strlen((string) json_encode($new[$key] ?? [])) > SpreadsheetController::MAX_SETTING_BYTES) {
+                        throw new StructureChangeRefused('The layout settings of this sheet are too large to add to.');
+                    }
+                }
+
+                return $new;
+            });
+        });
+
+        if (! $written) {
+            return false;
+        }
+
+        $this->spreadsheet->refresh();
+        $this->loadFeatureSettings($stored);
+
+        return true;
     }
 
     /**
@@ -463,7 +706,7 @@ class ShowSpreadsheet extends Component
         $this->ensureVisible($row, $col);
 
         // Notify sibling components (toolbar/comments) about selected cell
-        $this->dispatch('cell-selected', row: $row, col: $col);
+        $this->dispatch('cell-selected', row: $row, col: $col, sheetTabId: $this->activeSheetTabId);
 
         // Broadcast cursor movement to other connected collaborators
         if (Auth::check()) {
@@ -492,6 +735,10 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
         if (! $this->editingCell) {
             return;
         }
@@ -500,72 +747,94 @@ class ShowSpreadsheet extends Component
         $row = (int) $row;
         $col = (int) $col;
 
-        // Find or create cell
-        $cell = $this->cellsQuery()
-            ->where('row_index', $row)
-            ->where('col_index', $col)
-            ->first();
+        $invalid = false;
+        $cell = null;
+        $oldValue = null;
+        $oldState = [];
+        $rawValue = '';
+        $computedValue = null;
+        $formula = null;
 
-        $oldValue = $cell?->raw_value;
-        $oldState = [
-            'raw_value' => $cell?->raw_value,
-            'computed_value' => $cell?->computed_value,
-            'formula' => $cell?->formula,
-        ];
+        // Everything from reading the cell to writing it and its history is one transaction that
+        // re-checks the structure version first (see guardedWrite()).
+        $written = $this->guardedWrite(function () use ($value, $row, $col, &$invalid, &$cell, &$oldValue, &$oldState, &$rawValue, &$computedValue, &$formula) {
+            // Find or create cell
+            $cell = $this->cellsQuery()
+                ->where('row_index', $row)
+                ->where('col_index', $col)
+                ->first();
 
-        $validationError = $this->validateCellInput($row, $col, (string) $value);
-        if ($validationError !== null) {
-            $this->formulaErrors["{$row}_{$col}"] = $validationError;
+            $oldValue = $cell?->raw_value;
+            $oldState = [
+                'raw_value' => $cell?->raw_value,
+                'computed_value' => $cell?->computed_value,
+                'formula' => $cell?->formula,
+            ];
+
+            $validationError = $this->validateCellInput($row, $col, (string) $value);
+            if ($validationError !== null) {
+                $this->formulaErrors["{$row}_{$col}"] = $validationError;
+                $invalid = true;
+
+                return;
+            }
+
+            unset($this->formulaErrors["{$row}_{$col}"]);
+
+            $isFormula = str_starts_with($value, '=');
+
+            if ($isFormula) {
+                // Parse and evaluate formula
+                $result = $this->evaluateFormula($value);
+                $computedValue = $result['error'] ? '#ERROR' : $result['value'];
+                $formula = $value;
+                $rawValue = '';
+            } else {
+                $computedValue = null;
+                $formula = null;
+                $rawValue = $value;
+            }
+
+            // Update or create cell
+            if ($cell) {
+                $cell->update([
+                    'raw_value' => $rawValue,
+                    'computed_value' => $computedValue,
+                    'formula' => $formula,
+                ]);
+            } else {
+                $cell = Cell::create([
+                    'spreadsheet_id' => $this->spreadsheet_id,
+                    'sheet_tab_id' => $this->activeSheetTabId,
+                    'row_index' => $row,
+                    'col_index' => $col,
+                    'raw_value' => $rawValue,
+                    'computed_value' => $computedValue,
+                    'formula' => $formula,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            // Record in history
+            CellHistory::create([
+                'cell_id' => $cell->id,
+                'user_id' => Auth::id(),
+                'old_value' => $oldValue,
+                'new_value' => $value,
+                'created_at' => now(),
+            ]);
+        });
+
+        if (! $written) {
+            return;
+        }
+
+        if ($invalid) {
             $this->editingCell = null;
             $this->editingValue = '';
 
             return;
         }
-
-        unset($this->formulaErrors["{$row}_{$col}"]);
-
-        $isFormula = str_starts_with($value, '=');
-
-        if ($isFormula) {
-            // Parse and evaluate formula
-            $result = $this->evaluateFormula($value);
-            $computedValue = $result['error'] ? '#ERROR' : $result['value'];
-            $formula = $value;
-            $rawValue = '';
-        } else {
-            $computedValue = null;
-            $formula = null;
-            $rawValue = $value;
-        }
-
-        // Update or create cell
-        if ($cell) {
-            $cell->update([
-                'raw_value' => $rawValue,
-                'computed_value' => $computedValue,
-                'formula' => $formula,
-            ]);
-        } else {
-            $cell = Cell::create([
-                'spreadsheet_id' => $this->spreadsheet_id,
-                'sheet_tab_id' => $this->activeSheetTabId,
-                'row_index' => $row,
-                'col_index' => $col,
-                'raw_value' => $rawValue,
-                'computed_value' => $computedValue,
-                'formula' => $formula,
-                'updated_at' => now(),
-            ]);
-        }
-
-        // Record in history
-        CellHistory::create([
-            'cell_id' => $cell->id,
-            'user_id' => Auth::id(),
-            'old_value' => $oldValue,
-            'new_value' => $value,
-            'created_at' => now(),
-        ]);
 
         // Update local cache
         if (! isset($this->cellData[$row])) {
@@ -629,6 +898,15 @@ class ShowSpreadsheet extends Component
     #[On('named-range-changed')]
     public function reloadFromBroadcast(): void
     {
+        // A version restore (or another change that moved cells) bumped the version: reload as a whole.
+        if ($this->staleReason() !== null) {
+            $hadUndoHistory = $this->undoStack !== [] || $this->redoStack !== [];
+            $this->resyncAfterStructureChange();
+            $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
+
+            return;
+        }
+
         $this->loadedWindows = [];
         $this->loadViewportCells(true);
     }
@@ -650,6 +928,8 @@ class ShowSpreadsheet extends Component
         $this->saveCell($text);
     }
 
+    public const AUTO_SNAPSHOT_MAX_CELLS = 20000;
+
     protected function createAutoSnapshotIfNeeded(): void
     {
         $latest = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
@@ -658,6 +938,16 @@ class ShowSpreadsheet extends Component
             ->first();
 
         if ($latest && $latest->created_at && $latest->created_at->gt(now()->subMinutes(5))) {
+            return;
+        }
+
+        // The snapshot is one JSON column built from every cell in memory: above this size the first edit
+        // of each five-minute window ran out of memory at 128 MB (about 50,000 cells). Skip, and say so
+        // in the log; a manual snapshot is still possible.
+        $count = $this->cellsQuery()->count();
+        if ($count > self::AUTO_SNAPSHOT_MAX_CELLS) {
+            Log::notice('Auto snapshot skipped: tab too large', ['spreadsheet_id' => $this->spreadsheet_id, 'sheet_tab_id' => $this->activeSheetTabId, 'cells' => $count, 'limit' => self::AUTO_SNAPSHOT_MAX_CELLS]);
+
             return;
         }
 
@@ -706,6 +996,10 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return ['started' => false, 'message' => StructureVersion::STALE_MESSAGE];
+        }
+
         $matrix = $this->parsePastedText($text);
         if (empty($matrix)) {
             return ['started' => false, 'message' => 'No paste data found.'];
@@ -741,11 +1035,19 @@ class ShowSpreadsheet extends Component
             return ['started' => false, 'message' => 'No writable cells in paste payload.'];
         }
 
-        // Small payloads skip queue overhead and apply immediately.
+        // Small payloads skip queue overhead and apply immediately: all of them in ONE guarded
+        // transaction, so a stale grid is refused as a whole (cell by cell, the first refusal reloaded
+        // the editor and the rest then passed the check and landed at the old coordinates).
         if (count($cellPayload) <= 25) {
-            foreach ($cellPayload as $cell) {
-                $this->editingCell = "{$cell['row_index']}_{$cell['col_index']}";
-                $this->saveCell($cell['value']);
+            $applied = $this->guardedWrite(function () use ($cellPayload) {
+                foreach ($cellPayload as $cell) {
+                    $this->editingCell = "{$cell['row_index']}_{$cell['col_index']}";
+                    $this->saveCell($cell['value']);
+                }
+            });
+
+            if (! $applied) {
+                return ['started' => false, 'message' => $this->structureNotice];
             }
 
             return [
@@ -759,7 +1061,7 @@ class ShowSpreadsheet extends Component
         $chunks = array_chunk($cellPayload, $chunkSize);
         $jobs = [];
         foreach ($chunks as $chunk) {
-            $jobs[] = new BulkPasteChunkJob($this->spreadsheet_id, $this->activeSheetTabId, $chunk, Auth::id());
+            $jobs[] = new BulkPasteChunkJob($this->spreadsheet_id, $this->activeSheetTabId, $chunk, Auth::id(), $this->structureVersion);
         }
 
         $batch = Bus::batch($jobs)
@@ -767,6 +1069,7 @@ class ShowSpreadsheet extends Component
             ->allowFailures()
             ->dispatch();
 
+        Cache::put("bulk-paste:{$batch->id}:cells", count($cellPayload), 86400);
         $this->bulkPasteBatchId = $batch->id;
         $this->bulkPasteStatus = 'running';
         $this->bulkPasteTotalJobs = count($jobs);
@@ -798,8 +1101,27 @@ class ShowSpreadsheet extends Component
         $total = max(1, $batch->totalJobs);
         $progress = (int) floor(($processed / $total) * 100);
 
-        if ($batch->finished()) {
-            $this->bulkPasteStatus = $batch->cancelled() ? 'cancelled' : 'finished';
+        // A failed chunk with allowFailures() is never counted as done, so the batch would stay "running"
+        // for good: when only failures are left, it is over.
+        $failed = (int) $batch->failedJobs;
+        $failedAndDone = $failed > 0 && ((int) $batch->pendingJobs - $failed) <= 0;
+        $message = null;
+
+        if ($batch->finished() || $batch->cancelled() || $failedAndDone) {
+            if ($failedAndDone && ! $batch->cancelled()) {
+                $batch->cancel();
+            }
+            $this->bulkPasteStatus = $failedAndDone ? 'failed' : ($batch->cancelled() ? 'cancelled' : 'finished');
+
+            if ($failedAndDone) {
+                $cells = (int) Cache::get("bulk-paste:{$batch->id}:cells", 0);
+                $written = min($cells, max(0, $total - $failed) * 500);
+                $message = "Paste failed after {$written} of {$cells} cells; the cells already written are kept.";
+                $this->structureNotice = $message;
+            } elseif ($batch->cancelled() && Cache::get(BulkPasteChunkJob::cancelledKey($batch->id)) === 'structure') {
+                $message = 'The paste was cancelled because rows or columns moved while it was running. Part of it may already be on the sheet: check it and paste again.';
+                $this->structureNotice = $message;
+            }
             $this->bulkPasteProcessedJobs = $processed;
 
             // Refresh local caches once batch completes.
@@ -814,6 +1136,7 @@ class ShowSpreadsheet extends Component
                 'processed' => $processed,
                 'total' => $total,
                 'progress' => 100,
+                'message' => $message,
             ];
         }
 
@@ -852,6 +1175,10 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
         $entry = array_pop($this->undoStack);
         if (! $entry) {
             return;
@@ -864,6 +1191,10 @@ class ShowSpreadsheet extends Component
     public function redoAction(): void
     {
         $this->authorize('update', $this->spreadsheet);
+
+        if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
 
         $entry = array_pop($this->redoStack);
         if (! $entry) {
@@ -879,6 +1210,10 @@ class ShowSpreadsheet extends Component
     {
         $this->authorize('update', $this->spreadsheet);
 
+        if ($this->refuseWhenStructureIsStale()) {
+            return ['applied' => 0, 'message' => StructureVersion::STALE_MESSAGE];
+        }
+
         $data = is_array($payload) ? $payload : [];
         if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
             $data = $data[0];
@@ -889,6 +1224,25 @@ class ShowSpreadsheet extends Component
             return ['applied' => 0, 'message' => 'No actions provided'];
         }
 
+        $applied = 0;
+
+        // All the actions in ONE guarded transaction: all or nothing against a stale grid.
+        $ran = $this->guardedWrite(function () use ($actions, &$applied) {
+            $applied = $this->runScriptActions($actions);
+        });
+
+        if (! $ran) {
+            return ['applied' => 0, 'message' => $this->structureNotice];
+        }
+
+        return ['applied' => $applied];
+    }
+
+    /**
+     * @param  array<int, mixed>  $actions
+     */
+    protected function runScriptActions(array $actions): int
+    {
         $applied = 0;
         foreach (array_slice($actions, 0, 1000) as $action) {
             if (! is_array($action)) {
@@ -927,7 +1281,7 @@ class ShowSpreadsheet extends Component
             }
         }
 
-        return ['applied' => $applied];
+        return $applied;
     }
 
     protected function resolveScriptTarget(array $action): ?array
@@ -1078,139 +1432,53 @@ class ShowSpreadsheet extends Component
     #[On('insert-row-selected')]
     public function insertRowSelected(): void
     {
-        $this->authorize('update', $this->spreadsheet);
-
-        $row = (int) $this->selectedRow;
-        $this->cellsQuery()
-            ->where('row_index', '>=', $row)
-            ->increment('row_index');
-
-        $shifted = [];
-        foreach ($this->rowHeights as $r => $h) {
-            $key = (int) $r;
-            $shifted[$key >= $row ? $key + 1 : $key] = $h;
-        }
-        $this->rowHeights = $shifted;
-        $this->hiddenRows = array_map(fn ($r) => $r >= $row ? $r + 1 : $r, $this->hiddenRows);
-        $this->saveFeatureSettings();
-        $this->loadedWindows = [];
-        $this->loadViewportCells(true);
+        $this->changeStructure('insert', 'row');
     }
 
     #[On('delete-row-selected')]
     public function deleteRowSelected(): void
     {
-        $this->authorize('update', $this->spreadsheet);
-
-        $row = (int) $this->selectedRow;
-        $this->cellsQuery()
-            ->where('row_index', $row)
-            ->delete();
-
-        $this->cellsQuery()
-            ->where('row_index', '>', $row)
-            ->decrement('row_index');
-
-        $shifted = [];
-        foreach ($this->rowHeights as $r => $h) {
-            $key = (int) $r;
-            if ($key === $row) {
-                continue;
-            }
-            $shifted[$key > $row ? $key - 1 : $key] = $h;
-        }
-        $this->rowHeights = $shifted;
-        $this->hiddenRows = array_values(array_filter(array_map(function ($r) use ($row) {
-            if ($r === $row) {
-                return null;
-            }
-
-            return $r > $row ? $r - 1 : $r;
-        }, $this->hiddenRows), fn ($v) => $v !== null));
-        $this->saveFeatureSettings();
-        $this->loadedWindows = [];
-        $this->loadViewportCells(true);
+        $this->changeStructure('delete', 'row');
     }
 
     #[On('insert-column-selected')]
     public function insertColumnSelected(): void
     {
-        $this->authorize('update', $this->spreadsheet);
-
-        $col = (int) $this->selectedCol;
-        $this->cellsQuery()
-            ->where('col_index', '>=', $col)
-            ->increment('col_index');
-
-        $shifted = [];
-        foreach ($this->colWidths as $c => $w) {
-            $key = (int) $c;
-            $shifted[$key >= $col ? $key + 1 : $key] = $w;
-        }
-        $this->colWidths = $shifted;
-        $this->hiddenCols = array_map(fn ($c) => $c >= $col ? $c + 1 : $c, $this->hiddenCols);
-        $this->saveFeatureSettings();
-        $this->loadedWindows = [];
-        $this->loadViewportCells(true);
+        $this->changeStructure('insert', 'col');
     }
 
     #[On('delete-column-selected')]
     public function deleteColumnSelected(): void
     {
-        $this->authorize('update', $this->spreadsheet);
-
-        $col = (int) $this->selectedCol;
-        $this->cellsQuery()
-            ->where('col_index', $col)
-            ->delete();
-
-        $this->cellsQuery()
-            ->where('col_index', '>', $col)
-            ->decrement('col_index');
-
-        $shifted = [];
-        foreach ($this->colWidths as $c => $w) {
-            $key = (int) $c;
-            if ($key === $col) {
-                continue;
-            }
-            $shifted[$key > $col ? $key - 1 : $key] = $w;
-        }
-        $this->colWidths = $shifted;
-        $this->hiddenCols = array_values(array_filter(array_map(function ($c) use ($col) {
-            if ($c === $col) {
-                return null;
-            }
-
-            return $c > $col ? $c - 1 : $c;
-        }, $this->hiddenCols), fn ($v) => $v !== null));
-        $this->saveFeatureSettings();
-        $this->loadedWindows = [];
-        $this->loadViewportCells(true);
+        $this->changeStructure('delete', 'col');
     }
 
     #[On('toggle-hide-row-selected')]
     public function toggleHideRowSelected(): void
     {
-        $row = (int) $this->selectedRow;
-        if (in_array($row, $this->hiddenRows, true)) {
-            $this->hiddenRows = array_values(array_filter($this->hiddenRows, fn ($r) => $r !== $row));
-        } else {
-            $this->hiddenRows[] = $row;
-        }
-        $this->saveFeatureSettings();
+        $row = max(0, (int) $this->selectedRow);
+        $this->updateLayout(function (array $settings) use ($row) {
+            $hidden = array_map('intval', is_array($settings['hidden_rows'] ?? null) ? $settings['hidden_rows'] : []);
+            $settings['hidden_rows'] = in_array($row, $hidden, true)
+                ? array_values(array_filter($hidden, fn ($r) => $r !== $row))
+                : array_values(array_unique([...$hidden, $row]));
+
+            return $settings;
+        });
     }
 
     #[On('toggle-hide-column-selected')]
     public function toggleHideColumnSelected(): void
     {
-        $col = (int) $this->selectedCol;
-        if (in_array($col, $this->hiddenCols, true)) {
-            $this->hiddenCols = array_values(array_filter($this->hiddenCols, fn ($c) => $c !== $col));
-        } else {
-            $this->hiddenCols[] = $col;
-        }
-        $this->saveFeatureSettings();
+        $col = max(0, (int) $this->selectedCol);
+        $this->updateLayout(function (array $settings) use ($col) {
+            $hidden = array_map('intval', is_array($settings['hidden_cols'] ?? null) ? $settings['hidden_cols'] : []);
+            $settings['hidden_cols'] = in_array($col, $hidden, true)
+                ? array_values(array_filter($hidden, fn ($c) => $c !== $col))
+                : array_values(array_unique([...$hidden, $col]));
+
+            return $settings;
+        });
     }
 
     #[On('resize-row-selected')]
@@ -1222,9 +1490,14 @@ class ShowSpreadsheet extends Component
         }
 
         $height = max(18, min(120, (int) ($data['height'] ?? $this->rowHeight)));
-        $row = isset($data['row']) ? (int) $data['row'] : (int) $this->selectedRow;
-        $this->rowHeights[$row] = $height;
-        $this->saveFeatureSettings();
+        $row = max(0, isset($data['row']) ? (int) $data['row'] : (int) $this->selectedRow);
+        $this->updateLayout(function (array $settings) use ($row, $height) {
+            $heights = is_array($settings['row_heights'] ?? null) ? $settings['row_heights'] : [];
+            $heights[$row] = $height;
+            $settings['row_heights'] = $heights;
+
+            return $settings;
+        });
     }
 
     #[On('resize-column-selected')]
@@ -1236,9 +1509,14 @@ class ShowSpreadsheet extends Component
         }
 
         $width = max(48, min(420, (int) ($data['width'] ?? $this->colWidth)));
-        $col = isset($data['col']) ? (int) $data['col'] : (int) $this->selectedCol;
-        $this->colWidths[$col] = $width;
-        $this->saveFeatureSettings();
+        $col = max(0, isset($data['col']) ? (int) $data['col'] : (int) $this->selectedCol);
+        $this->updateLayout(function (array $settings) use ($col, $width) {
+            $widths = is_array($settings['col_widths'] ?? null) ? $settings['col_widths'] : [];
+            $widths[$col] = $width;
+            $settings['col_widths'] = $widths;
+
+            return $settings;
+        });
     }
 
     #[On('add-validation-rule-selected')]
@@ -1249,17 +1527,21 @@ class ShowSpreadsheet extends Component
             $data = $data[0];
         }
 
-        $this->validationRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
-            'row' => (int) $this->selectedRow,
-            'col' => (int) $this->selectedCol,
+            'row' => max(0, (int) $this->selectedRow),
+            'col' => max(0, (int) $this->selectedCol),
             'type' => $data['type'] ?? 'number',
             'min' => $data['min'] ?? null,
             'max' => $data['max'] ?? null,
             'items' => $data['items'] ?? null,
         ];
 
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) use ($rule) {
+            $settings['validation_rules'] = [...(is_array($settings['validation_rules'] ?? null) ? $settings['validation_rules'] : []), $rule];
+
+            return $settings;
+        });
     }
 
     #[On('add-conditional-rule-selected')]
@@ -1270,17 +1552,21 @@ class ShowSpreadsheet extends Component
             $data = $data[0];
         }
 
-        $this->conditionalFormattingRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
             'target' => $data['target'] ?? 'cell',
-            'row' => (int) $this->selectedRow,
-            'col' => (int) $this->selectedCol,
+            'row' => max(0, (int) $this->selectedRow),
+            'col' => max(0, (int) $this->selectedCol),
             'operator' => $data['operator'] ?? '>',
             'value' => $data['value'] ?? '0',
             'color' => $data['color'] ?? '#FEE2E2',
         ];
 
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) use ($rule) {
+            $settings['conditional_formatting_rules'] = [...(is_array($settings['conditional_formatting_rules'] ?? null) ? $settings['conditional_formatting_rules'] : []), $rule];
+
+            return $settings;
+        });
     }
 
     #[On('add-filter-rule')]
@@ -1297,7 +1583,7 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $this->filterRules[] = [
+        $rule = [
             'id' => (string) str()->uuid(),
             'col' => $col,
             'type' => $data['type'] ?? 'contains',
@@ -1307,16 +1593,30 @@ class ShowSpreadsheet extends Component
             'color' => $data['color'] ?? null,
         ];
 
+        // The rows the filter hides are worked out from the data against ALL stored rules plus this one.
+        $stored = is_array($this->spreadsheet->fresh()?->settings['filter_rules'] ?? null) ? $this->spreadsheet->fresh()->settings['filter_rules'] : [];
+        $this->filterRules = [...$stored, $rule];
         $this->applyFilterRules();
-        $this->saveFeatureSettings();
+        $rules = $this->filterRules;
+        $hidden = array_values(array_unique(array_map('intval', $this->hiddenRows)));
+
+        $this->updateLayout(function (array $settings) use ($rules, $hidden) {
+            $settings['filter_rules'] = $rules;
+            $settings['hidden_rows'] = $hidden;
+
+            return $settings;
+        });
     }
 
     #[On('clear-filter-rules')]
     public function clearFilterRules(): void
     {
-        $this->filterRules = [];
-        $this->hiddenRows = [];
-        $this->saveFeatureSettings();
+        $this->updateLayout(function (array $settings) {
+            $settings['filter_rules'] = [];
+            $settings['hidden_rows'] = [];
+
+            return $settings;
+        });
     }
 
     #[On('sort-selected-column')]
@@ -1329,59 +1629,77 @@ class ShowSpreadsheet extends Component
 
         $this->authorize('update', $this->spreadsheet);
 
-        $direction = strtolower((string) ($data['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $targetCol = (int) $this->selectedCol;
-
-        $rows = $this->cellsQuery()
-            ->select('row_index')
-            ->distinct()
-            ->orderBy('row_index')
-            ->pluck('row_index')
-            ->map(fn ($r) => (int) $r)
-            ->values()
-            ->toArray();
-
-        if (count($rows) < 2) {
+        if ($this->refuseWhenStructureIsStale()) {
             return;
         }
 
-        $values = [];
-        foreach ($rows as $row) {
-            $cell = $this->cellsQuery()
-                ->where('row_index', $row)
-                ->where('col_index', $targetCol)
-                ->first();
-            $values[$row] = $cell?->computed_value ?? $cell?->raw_value ?? '';
-        }
+        $direction = strtolower((string) ($data['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $targetCol = (int) $this->selectedCol;
+        $sorted = false;
 
-        usort($rows, function ($a, $b) use ($values, $direction) {
-            $va = $values[$a] ?? '';
-            $vb = $values[$b] ?? '';
-            if (is_numeric($va) && is_numeric($vb)) {
-                $cmp = (float) $va <=> (float) $vb;
-            } else {
-                $cmp = strnatcasecmp((string) $va, (string) $vb);
+        // One transaction: the rows are parked at a high index while they swap, which nobody else may
+        // see, and the structure version goes up with it, so a stale browser or an undo entry can not
+        // land on a row that moved.
+        $written = $this->guardedWrite(function () use ($direction, $targetCol, &$sorted) {
+            $rows = $this->cellsQuery()
+                ->select('row_index')
+                ->distinct()
+                ->orderBy('row_index')
+                ->pluck('row_index')
+                ->map(fn ($r) => (int) $r)
+                ->values()
+                ->toArray();
+
+            if (count($rows) < 2) {
+                return;
             }
 
-            return $direction === 'desc' ? -$cmp : $cmp;
+            $values = [];
+            foreach ($rows as $row) {
+                $cell = $this->cellsQuery()
+                    ->where('row_index', $row)
+                    ->where('col_index', $targetCol)
+                    ->first();
+                $values[$row] = $cell?->computed_value ?? $cell?->raw_value ?? '';
+            }
+
+            usort($rows, function ($a, $b) use ($values, $direction) {
+                $va = $values[$a] ?? '';
+                $vb = $values[$b] ?? '';
+                if (is_numeric($va) && is_numeric($vb)) {
+                    $cmp = (float) $va <=> (float) $vb;
+                } else {
+                    $cmp = strnatcasecmp((string) $va, (string) $vb);
+                }
+
+                return $direction === 'desc' ? -$cmp : $cmp;
+            });
+
+            $startRow = min($rows);
+            $tempOffset = 200000000;
+            foreach ($rows as $idx => $oldRow) {
+                $this->cellsQuery()
+                    ->where('row_index', $oldRow)
+                    ->update(['row_index' => $tempOffset + $idx]);
+            }
+
+            foreach ($rows as $idx => $_oldRow) {
+                $this->cellsQuery()
+                    ->where('row_index', $tempOffset + $idx)
+                    ->update(['row_index' => $startRow + $idx]);
+            }
+
+            StructureVersion::bump((int) $this->spreadsheet_id);
+            $sorted = true;
         });
 
-        $startRow = min($rows);
-        $tempOffset = 200000000;
-        foreach ($rows as $idx => $oldRow) {
-            $this->cellsQuery()
-                ->where('row_index', $oldRow)
-                ->update(['row_index' => $tempOffset + $idx]);
+        if (! $written || ! $sorted) {
+            return;
         }
 
-        foreach ($rows as $idx => $_oldRow) {
-            $this->cellsQuery()
-                ->where('row_index', $tempOffset + $idx)
-                ->update(['row_index' => $startRow + $idx]);
-        }
-
-        $this->loadedWindows = [];
-        $this->loadViewportCells(true);
+        $hadUndoHistory = $this->undoStack !== [] || $this->redoStack !== [];
+        $this->resyncAfterStructureChange();
+        $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
     }
 
     protected function applyFilterRules(): void
@@ -1607,6 +1925,13 @@ class ShowSpreadsheet extends Component
     }
 
     protected function applyCellState(int $row, int $col, array $state): void
+    {
+        $this->guardedWrite(function () use ($row, $col, $state) {
+            $this->writeCellState($row, $col, $state);
+        });
+    }
+
+    protected function writeCellState(int $row, int $col, array $state): void
     {
         $cell = $this->cellsQuery()
             ->where('row_index', $row)

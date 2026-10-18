@@ -1,4 +1,4 @@
-<x-app-layout>
+<x-public-layout :title="$spreadsheet->name.' - Dot.Sheet'">
 <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <div class="max-w-7xl mx-auto px-4 py-6">
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm mb-4 p-4">
@@ -39,4 +39,4 @@
         </div>
     </div>
 </div>
-</x-app-layout>
+</x-public-layout>

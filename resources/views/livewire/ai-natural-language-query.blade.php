@@ -104,15 +104,15 @@
         <div class="flex gap-2">
             <textarea wire:model="query" 
                       placeholder="Ask a question about your data..."
-                      @keydown.enter.meta="submitQuery"
-                      @keydown.enter.ctrl="submitQuery"
+                      @keydown.enter.meta="$wire.submitQuery()"
+                      @keydown.enter.ctrl="$wire.submitQuery()"
                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                              bg-white dark:bg-gray-600 text-gray-900 dark:text-white
                              focus:ring-2 focus:ring-indigo-500 focus:border-transparent
                              resize-none" rows="2">
             </textarea>
             <div class="flex flex-col gap-2">
-                <button type="button" wire:click="submitQuery" :disabled="$loading || !$query.trim()"
+                <button type="button" wire:click="submitQuery" :disabled="$wire.loading"
                         class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium
                                flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-full">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -104,10 +104,10 @@
                             Insert Formula
                         </button>
                     @else
-                        <button type="button" wire:click="generateFormula" :disabled="$loading"
+                        <button type="button" wire:click="generateFormula" :disabled="$wire.loading"
                                 class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium
                                        flex items-center gap-2 disabled:opacity-50"
-                                :class="{ 'opacity-50 cursor-not-allowed': $loading }">
+                                :class="{ 'opacity-50 cursor-not-allowed': $wire.loading }">
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.343a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM15.657 14.657a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM11 17a1 1 0 110-2v1a1 1 0 01-2 0v-1a1 1 0 112 0v1zM5.343 15.657a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707zM2 10a1 1 0 011-1h1a1 1 0 110 2H3a1 1 0 01-1-1zM5.343 4.343a1 1 0 011.414-1.414l-.707-.707a1 1 0 00-1.414 1.414l.707.707z"></path>
                             </svg>

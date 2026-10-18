@@ -1,6 +1,7 @@
 <div>
     {{-- Close your eyes. Count to one. That is how long forever feels. --}}
 <div class="space-y-4" x-data="{ recording: false }">
+    @if ($scriptsEnabled)
     <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900">Scripts</h3>
@@ -75,6 +76,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="mb-2 flex items-center justify-between">

@@ -5,8 +5,11 @@ namespace App\Livewire;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
+use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -62,7 +65,17 @@ class AiAnalysisPanel extends Component
 
     protected ?AiService $ai_service = null;
 
-    protected $listeners = ['range-selected' => 'analyzeRange'];
+    protected $listeners = [
+        'range-selected' => 'analyzeRange',
+        'structure-synced' => 'syncStructureVersion',
+    ];
+
+    /**
+     * The structure version (see StructureVersion) the editor's grid was at when this panel
+     * last heard from it. Locked: the browser may not set it.
+     */
+    #[Locked]
+    public int $structureVersion = 0;
 
     public function mount($spreadsheet_id = null)
     {
@@ -71,8 +84,18 @@ class AiAnalysisPanel extends Component
         }
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->structureVersion = $spreadsheet_id ? StructureVersion::current((int) $spreadsheet_id) : 0;
         $this->ai_service = new AiService;
         $this->loadWorkflowRules();
+    }
+
+    /**
+     * The editor reloaded and says so (event structure-synced): take the stored version. Nothing the
+     * browser sends is used.
+     */
+    public function syncStructureVersion(): void
+    {
+        $this->structureVersion = $this->spreadsheet_id ? StructureVersion::current((int) $this->spreadsheet_id) : 0;
     }
 
     public function hydrate(): void
@@ -303,30 +326,54 @@ class AiAnalysisPanel extends Component
         try {
             [$startRow, $endRow, $startCol, $endCol] = $this->parseRangeBounds($this->selected_range);
 
-            $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-                ->whereBetween('row_index', [$startRow, $endRow])
-                ->whereBetween('col_index', [$startCol, $endCol])
-                ->get();
+            $updated = new \ArrayObject(['count' => 0]);
 
-            $updated = 0;
-            foreach ($cells as $cell) {
-                if (! is_string($cell->raw_value)) {
-                    continue;
+            // Read and write under one lock, after checking the structure version: rows or columns
+            // that moved since the editor loaded mean the range the person sees is not where the data is.
+            $busy = false;
+            $written = WriteLock::guard(fn () => StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, function () use ($startRow, $endRow, $startCol, $endCol, &$updated) {
+                $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+                    ->whereBetween('row_index', [$startRow, $endRow])
+                    ->whereBetween('col_index', [$startCol, $endCol])
+                    ->get();
+
+                foreach ($cells as $cell) {
+                    if (! is_string($cell->raw_value)) {
+                        continue;
+                    }
+
+                    $trimmed = $this->ai_service->normalizeCellTextForCleaning($cell->raw_value);
+                    if ($trimmed === $cell->raw_value) {
+                        continue;
+                    }
+
+                    $cell->raw_value = $trimmed;
+                    $cell->updated_at = now();
+                    $cell->save();
+                    $updated['count']++;
                 }
+            }), function () use (&$busy) {
+                $busy = true;
 
-                $trimmed = $this->ai_service->normalizeCellTextForCleaning($cell->raw_value);
-                if ($trimmed === $cell->raw_value) {
-                    continue;
-                }
+                return false;
+            });
 
-                $cell->raw_value = $trimmed;
-                $cell->updated_at = now();
-                $cell->save();
-                $updated++;
+            if ($busy) {
+                $this->loading = false;
+                $this->error = WriteLock::BUSY_MESSAGE;
+
+                return;
             }
 
-            $this->success_message = $updated > 0
-                ? "Applied {$updated} cleaning fixes (trim/normalize spacing)."
+            if (! $written) {
+                $this->loading = false;
+                $this->dispatch('structure-stale');
+
+                return;
+            }
+
+            $this->success_message = $updated['count'] > 0
+                ? "Applied {$updated['count']} cleaning fixes (trim/normalize spacing)."
                 : 'No automatic cleaning fixes were required.';
 
             $this->dispatch('external-cell-updated');
@@ -513,10 +560,17 @@ class AiAnalysisPanel extends Component
             return;
         }
 
-        $settings = $this->normalizeArrayValue($spreadsheet->settings ?? []);
-        $settings['ai_workflows'] = $this->workflow_rules;
-        $spreadsheet->settings = $settings;
-        $spreadsheet->save();
+        $rules = $this->workflow_rules;
+
+        // Merge one key into the stored settings under the write lock.
+        WriteLock::guard(
+            fn () => Spreadsheet::updateSettings((int) $spreadsheet->id, function (array $settings) use ($rules) {
+                $settings['ai_workflows'] = $rules;
+
+                return $settings;
+            }),
+            fn () => $this->error = WriteLock::BUSY_MESSAGE
+        );
     }
 
     protected function normalizeArrayValue(mixed $value): array

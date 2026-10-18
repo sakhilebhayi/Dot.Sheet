@@ -23,3 +23,6 @@ Schedule::call(fn () => Cache::forever(SchedulerProbeController::SCHEDULER_KEY, 
 // Proves the cron-driven queue worker actually drains jobs, not just that
 // the scheduler fires: only a worker that runs this can refresh the key.
 Schedule::job(new QueueHeartbeat)->everyFiveMinutes()->name('queue-heartbeat');
+
+// An Excel export is deleted after it is sent; one whose download was cancelled stays behind.
+Schedule::command('sheet:prune-exports')->hourly()->name('prune-exports')->withoutOverlapping();

@@ -7,49 +7,41 @@ use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ToArray;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Cell\Cell as SpreadsheetCell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class SpreadsheetImportExportService
 {
     /**
      * Export spreadsheet to CSV string
+     *
+     * Rows and columns are 0-based, like everywhere else in the editor, so the first row and
+     * the first column of the sheet are part of the file.
      */
     public function exportCsv(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null): string
     {
         $sheetTab ??= $spreadsheet->defaultSheetTab();
 
-        $cells = Cell::where('spreadsheet_id', $spreadsheet->id)
-            ->where('sheet_tab_id', $sheetTab?->id)
-            ->orderBy('row_index')
-            ->orderBy('col_index')
-            ->get();
-
-        if ($cells->isEmpty()) {
+        $bounds = $this->exportBounds($spreadsheet, $sheetTab);
+        if ($bounds === null) {
             return '';
         }
 
-        $maxRow = $cells->max('row_index');
-        $maxCol = $cells->max('col_index');
-
-        // Build 2D grid
-        $grid = [];
-        foreach ($cells as $cell) {
-            $grid[$cell->row_index][$cell->col_index] = $cell->computed_value ?? $cell->raw_value ?? '';
-        }
-
-        // Generate CSV
         $output = fopen('php://temp', 'r+');
 
-        for ($row = 1; $row <= $maxRow; $row++) {
-            $rowData = [];
-            for ($col = 1; $col <= $maxCol; $col++) {
-                $rowData[] = $grid[$row][$col] ?? '';
-            }
-            fputcsv($output, $rowData);
+        foreach ($this->exportRows($spreadsheet, $sheetTab, $bounds) as $rowData) {
+            // fputcsv's default escape character is deprecated in PHP 8.4; '' selects RFC 4180 quoting.
+            fputcsv($output, array_map($this->neutraliseSpreadsheetFormula(...), $rowData), ',', '"', '');
         }
 
         rewind($output);
@@ -61,38 +53,31 @@ class SpreadsheetImportExportService
 
     /**
      * Export spreadsheet to Excel file (returns file path)
+     *
+     * @throws ExportTooLargeException when the sheet has more cells than Excel export can build
+     *                                 within a shared host's memory limit; CSV has no such limit.
      */
     public function exportExcel(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null): string
     {
         $sheetTab ??= $spreadsheet->defaultSheetTab();
 
-        $cells = Cell::where('spreadsheet_id', $spreadsheet->id)
-            ->where('sheet_tab_id', $sheetTab?->id)
-            ->orderBy('row_index')
-            ->orderBy('col_index')
-            ->get();
-
-        $maxRow = $cells->max('row_index') ?? 1;
-        $maxCol = $cells->max('col_index') ?? 1;
-
-        $grid = [];
-        foreach ($cells as $cell) {
-            $grid[$cell->row_index][$cell->col_index] = $cell->computed_value ?? $cell->raw_value ?? '';
+        $limit = (int) config('sheet.export_excel_max_cells');
+        $cellCount = Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab?->id)->count();
+        if ($limit > 0 && $cellCount > $limit) {
+            throw ExportTooLargeException::forCells($cellCount, $limit);
         }
 
-        $rows = [];
-        for ($row = 1; $row <= $maxRow; $row++) {
-            $rowData = [];
-            for ($col = 1; $col <= $maxCol; $col++) {
-                $rowData[] = $grid[$row][$col] ?? '';
-            }
-            $rows[] = $rowData;
+        $bounds = $this->exportBounds($spreadsheet, $sheetTab);
+        if ($bounds !== null && $limit > 0 && ($bounds['maxRow'] + 1) * ($bounds['maxCol'] + 1) > $limit) {
+            throw ExportTooLargeException::forGrid($bounds['maxRow'] + 1, $bounds['maxCol'] + 1, $limit);
         }
 
-        $fileName = 'spreadsheet_'.$spreadsheet->id.'_'.now()->format('YmdHis').'.xlsx';
+        $rows = $bounds === null ? [[]] : iterator_to_array($this->exportRows($spreadsheet, $sheetTab, $bounds), false);
+
+        $fileName = 'spreadsheet_'.$spreadsheet->id.'_'.now()->format('YmdHis').'_'.Str::random(8).'.xlsx';
         $filePath = 'exports/'.$fileName;
 
-        Excel::store(new class($rows) implements FromArray
+        Excel::store(new class($rows) implements FromArray, WithCustomValueBinder
         {
             public function __construct(private array $data) {}
 
@@ -100,9 +85,175 @@ class SpreadsheetImportExportService
             {
                 return $this->data;
             }
+
+            /**
+             * Values go in as values: the default binder would turn any text that starts with "="
+             * into a formula, and the sheet's formulas are exported as their computed result.
+             * Plain numbers become numbers; text with leading zeros ("007") stays text.
+             */
+            public function bindValue(SpreadsheetCell $cell, $value): bool
+            {
+                $isPlainNumber = is_string($value) && preg_match('/^-?(0|[1-9]\d{0,14})(\.\d{1,15})?$/', $value) === 1 && $value !== '-0';
+
+                $cell->setValueExplicit(
+                    $isPlainNumber ? (str_contains($value, '.') ? (float) $value : (int) $value) : (string) $value,
+                    $isPlainNumber ? DataType::TYPE_NUMERIC : DataType::TYPE_STRING,
+                );
+
+                return true;
+            }
         }, $filePath, 'local');
 
-        return storage_path('app/'.$filePath);
+        // The disk's own root: Laravel 11+ points "local" at storage/app/private, not storage/app.
+        return Storage::disk('local')->path($filePath);
+    }
+
+    /**
+     * The last used row and column of the tab, or null when it has no cells.
+     *
+     * @return array{maxRow: int, maxCol: int}|null
+     */
+    protected function exportBounds(Spreadsheet $spreadsheet, ?SheetTab $sheetTab): ?array
+    {
+        $query = Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab?->id);
+
+        $maxRow = $query->max('row_index');
+        if ($maxRow === null) {
+            return null;
+        }
+
+        return ['maxRow' => (int) $maxRow, 'maxCol' => (int) (clone $query)->max('col_index')];
+    }
+
+    /**
+     * One list of values per row from row 0 to the last used row, read with a cursor so the
+     * cells are never all in memory next to the rows built from them.
+     *
+     * @param  array{maxRow: int, maxCol: int}  $bounds
+     * @return \Generator<int, list<string>>
+     */
+    protected function exportRows(Spreadsheet $spreadsheet, ?SheetTab $sheetTab, array $bounds): \Generator
+    {
+        $blank = array_fill(0, $bounds['maxCol'] + 1, '');
+        $currentRow = null;
+        $current = $blank;
+
+        $cells = Cell::where('spreadsheet_id', $spreadsheet->id)
+            ->where('sheet_tab_id', $sheetTab?->id)
+            ->orderBy('row_index')
+            ->orderBy('col_index')
+            ->select(['row_index', 'col_index', 'raw_value', 'computed_value'])
+            ->cursor();
+
+        foreach ($cells as $cell) {
+            $row = (int) $cell->row_index;
+
+            if ($row !== $currentRow) {
+                if ($currentRow !== null) {
+                    yield $current;
+                }
+                for ($gap = ($currentRow ?? -1) + 1; $gap < $row; $gap++) {
+                    yield $blank;
+                }
+                $currentRow = $row;
+                $current = $blank;
+            }
+
+            $current[(int) $cell->col_index] = (string) ($cell->computed_value ?? $cell->raw_value ?? '');
+        }
+
+        if ($currentRow !== null) {
+            yield $current;
+        }
+    }
+
+    /**
+     * A CSV cell that starts with = + - @ (or a tab or carriage return) is run as a formula
+     * when the file is opened in Excel or Sheets. Prefix those with an apostrophe, the way
+     * both of them show text that must not be evaluated. Numbers and number-like text such as
+     * a phone number ("+27 82 123 4567") are left alone.
+     */
+    protected function neutraliseSpreadsheetFormula(string $value): string
+    {
+        if ($value === '' || is_numeric($value)) {
+            return $value;
+        }
+
+        // Text that already starts with an apostrophe and then one of the characters below gets
+        // one more, so importCsv() removing exactly one gives the original back.
+        if (preg_match('/^\'+[=+\-@\t\r]/', $value) === 1) {
+            return "'".$value;
+        }
+
+        if (preg_match('/^[=@\t\r]/', $value)) {
+            return "'".$value;
+        }
+
+        if (preg_match('/^[+\-]/', $value) && ! preg_match('/^[+\-]?[\d\s().,+\-]+$/', $value)) {
+            return "'".$value;
+        }
+
+        return $value;
+    }
+
+    /**
+     * What to store for one imported value, or null for an empty one. A value starting with "="
+     * is a formula unless the importer says the file holds values only ($valuesAreText) or the
+     * cell is marked as text (['text' => value], see parseCsv()).
+     *
+     * @return array{raw_value: string, computed_value: string|null, formula: string|null, updated_at: Carbon}|null
+     */
+    public static function importedCellAttributes(mixed $value, bool $valuesAreText = false): ?array
+    {
+        if (is_array($value)) {
+            $valuesAreText = true;
+            $value = $value['text'] ?? '';
+        }
+
+        $value = (string) ($value ?? '');
+        if ($value === '') {
+            return null;
+        }
+
+        $isFormula = ! $valuesAreText && str_starts_with($value, '=');
+
+        return [
+            'raw_value' => $value,
+            'computed_value' => $isFormula ? null : $value,
+            'formula' => $isFormula ? $value : null,
+            'updated_at' => now(),
+        ];
+    }
+
+    /**
+     * Parse CSV text into rows. Quoted fields may hold commas, quotes and line breaks, and
+     * both \n and \r\n end a row (splitting on "\n" left a stray "\r" on every last field).
+     *
+     * @return list<list<string|array{text: string}|null>> a cell that must stay text is ['text' => value]
+     */
+    protected function parseCsv(string $csvContent): array
+    {
+        $csvContent = preg_replace('/^\xEF\xBB\xBF/', '', $csvContent) ?? $csvContent;
+
+        $stream = fopen('php://temp', 'r+');
+        fwrite($stream, $csvContent);
+        rewind($stream);
+
+        $rows = [];
+        while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+            if ($row === [null]) {
+                $row = [];
+            }
+            // Undo the apostrophe exportCsv() put in front of text Excel would run as a formula.
+            // The cell comes back as text, not as a formula.
+            $rows[] = array_map(
+                fn ($field) => is_string($field) && preg_match('/^\'+[=+\-@\t\r]/', $field) === 1 ? ['text' => substr($field, 1)] : $field,
+                $row
+            );
+        }
+        fclose($stream);
+
+        return $rows;
     }
 
     /**
@@ -110,7 +261,7 @@ class SpreadsheetImportExportService
      */
     public function importCsv(Spreadsheet $spreadsheet, string $csvContent, ?SheetTab $sheetTab = null): array
     {
-        $rows = array_map('str_getcsv', explode("\n", trim($csvContent)));
+        $rows = $this->parseCsv($csvContent);
 
         return $this->insertRows($spreadsheet, $rows, $sheetTab);
     }
@@ -124,10 +275,13 @@ class SpreadsheetImportExportService
 
         $ext = strtolower($file->getClientOriginalExtension());
         $rows = null;
+        // Cells read from an Excel file are values (formulas are read as their result): a text
+        // cell that happens to start with "=" must stay text, not become a formula.
+        $valuesAreText = false;
 
         if ($ext === 'csv') {
             $content = file_get_contents($file->getRealPath());
-            $rows = array_map('str_getcsv', explode("\n", trim((string) $content)));
+            $rows = $this->parseCsv((string) $content);
         }
 
         if (in_array($ext, ['xlsx', 'xls'])) {
@@ -140,6 +294,7 @@ class SpreadsheetImportExportService
                     }
                 }, $file);
                 $rows = $data[0] ?? [];
+                $valuesAreText = true;
             } catch (\Exception $e) {
                 return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
             }
@@ -154,13 +309,16 @@ class SpreadsheetImportExportService
         if ($effectiveRows >= $largeImportThreshold) {
             $chunkSize = 500;
             $chunks = array_chunk($rows, $chunkSize);
+            $structureVersion = StructureVersion::current($spreadsheet->id);
             $jobs = [];
             foreach ($chunks as $index => $chunk) {
                 $jobs[] = new ImportRowsChunkJob(
                     spreadsheetId: $spreadsheet->id,
                     sheetTabId: $sheetTab?->id,
                     rows: $chunk,
-                    startRowIndex: ($index * $chunkSize) + 1,
+                    startRowIndex: $index * $chunkSize,
+                    valuesAreText: $valuesAreText,
+                    structureVersion: $structureVersion,
                 );
             }
 
@@ -168,6 +326,9 @@ class SpreadsheetImportExportService
                 ->name("import:spreadsheet:{$spreadsheet->id}")
                 ->allowFailures()
                 ->dispatch();
+
+            // For the status endpoint's "failed after N of M rows".
+            Cache::put("import:{$batch->id}:rows", $effectiveRows, 86400);
 
             return [
                 'success' => true,
@@ -179,7 +340,7 @@ class SpreadsheetImportExportService
             ];
         }
 
-        return $this->insertRows($spreadsheet, $rows, $sheetTab);
+        return $this->insertRows($spreadsheet, $rows, $sheetTab, $valuesAreText);
     }
 
     /**
@@ -207,7 +368,7 @@ class SpreadsheetImportExportService
     /**
      * Insert rows into spreadsheet cells
      */
-    protected function insertRows(Spreadsheet $spreadsheet, array $rows, ?SheetTab $sheetTab = null): array
+    protected function insertRows(Spreadsheet $spreadsheet, array $rows, ?SheetTab $sheetTab = null, bool $valuesAreText = false): array
     {
         $sheetTab ??= $spreadsheet->defaultSheetTab();
 
@@ -222,31 +383,24 @@ class SpreadsheetImportExportService
                     continue;
                 }
 
-                $rowNumber = $rowIndex + 1;
+                // Rows and columns are 0-based, like the editor and the export.
+                $rowNumber = $rowIndex;
                 $rowCount++;
 
                 foreach ((array) $row as $colIndex => $value) {
-                    $value = (string) ($value ?? '');
-
-                    if ($value === '') {
+                    $attributes = self::importedCellAttributes($value, $valuesAreText);
+                    if ($attributes === null) {
                         continue;
                     }
-
-                    $isFormula = str_starts_with($value, '=');
 
                     Cell::updateOrCreate(
                         [
                             'spreadsheet_id' => $spreadsheet->id,
                             'sheet_tab_id' => $sheetTab?->id,
                             'row_index' => $rowNumber,
-                            'col_index' => $colIndex + 1,
+                            'col_index' => $colIndex,
                         ],
-                        [
-                            'raw_value' => $value,
-                            'computed_value' => $isFormula ? null : $value,
-                            'formula' => $isFormula ? $value : null,
-                            'updated_at' => now(),
-                        ]
+                        $attributes
                     );
 
                     $cellCount++;

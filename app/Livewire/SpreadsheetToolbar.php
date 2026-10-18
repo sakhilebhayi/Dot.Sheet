@@ -4,7 +4,11 @@ namespace App\Livewire;
 
 use App\Models\Cell;
 use App\Models\Spreadsheet;
+use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class SpreadsheetToolbar extends Component
@@ -79,13 +83,82 @@ class SpreadsheetToolbar extends Component
 
     public $filter_color = '#FEE2E2';
 
-    protected $listeners = ['cell-selected' => 'loadCellFormatting'];
+    protected $listeners = [
+        'cell-selected' => 'loadCellFormatting',
+        'structure-synced' => 'syncStructureVersion',
+    ];
+
+    /**
+     * The structure version (see StructureVersion) the editor's grid was at when this toolbar
+     * last heard from it. Locked: the browser may not set it.
+     */
+    #[Locked]
+    public int $structureVersion = 0;
 
     public function mount($spreadsheet_id)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->structureVersion = StructureVersion::current((int) $spreadsheet_id);
+    }
+
+    /**
+     * The editor reloaded and says so (event structure-synced): take the stored version. Nothing the
+     * browser sends is used.
+     */
+    /**
+     * The tab the grid is showing, as last told by the editor (cell-selected, sheet-tab-switched); the
+     * first tab until then. Formatting belongs to a cell of that tab, not of any tab.
+     */
+    #[Locked]
+    public ?int $sheet_tab_id = null;
+
+    protected function activeTabId(): ?int
+    {
+        return $this->sheet_tab_id ?? Spreadsheet::find($this->spreadsheet_id)?->defaultSheetTab()?->id;
+    }
+
+    #[On('sheet-tab-switched')]
+    public function followTab($sheetTabId = null): void
+    {
+        $this->sheet_tab_id = $sheetTabId ? (int) $sheetTabId : null;
+    }
+
+    /**
+     * Run one cell write after checking the structure version under the write lock. False (and an event
+     * for the editor to tell the person) when the grid is stale or the database is busy.
+     */
+    protected function writeCell(callable $write): bool
+    {
+        $busy = false;
+        $written = WriteLock::guard(
+            fn () => StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, $write),
+            function () use (&$busy) {
+                $busy = true;
+
+                return false;
+            }
+        );
+
+        if ($busy) {
+            $this->dispatch('sheet-busy');
+
+            return false;
+        }
+
+        if (! $written) {
+            $this->dispatch('structure-stale');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    public function syncStructureVersion(): void
+    {
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
     }
 
     public function render()
@@ -96,12 +169,16 @@ class SpreadsheetToolbar extends Component
     /**
      * Load formatting from selected cell
      */
-    public function loadCellFormatting($row, $col)
+    public function loadCellFormatting($row, $col, $sheetTabId = null)
     {
         $this->selected_row = $row;
         $this->selected_col = $col;
+        if ($sheetTabId) {
+            $this->sheet_tab_id = (int) $sheetTabId;
+        }
 
         $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->activeTabId())
             ->where('row_index', $row)
             ->where('col_index', $col)
             ->first();
@@ -189,14 +266,22 @@ class SpreadsheetToolbar extends Component
             'number_format' => $this->number_format,
         ];
 
-        Cell::updateOrCreate(
+        $tabId = $this->activeTabId();
+        $row = $this->selected_row;
+        $col = $this->selected_col;
+
+        // updated_at is NOT NULL and a cell belongs to a tab: a format on an empty cell used to fail on both.
+        if (! $this->writeCell(fn () => Cell::updateOrCreate(
             [
                 'spreadsheet_id' => $this->spreadsheet_id,
-                'row_index' => $this->selected_row,
-                'col_index' => $this->selected_col,
+                'sheet_tab_id' => $tabId,
+                'row_index' => $row,
+                'col_index' => $col,
             ],
-            ['formatting' => $formatting]
-        );
+            ['formatting' => $formatting, 'updated_at' => now()]
+        ))) {
+            return;
+        }
 
         // Notify grid to re-render this cell
         $this->dispatch('formatting-applied', [
@@ -215,10 +300,17 @@ class SpreadsheetToolbar extends Component
 
         $this->resetFormatting();
 
-        Cell::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('row_index', $this->selected_row)
-            ->where('col_index', $this->selected_col)
-            ->update(['formatting' => null]);
+        $tabId = $this->activeTabId();
+        $row = $this->selected_row;
+        $col = $this->selected_col;
+
+        if (! $this->writeCell(fn () => Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $tabId)
+            ->where('row_index', $row)
+            ->where('col_index', $col)
+            ->update(['formatting' => null]))) {
+            return;
+        }
 
         $this->dispatch('formatting-applied', [
             'row' => $this->selected_row,

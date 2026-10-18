@@ -90,6 +90,35 @@ php artisan serve
 
 > **Ecosystem SSO:** Set `APP_URL` to the deployed host (https://sheets.infodot.co.za in production). Users authenticated through InfoDot gain access automatically via Sanctum handoff tokens.
 
+## Inserting and deleting rows and columns
+
+**Off by default.** `SHEET_STRUCTURE_OPS_ENABLED=false` (config `sheet.structure_ops_enabled`): the context-menu items and toolbar buttons are hidden, every server handler answers "Inserting and deleting rows and columns is not available yet." and nothing in `SheetStructureService` runs. Moving rows under people who are editing the same sheet is the riskiest thing the editor does (stale grids, queued imports, formulas, the single SQLite write lock), so the code is shipped and tested but the switch stays off until the multi-process race test has been run on the target host: `php artisan test --filter ProductionSettingsTest` (it starts real PHP processes against a scratch SQLite file with WAL, `BEGIN IMMEDIATE`, busy_timeout 5000, `CACHE_STORE=database` and a 128 MB limit, with the switch on). Then set the variable to `true` and clear the config cache. Sort, editing, import, export, tab delete and version restore do not depend on the switch.
+
+
+Inserting or deleting a row or column moves the cells of that tab, rewrites the A1-style references in that tab's formulas and named ranges (a reference to a deleted row or column becomes `#REF!`, a range grows and shrinks), and clears the undo history. A counter column on the spreadsheet (`structure_version`, bumped by a single `UPDATE ... + 1` in the same transaction; never part of the settings JSON, so no settings writer can reset it) goes up on every insert, delete, sort, version restore and tab delete; a browser that opened the sheet earlier is refused when it tries to write, reloads, and tells the person to repeat the change.
+
+Sizes: an insert or delete runs inside one transaction that holds the single SQLite write lock, so it is limited by time, not size: a work budget (cells moved, formulas rewritten, cells and references read by recomputed formulas, weighted by measured cost, `SheetStructureService::WORK_BUDGET`) estimated before the lock and added to inside it, plus a 2 second clock check; past either the change is rolled back and refused with a plain sentence (see the pull request for the measured table). It also refuses while an import or paste for the sheet is still running. It holds the single SQLite write lock while it runs, so if another writer holds it past `busy_timeout` the person is told the sheet is busy instead of getting an error page.
+
+Known limits (older than this code, not changed by it):
+
+- **Sort moves rows but does not rewrite formula references** (it does bump the version and clear undo).
+
+- **No cascade recalculation.** Only formulas whose own range or named range changed are recomputed. A formula that depends on another formula's result is not recalculated when that result changes.
+- **References stay inside the tab and are relative.** A formula cannot refer to another tab, and `$A$1` style absolute references are not understood by the evaluator, so they are not treated specially when rows move.
+- Comments, validation and conditional-format rules, chart ranges and pivot sources keep their old coordinates after an insert or delete.
+
+## Sheets imported before the 0-based import fix
+
+Imports used to count rows and columns from 1 while the editor counts from 0, so every imported cell sits one row and one column off (the file's A1 is at B2). Nothing fixes this automatically. On the server:
+
+```
+php artisan sheet:detect-offset-imports                              # read-only list, explains how it decided
+php artisan sheet:fix-offset-imports --tab=<id>                      # dry run
+php artisan sheet:fix-offset-imports --tab=<id> --confirm            # backup, then move, in one transaction
+```
+
+The fix writes the tab's cells to `storage/app/private/backups/offset-imports/` first, moves cell positions only (imported formulas already use the file's coordinates), checks every formula still evaluates, and rolls back if one does not. Tabs that someone edited in the editor (cell history), or that have comments, named ranges or charts, are never listed.
+
 ## Ecosystem
 
 **Dot.Sheet** is one of the platforms registered in `InfoDot/config/ecosystem.php`, connected via Sanctum SSO. Visit [InfoDot](https://github.com/sakhileb/InfoDot) to explore the full platform map.

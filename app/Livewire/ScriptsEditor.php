@@ -47,11 +47,36 @@ class ScriptsEditor extends Component
 
     public function render()
     {
-        return view('livewire.scripts-editor');
+        return view('livewire.scripts-editor', ['scriptsEnabled' => $this->scriptsEnabled()]);
+    }
+
+    /**
+     * Saved scripts are code. Off unless config('sheet.scripts_enabled') says otherwise (see
+     * config/sheet.php); every script action checks it again on the server, because a
+     * Livewire action can be called without the button that would normally trigger it.
+     */
+    protected function scriptsEnabled(): bool
+    {
+        return (bool) config('sheet.scripts_enabled');
+    }
+
+    protected function refuseWhenScriptsAreOff(): bool
+    {
+        if ($this->scriptsEnabled()) {
+            return false;
+        }
+
+        $this->status = 'Scripts are turned off on this server.';
+
+        return true;
     }
 
     public function newScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->selectedScriptId = null;
         $this->scriptName = '';
         $this->scriptBody = "// Return action list\nreturn [\n  { type: 'set', cell: 'A1', value: 'Hello' }\n];";
@@ -59,6 +84,10 @@ class ScriptsEditor extends Component
 
     public function loadScript(string $id): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $script = collect($this->scripts)->firstWhere('id', $id);
         if (! $script) {
             return;
@@ -71,6 +100,10 @@ class ScriptsEditor extends Component
 
     public function saveScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->validate([
             'scriptName' => 'required|string|min:2|max:80',
             'scriptBody' => 'required|string|min:5|max:20000',
@@ -106,6 +139,10 @@ class ScriptsEditor extends Component
 
     public function deleteScript(string $id): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->scripts = collect($this->scripts)
             ->reject(fn ($s) => $s['id'] === $id)
             ->values()
@@ -121,6 +158,10 @@ class ScriptsEditor extends Component
 
     public function dispatchRunScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         if (! $this->scriptBody) {
             return;
         }

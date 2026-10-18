@@ -531,7 +531,7 @@ class FormulaParser {
     }
 }
 
-// Export for use in browser
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = FormulaParser;
-}
+// app.js imports this as an ES module. (It used to be a side-effect import of a file that
+// only had a CommonJS export, so the name FormulaParser did not exist in app.js and the
+// whole script stopped at its first line, before Chart, Shepherd and the sandbox were set up.)
+export default FormulaParser;

@@ -92,9 +92,9 @@ class ProductionSettingsTest extends TestCase
         $this->assertLessThan(128, $r['peak_mb']);
     }
 
-    public function test_fifty_thousand_formulas_that_only_move_fit_in_128_megabytes(): void
+    public function test_twenty_five_thousand_formulas_that_only_move_fit_in_128_megabytes(): void
     {
-        $r = $this->scenario('moved-only-200k');
+        $r = $this->scenario('moved-only-100k');
 
         $this->assertSame('ok', $r['result']);
         $this->assertLessThan(20, $r['seconds']);

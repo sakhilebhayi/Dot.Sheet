@@ -90,7 +90,7 @@ class SpreadsheetImportExportService
                 $isPlainNumber = is_string($value) && preg_match('/^-?(0|[1-9]\d{0,14})(\.\d{1,15})?$/', $value) === 1 && $value !== '-0';
 
                 $cell->setValueExplicit(
-                    $isPlainNumber ? $value + 0 : (string) $value,
+                    $isPlainNumber ? (str_contains($value, '.') ? (float) $value : (int) $value) : (string) $value,
                     $isPlainNumber ? DataType::TYPE_NUMERIC : DataType::TYPE_STRING,
                 );
 

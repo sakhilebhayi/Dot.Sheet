@@ -202,7 +202,7 @@ class ChartBuilder extends Component
 
             foreach (range($startRow, $endRow) as $row) {
                 $cell = $colCells->firstWhere('row_index', $row);
-                $value = $cell?->computed_value ?? $cell?->raw_value;
+                $value = $cell->computed_value ?? $cell?->raw_value;
                 $values[] = is_numeric($value) ? (float) $value : 0;
             }
 

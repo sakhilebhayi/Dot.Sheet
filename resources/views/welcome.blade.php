@@ -80,10 +80,13 @@
     <body class="antialiased">
 
         <!-- Nav -->
+        {{-- The scrolled state used to carry `bg-[var(--paper)]/95`. Tailwind 3 cannot put an opacity on a var() and
+             silently emitted nothing, so the scrolled bar has always been see-through; Tailwind 4 would paint it, which
+             is a visible change, so the dead class is dropped here. To give the bar the paper tint, add it back. --}}
         <header
             x-data="{ scrolled: false, mobileMenuOpen: false }"
             @scroll.window="scrolled = window.pageYOffset > 24"
-            :class="scrolled ? 'bg-[var(--paper)]/95 backdrop-blur-md border-b border-[var(--line)] nav-scrolled' : 'border-b border-transparent nav-top'"
+            :class="scrolled ? 'backdrop-blur-md border-b border-[var(--line)] nav-scrolled' : 'border-b border-transparent nav-top'"
             class="fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
         >
             <nav class="max-w-[1400px] mx-auto px-5 sm:px-8 py-3 flex items-center justify-between">
@@ -133,10 +136,10 @@
                  class="md:hidden border-t border-[var(--line)] bg-[var(--paper)]"
                  style="display: none;">
                 <div class="flex flex-col px-5 py-4 gap-1 font-mono text-sm uppercase tracking-wide">
-                    <a href="#capabilities" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Product</a>
-                    <a href="#features" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Features</a>
+                    <a href="#capabilities" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Product</a>
+                    <a href="#features" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Features</a>
                     @guest
-                        <a href="{{ route('login') }}" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]">Sign in</a>
+                        <a href="{{ route('login') }}" class="px-3 py-2.5 text-[var(--slate)] hover:text-[var(--ink)]!">Sign in</a>
                     @endguest
                 </div>
             </div>
@@ -169,7 +172,7 @@
                         Collaborative spreadsheets
                     </p>
 
-                    <h1 class="font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] tracking-tight text-[var(--paper)] mb-6">
+                    <h1 class="font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] sm:leading-none tracking-tight text-[var(--paper)] mb-6">
                         Row by row.<br>Together, in real time.
                     </h1>
 
@@ -209,7 +212,7 @@
             <div class="max-w-[1400px] mx-auto">
                 <div class="max-w-xl mb-16 reveal" data-reveal>
                     <p class="font-mono text-xs tracking-[0.18em] uppercase text-[var(--green)] mb-4">What it does</p>
-                    <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight">
+                    <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight sm:leading-10">
                         Everything a sheet needs, none of it bolted on after
                     </h2>
                 </div>
@@ -242,7 +245,7 @@
                 <div class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-12 lg:gap-20">
                     <div class="reveal" data-reveal>
                         <p class="font-mono text-xs tracking-[0.18em] uppercase text-[var(--green)] mb-4">Built for shared sheets</p>
-                        <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight mb-5">
+                        <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--ink)] leading-tight sm:leading-10 mb-5">
                             Owned by one person, shared with as many as it takes
                         </h2>
                         <p class="text-[var(--slate)] leading-relaxed max-w-sm">
@@ -279,7 +282,7 @@
             <div class="absolute inset-0" style="background: linear-gradient(180deg, #12231f 0%, rgba(18,35,31,0.82) 50%, #12231f 100%);"></div>
 
             <div class="relative z-10 max-w-2xl mx-auto text-center reveal" data-reveal>
-                <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--paper)] leading-tight mb-5">
+                <h2 class="font-display font-semibold text-3xl sm:text-4xl text-[var(--paper)] leading-tight sm:leading-10 mb-5">
                     Open a sheet. Watch the grid catch up to you.
                 </h2>
                 <p class="text-[rgba(250,247,236,0.82)] leading-relaxed mb-10 max-w-lg mx-auto">

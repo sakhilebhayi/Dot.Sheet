@@ -12,7 +12,7 @@ Dot.Sheet is an AI-powered spreadsheet web platform built with:
 ## 📋 Initial Setup
 
 ### Prerequisites
-- PHP 8.3+
+- PHP 8.4
 - Composer
 - Node.js 18+
 - npm or yarn

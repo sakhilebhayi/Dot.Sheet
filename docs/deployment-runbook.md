@@ -1,5 +1,7 @@
 # Deployment Runbook
 
+> **Production is a cPanel shared host: SQLite, PHP 8.4, no Redis, no Node, no websocket server; cron runs `schedule:run` and `queue:work`.** The authoritative procedure is [deployment-cpanel.md](deployment-cpanel.md). This page is a generic baseline; the Redis, Horizon, Supervisor and MySQL/Postgres items below do not apply to production.
+
 This runbook provides a practical baseline for production deployment and operations.
 
 ## 1. Pre-Deployment Checklist
@@ -7,8 +9,8 @@ This runbook provides a practical baseline for production deployment and operati
 - [ ] Fill out production values in [.env.production.example](../.env.production.example) and copy to `.env` on server.
 - [ ] Ensure app key exists and is not rotated unexpectedly.
 - [ ] Ensure database credentials and network access are valid.
-- [ ] Ensure Redis is reachable from the app host.
-- [ ] Install PHP extensions required by the app (`redis`, `pdo_mysql` or `pdo_pgsql`, `mbstring`, `xml`, `zip`).
+- [ ] (Only for a Redis-based environment, not production.) Ensure Redis is reachable from the app host.
+- [ ] Install PHP extensions required by the app (`pdo_sqlite`, `mbstring`, `xml`, `zip`).
 
 ## 2. Release Steps
 

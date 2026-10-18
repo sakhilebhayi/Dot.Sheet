@@ -23,15 +23,17 @@ name: Deploy to Production
 #      public/build.incoming on the host.
 #   3. On the host: rollback copy, maintenance mode, code to origin/main,
 #      composer install, production invariants (APP_DEBUG forced false; a
-#      warning, not a change, for APP_ENV=local or an http APP_URL), swap in the
-#      new public/build, keep the docroot's build/ in step, migrations, caches,
+#      warning, not a change, for APP_ENV=local, an http APP_URL, or a .env that
+#      is not SQLite / null broadcasting / database queue, session and cache),
+#      swap in the new public/build (a stray public/hot is removed), keep the docroot's build/ in step, migrations, caches,
 #      back up.
 #   4. Installs the cron lines (2: schedule:run, queue:work) through the shared crontab block, with its
 #      lock and verified read-back. The first run on a host that has only the old queue line adds
 #      the schedule:run line (account total +1).
 #   5. Smoke check from the runner, like a browser: / and /login answer 200,
-#      the built CSS answers 200, /up answers 200, and a harmless POST /up (a
-#      405) does not return a debug page.
+#      the built CSS answers 200, /up answers 200, neither / nor /login points at
+#      a Vite dev server, and a harmless POST /up (a 405) does not return a
+#      debug page.
 #
 # A failure after maintenance mode starts LEAVES the site down on purpose, with
 # the rollback copy's name in the log, rather than guessing at an automatic
@@ -264,6 +266,21 @@ jobs:
           # Not changed here (it can alter behaviour), but never silent.
           if grep -q '^APP_ENV=local' .env; then echo "::warning::APP_ENV=local in the production .env; set it to production."; fi
           if grep -qE '^APP_URL=http://' .env; then echo "::warning::APP_URL is http://, not https://; set it to the https address."; fi
+          # Production is SQLite on a cPanel shared host: no Redis, no websocket
+          # server. Warn (never change; the owner edits .env) when the host .env
+          # asks for something that host cannot serve. An unset key falls back
+          # to the config default, which is the right one for every key here.
+          env_val() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- | tr -d "\"' " || true; }
+          warn_unless() { # key, description, then the values that are NOT acceptable (regex)
+            local v; v="$(env_val "$1")"
+            if [ -n "$v" ] && printf '%s' "$v" | grep -qE "$3"; then echo "::warning::$1=$v in the production .env: $2"; fi
+          }
+          v="$(env_val DB_CONNECTION)"
+          if [ -n "$v" ] && [ "$v" != "sqlite" ]; then echo "::warning::DB_CONNECTION=$v in the production .env: production is SQLite; set DB_CONNECTION=sqlite."; fi
+          warn_unless BROADCAST_CONNECTION "there is no websocket server on this host; set BROADCAST_CONNECTION=null." '^(reverb|pusher|ably)$'
+          warn_unless QUEUE_CONNECTION "cron runs queue:work against the database queue; sync runs jobs in the web request and redis is not installed. Set QUEUE_CONNECTION=database." '^(sync|redis)$'
+          warn_unless SESSION_DRIVER "there is no Redis on this host; set SESSION_DRIVER=database." '^redis$'
+          warn_unless CACHE_STORE "there is no Redis on this host; set CACHE_STORE=database." '^redis$'
 
           # ---- frontend: swap the staged build in, keep the docroot copy in step
           # public/build is gitignored, so git never refreshes it. The docroot
@@ -274,6 +291,11 @@ jobs:
           [ -d public/build ] && mv public/build public/build.old
           mv public/build.incoming public/build
           rm -rf public/build.old
+          # public/hot is written by `npm run dev` and makes @vite() point every
+          # page at a dev server (http://[::1]:5173) that no visitor can reach.
+          # It is gitignored, so git never removes it, and a hand-uploaded tree
+          # can carry one onto the host. Production never runs a dev server.
+          if [ -e public/hot ]; then rm -f public/hot; echo "== removed a stray public/hot (the Vite dev-server marker)"; fi
           LINK="$DOCROOT/build"
           if [ -L "$LINK" ]; then
             echo "== docroot build/ is a symlink; nothing to copy"
@@ -382,6 +404,15 @@ jobs:
           for PAGE in "/" "/login" "/up"; do
             CODE=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' "$SITE_URL$PAGE" || true)
             if [ "$CODE" = "200" ]; then echo "200 $SITE_URL$PAGE"; else echo "::error::$SITE_URL$PAGE answered ${CODE:-no response} (expected 200)"; FAILED=1; fi
+          done
+          # No page may point at a Vite dev server: that is what a stray public/hot
+          # file does, and the site then renders with no styles at all.
+          for PAGE in "/" "/login"; do
+            if curl -s --max-time 30 "$SITE_URL$PAGE" | grep -qE ':5173|@vite/client'; then
+              echo "::error::$SITE_URL$PAGE references the Vite dev server (a public/hot file on the host): the page has no usable CSS or JS."; FAILED=1
+            else
+              echo "No Vite dev-server references on $SITE_URL$PAGE"
+            fi
           done
           for ASSET in $(python3 -c "import json; m=json.load(open('public/build/manifest.json')); print(' '.join(sorted({v['file'] for v in m.values() if v.get('isEntry')} | {f for v in m.values() if v.get('isEntry') for f in v.get('css', [])})))"); do
             CODE=$(curl -s --max-time 30 -o /dev/null -w '%{http_code}' "$SITE_URL/build/$ASSET" || true)

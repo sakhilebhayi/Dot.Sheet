@@ -445,6 +445,8 @@ class AiAnalysisPanel extends Component
 
     public function addWorkflowRule(): void
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $this->validate([
             'workflow_name' => 'required|string|min:2|max:80',
             'workflow_column' => ['required', 'regex:/^[A-Z]{1,3}$/'],
@@ -487,6 +489,8 @@ class AiAnalysisPanel extends Component
 
     public function deleteWorkflowRule(string $id): void
     {
+        $this->authorize('update', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $this->workflow_rules = collect($this->workflow_rules)
             ->reject(fn ($rule) => ($rule['id'] ?? null) === $id)
             ->values()

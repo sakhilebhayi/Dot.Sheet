@@ -71,8 +71,11 @@ class SpreadsheetController extends Controller
         $user = auth()->user();
 
         // Verify team ownership if team_id provided
-        if ($validated['team_id']) {
-            $user->teams()->findOrFail($validated['team_id']);
+        if (! empty($validated['team_id'])) {
+            $team = $user->teams()->findOrFail($validated['team_id']);
+
+            // A read-only member (viewer) may belong to the team but not add sheets to it.
+            $this->authorize('createSpreadsheet', $team);
         }
 
         $spreadsheet = Spreadsheet::create([

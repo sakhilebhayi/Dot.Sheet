@@ -10,14 +10,17 @@
                             class="text-purple-800 dark:text-purple-200 hover:underline font-medium">
                         📊 {{ $chart['title'] }}
                     </button>
-                    <button wire:click="deleteChart({{ $chart['id'] }})"
-                            class="text-purple-400 hover:text-red-500 ml-1">✕</button>
+                    @if ($canEdit)
+                        <button wire:click="deleteChart({{ $chart['id'] }})"
+                                class="text-purple-400 hover:text-red-500 ml-1">✕</button>
+                    @endif
                 </div>
             @endforeach
         </div>
     @endif
 
     <!-- Insert Chart Button -->
+    @if ($canEdit)
     <button wire:click="openModal"
             class="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700
                    text-white rounded-lg font-medium">
@@ -27,6 +30,7 @@
         </svg>
         Insert Chart
     </button>
+    @endif
 
     <!-- Chart Builder Modal -->
     @if ($showModal)

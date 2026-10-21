@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\NamedRange;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -21,6 +22,7 @@ use Livewire\Component;
 class NamedRangesPanel extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     private const RESERVED_WORDS = [
         'SUM', 'AVERAGE', 'AVG', 'COUNT', 'MAX', 'MIN', 'ROUND', 'ABS',
@@ -50,7 +52,7 @@ class NamedRangesPanel extends Component
 
     public function render()
     {
-        return view('livewire.named-ranges-panel');
+        return view('livewire.named-ranges-panel', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function loadRanges(): void

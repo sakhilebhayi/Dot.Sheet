@@ -31,6 +31,7 @@ Dot.Sheet is the collaborative data platform in the InfoDot ecosystem. Spreadshe
 - Import CSV / XLSX (queued in chunks for large files) and export back to either format
 - Threaded, cell-anchored comments with @mention notifications, and version history (auto-snapshot + manual + restore) — no named-ranges feature exists
 - Per-spreadsheet sharing: owner, team members, and individually invited users/emails with view/comment/edit/admin permission tiers, plus an optional public read-only link
+- Team roles (Jetstream): `admin` and `editor` can read, create and change the team's sheets; `viewer` (read only) can open and export them, nothing else. InfoDot sign-in maps owner/admin to `admin`, editor to `editor`, viewer and anything unknown to `viewer`
 - Ecosystem SSO from the InfoDot hub via `EcosystemAuthController`
 
 ## Domain Models

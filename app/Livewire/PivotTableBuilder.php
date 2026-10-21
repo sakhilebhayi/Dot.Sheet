@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\PivotTable;
 use App\Models\Spreadsheet;
 use App\Services\PivotTableService;
@@ -11,6 +12,7 @@ use Livewire\Component;
 class PivotTableBuilder extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     public $spreadsheet_id;
 
@@ -56,7 +58,7 @@ class PivotTableBuilder extends Component
 
     public function render()
     {
-        return view('livewire.pivot-table-builder');
+        return view('livewire.pivot-table-builder', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function loadPivots(): void

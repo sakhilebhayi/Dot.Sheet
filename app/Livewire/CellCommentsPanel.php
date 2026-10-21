@@ -42,7 +42,12 @@ class CellCommentsPanel extends Component
 
     public function render()
     {
-        return view('livewire.cell-comments-panel');
+        $spreadsheet = Spreadsheet::find($this->spreadsheet_id);
+
+        return view('livewire.cell-comments-panel', [
+            // Courtesy only: addComment / addReply / toggleResolved / deleteComment authorize on the server.
+            'canComment' => $spreadsheet !== null && (Auth::user()?->can('comment', $spreadsheet) ?? false),
+        ]);
     }
 
     public function onCellSelected($row, $col)
@@ -105,6 +110,8 @@ class CellCommentsPanel extends Component
 
     public function toggleResolved($threadId)
     {
+        $this->authorize('comment', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $thread = Comment::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
             ->whereNull('parent_id')
@@ -123,6 +130,8 @@ class CellCommentsPanel extends Component
 
     public function deleteComment($commentId)
     {
+        $this->authorize('comment', Spreadsheet::findOrFail($this->spreadsheet_id));
+
         $comment = Comment::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
             ->where('id', $commentId)

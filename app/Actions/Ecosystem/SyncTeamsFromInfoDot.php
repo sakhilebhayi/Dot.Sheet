@@ -6,7 +6,6 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Laravel\Jetstream\Jetstream;
 
 /**
  * Applies the companies InfoDot says a person belongs to, on every sign-in.
@@ -15,8 +14,9 @@ use Laravel\Jetstream\Jetstream;
  * - Only people InfoDot lists as owner or admin of a company create its team here;
  *   an ordinary member is attached once it exists, so a member can never become
  *   the local owner of someone else's company.
- * - Membership and role follow InfoDot (owner and admin become admin, editor stays
- *   editor; this app defines no read-only role, so a viewer also becomes editor).
+ * - Membership and role follow InfoDot, on every sign-in and for existing members too (owner and
+ *   admin become admin, editor stays editor, viewer stays viewer: a read-only role). Any other
+ *   or missing InfoDot role gets viewer, the least privilege.
  * - Companies InfoDot no longer lists for the person are detached, so removing
  *   someone in InfoDot removes their access here at their next sign-in.
  * - The company InfoDot says is active becomes the person's current team.
@@ -84,7 +84,7 @@ class SyncTeamsFromInfoDot
             return; // the local owner needs no membership row
         }
 
-        $localRole = $this->localRole($role);
+        $localRole = self::localRole($role);
 
         if ($user->belongsToTeam($team)) {
             $team->users()->updateExistingPivot($user->id, ['role' => $localRole]);
@@ -116,11 +116,16 @@ class SyncTeamsFromInfoDot
         }
     }
 
-    private function localRole(string $infodotRole): string
+    /**
+     * The role this app stores for an InfoDot role: owner and admin become admin, editor stays editor,
+     * viewer and anything unknown or empty become viewer. Never falls back to a role that can write.
+     */
+    public static function localRole(string $infodotRole): string
     {
-        $wanted = in_array($infodotRole, ['owner', 'admin'], true) ? 'admin' : ($infodotRole === 'editor' ? 'editor' : 'viewer');
-
-        // Dot.Sheet defines only admin and editor, so 'viewer' falls through to editor, its lowest role.
-        return Jetstream::findRole($wanted) ? $wanted : 'editor';
+        return match (strtolower(trim($infodotRole))) {
+            'owner', 'admin' => 'admin',
+            'editor' => 'editor',
+            default => 'viewer',
+        };
     }
 }

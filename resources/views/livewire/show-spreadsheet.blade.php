@@ -36,6 +36,7 @@
 
                 <!-- Import / Export -->
                 <div class="flex gap-1.5">
+                    @if ($canEdit)
                     <label class="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
                                   text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium cursor-pointer border
                                   border-gray-300 dark:border-gray-600 flex items-center gap-1" title="Import CSV">
@@ -47,6 +48,7 @@
                         <input type="file" accept=".csv,.xlsx,.xls" class="hidden"
                                onchange="handleImport(event)">
                     </label>
+                    @endif
                     <div class="relative" x-data="{ open: false }">
                         <button @click="open = !open"
                                 class="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
@@ -98,11 +100,13 @@
                                    flex items-center gap-1" title="Version History">
                         🕘 History
                     </button>
+                    @if ($canEdit)
                     <button onclick="document.dispatchEvent(new CustomEvent('open-formula-modal'))"
                             class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium
                                    flex items-center gap-1" title="AI Formula">
                         ✨ Formula
                     </button>
+                    @endif
                     <button onclick="document.getElementById('analysisPanel').classList.toggle('hidden')"
                             class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium
                                    flex items-center gap-1" title="AI Analyze">
@@ -118,7 +122,9 @@
         </div>
 
         <!-- Formatting Toolbar Row -->
-        @livewire('spreadsheet-toolbar', ['spreadsheet_id' => $spreadsheet->id])
+        @if ($canEdit)
+            @livewire('spreadsheet-toolbar', ['spreadsheet_id' => $spreadsheet->id])
+        @endif
     </div>
 
     <!-- Main Content Area -->
@@ -301,15 +307,17 @@
                     <div class="group flex items-center">
                         <button type="button"
                                 wire:click="switchTab({{ $tab['id'] }})"
+                                @if ($canEdit)
                                 @dblclick="const name = prompt('Rename sheet', '{{ addslashes($tab['name']) }}'); if (name) $wire.renameTab({{ $tab['id'] }}, name)"
                                 title="Double-click to rename"
+                                @endif
                                 class="px-3 py-1 text-xs font-medium rounded-t-md border-t border-l border-r
                                        {{ (int) $tab['id'] === (int) $activeSheetTabId
                                             ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400'
                                             : 'bg-gray-200 dark:bg-gray-800/40 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700' }}">
                             {{ $tab['name'] }}
                         </button>
-                        @if (count($sheetTabs) > 1)
+                        @if (count($sheetTabs) > 1 && $canEdit)
                             <button type="button" wire:click="deleteTab({{ $tab['id'] }})"
                                     title="Delete sheet"
                                     class="opacity-0 group-hover:opacity-100 -ml-4 mr-1 text-gray-400 hover:text-red-500 text-xs px-1">
@@ -318,10 +326,12 @@
                         @endif
                     </div>
                 @endforeach
+                @if ($canEdit)
                 <button type="button" wire:click="createTab()" title="Add sheet"
                         class="px-2 py-1 text-sm font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
                     +
                 </button>
+                @endif
             </div>
         </div>
 
@@ -386,10 +396,12 @@
                 </div>
             @endcan
 
-            <!-- Scripts & Macros Section -->
-            <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                @livewire('scripts-editor', ['spreadsheet_id' => $spreadsheet->id])
-            </div>
+            <!-- Scripts & Macros Section (editing: a read-only member cannot even mount it) -->
+            @if ($canEdit)
+                <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+                    @livewire('scripts-editor', ['spreadsheet_id' => $spreadsheet->id])
+                </div>
+            @endif
 
             <!-- Spacer -->
             <div class="flex-1"></div>
@@ -531,8 +543,8 @@
             marker.style.left = `${x}px`;
             marker.style.top = `${y}px`;
             marker.innerHTML = `
-                <div class="w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm"></div>
-                <div class="absolute -top-4 left-0 text-[10px] px-1 py-0.5 bg-orange-500 text-white rounded">${cursor.user_name}</div>
+                <div class="w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm"><\/div>
+                <div class="absolute -top-4 left-0 text-[10px] px-1 py-0.5 bg-orange-500 text-white rounded">${cursor.user_name}<\/div>
             `;
 
             layer.appendChild(marker);

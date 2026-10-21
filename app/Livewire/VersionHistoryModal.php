@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -16,6 +17,7 @@ use Livewire\Component;
 class VersionHistoryModal extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     public $spreadsheet_id;
 
@@ -42,7 +44,7 @@ class VersionHistoryModal extends Component
 
     public function render()
     {
-        return view('livewire.version-history-modal');
+        return view('livewire.version-history-modal', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function openModal(): void
@@ -70,9 +72,7 @@ class VersionHistoryModal extends Component
     public function createSnapshot(): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (! Auth::user()->can('update', $spreadsheet)) {
-            return;
-        }
+        $this->authorize('update', $spreadsheet);
 
         $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
@@ -94,9 +94,7 @@ class VersionHistoryModal extends Component
     public function restoreVersion($versionId): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (! Auth::user()->can('update', $spreadsheet)) {
-            return;
-        }
+        $this->authorize('update', $spreadsheet);
 
         $version = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)

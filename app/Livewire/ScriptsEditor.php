@@ -48,6 +48,9 @@ class ScriptsEditor extends Component
     {
         if ($this->spreadsheet_id) {
             $this->spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
+
+            // Checked on every request, not only at mount: a person demoted meanwhile keeps the component open.
+            $this->authorize('update', $this->spreadsheet);
         }
     }
 

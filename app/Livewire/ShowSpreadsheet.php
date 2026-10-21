@@ -496,6 +496,8 @@ class ShowSpreadsheet extends Component
      */
     protected function updateLayout(callable $change): bool
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $stored = null;
 
         $written = $this->guardedWrite(function () use ($change, &$stored) {
@@ -725,6 +727,12 @@ class ShowSpreadsheet extends Component
     public function startEditing($row, $col)
     {
         $this->selectCell($row, $col);
+
+        // A read-only member can select and copy but not open a cell for editing (saveCell would refuse anyway).
+        if (! (Auth::user()?->can('update', $this->spreadsheet) ?? false)) {
+            return;
+        }
+
         $this->editingCell = "{$row}_{$col}";
         $cell = $this->getCellData($row, $col);
         $this->editingValue = $cell['raw_value'] ?? '';
@@ -1572,6 +1580,8 @@ class ShowSpreadsheet extends Component
     #[On('add-filter-rule')]
     public function addFilterRule($payload): void
     {
+        $this->authorize('update', $this->spreadsheet);
+
         $data = is_array($payload) ? $payload : [];
         if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
             $data = $data[0];
@@ -2035,6 +2045,8 @@ class ShowSpreadsheet extends Component
         return view('livewire.show-spreadsheet', [
             'viewportData' => $this->getViewportData(),
             'spreadsheet' => $this->spreadsheet,
+            // Courtesy only: hides write controls from a read-only member. Every write action authorizes on the server.
+            'canEdit' => Auth::user()?->can('update', $this->spreadsheet) ?? false,
         ]);
     }
 

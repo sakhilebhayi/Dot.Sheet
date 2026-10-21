@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Ecosystem\SyncTeamsFromInfoDot;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
+use Laravel\Jetstream\Jetstream;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -96,7 +99,7 @@ class InfoDotTeamSyncTest extends TestCase
         $this->assertSame('admin', $carl->fresh()->teamRole($team->fresh())->key);
     }
 
-    public function test_an_infodot_viewer_gets_the_lowest_role_this_app_has_because_it_defines_no_viewer_role(): void
+    public function test_an_infodot_viewer_stays_a_viewer_here_and_cannot_write(): void
     {
         $this->signIn('ann@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'owner')], self::ACME);
         $this->signIn('vic@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'viewer')], self::ACME);
@@ -104,7 +107,51 @@ class InfoDotTeamSyncTest extends TestCase
         $team = Team::where('infodot_team_uuid', self::ACME)->firstOrFail();
         $vic = User::where('email', 'vic@acme.test')->firstOrFail();
 
+        $this->assertSame('viewer', $vic->teamRole($team)->key);
+        $this->assertSame(['read'], $vic->teamRole($team)->permissions);
+        $this->assertTrue($vic->hasTeamPermission($team, 'read'));
+        $this->assertFalse($vic->hasTeamPermission($team, 'update'));
+        $this->assertFalse($vic->hasTeamPermission($team, 'create'));
+    }
+
+    public function test_an_existing_editor_whom_infodot_now_lists_as_viewer_is_demoted_at_next_sign_in(): void
+    {
+        $this->signIn('ann@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'owner')], self::ACME);
+        $this->signIn('vic@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'editor')], self::ACME);
+        $team = Team::where('infodot_team_uuid', self::ACME)->firstOrFail();
+        $vic = User::where('email', 'vic@acme.test')->firstOrFail();
         $this->assertSame('editor', $vic->teamRole($team)->key);
+
+        // Before the next sign-in nothing changes: roles already stored are untouched.
+        $this->assertSame('editor', $vic->fresh()->teamRole($team->fresh())->key);
+
+        $this->signIn('vic@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'viewer')], self::ACME);
+
+        $this->assertSame('viewer', $vic->fresh()->teamRole($team->fresh())->key);
+        $this->assertSame(1, $team->users()->where('users.id', $vic->id)->count(), 'the membership is updated, not duplicated');
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function roleMappings(): array
+    {
+        return [
+            'owner' => ['owner', 'admin'],
+            'admin' => ['admin', 'admin'],
+            'editor' => ['editor', 'editor'],
+            'viewer' => ['viewer', 'viewer'],
+            'unknown' => ['auditor', 'viewer'],
+            'empty' => ['', 'viewer'],
+            'case and spaces' => [' Admin ', 'admin'],
+        ];
+    }
+
+    #[DataProvider('roleMappings')]
+    public function test_infodot_roles_map_to_local_roles_with_least_privilege_for_the_unknown(string $infodot, string $local): void
+    {
+        $this->assertSame($local, SyncTeamsFromInfoDot::localRole($infodot));
+        $this->assertNotNull(Jetstream::findRole($local), 'the mapped role must exist in this app');
     }
 
     public function test_a_person_removed_in_infodot_loses_the_company_here_at_next_sign_in(): void

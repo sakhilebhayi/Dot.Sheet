@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\Spreadsheet;
@@ -11,6 +12,7 @@ use Livewire\Component;
 class ChartBuilder extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     public $spreadsheet_id;
 
@@ -58,7 +60,7 @@ class ChartBuilder extends Component
 
     public function render()
     {
-        return view('livewire.chart-builder');
+        return view('livewire.chart-builder', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function loadCharts()

@@ -28,7 +28,7 @@ Dot.Sheet is the collaborative data platform in the InfoDot ecosystem. Spreadshe
 - AI formula assistant, natural-language query, data cleaning, OCR-to-cell, and sentiment analysis panels — all routed through the generic `AiService` (provider/model configured via `config('ai.*')`, defaults to a local Ollama endpoint, not a confirmed hosted-Claude integration)
 - Optional real-time cell/cursor broadcasting via Laravel Reverb or Pusher (off in production: there is no websocket server; `BROADCAST_CONNECTION=null`)
 - Chart generation (bar/line/pie/doughnut/scatter/area) from a cell range — no pivot-table feature exists
-- Import CSV / XLSX (queued in chunks for large files) and export back to either format
+- Import CSV / XLSX (small files in one step, large files queued in chunks) and export back to either format
 - Threaded, cell-anchored comments with @mention notifications, and version history (auto-snapshot + manual + restore) — no named-ranges feature exists
 - Per-spreadsheet sharing: owner, team members, and individually invited users/emails with view/comment/edit/admin permission tiers, plus an optional public read-only link
 - Team roles (Jetstream): `admin` and `editor` can read, create and change the team's sheets; `viewer` (read only) can open and export them, nothing else. InfoDot sign-in maps owner/admin to `admin`, editor to `editor`, viewer and anything unknown to `viewer`
@@ -90,6 +90,18 @@ php artisan serve
 ```
 
 > **Ecosystem SSO:** Set `APP_URL` to the deployed host (https://sheets.infodot.co.za in production). Users authenticated through InfoDot gain access automatically via Sanctum handoff tokens.
+
+## Import limits
+
+An import is measured in **non-empty cells**, not rows, because the SQLite write lock is held for about 0.2 to 0.35 ms per cell whatever the shape of the file (a 1,499-row x 20-column file held it for about 10 seconds, a 1,499-row x 2-column file for under one). While one writer holds the lock, sessions, the queue worker, the scheduler and other people's edits wait, and past `busy_timeout` (5000 ms) they fail with "database is locked".
+
+- **Fewer than `SHEET_IMPORT_INLINE_MAX_CELLS` cells (default 6000):** written inside the request in one all-or-nothing transaction. If anything fails, nothing is imported. 6000 cells is about 1 to 2 seconds of lock.
+- **6000 cells or more:** split into queued `ImportRowsChunkJob` jobs on a batch and answered at once with "This file is large, so it is being imported in the background. You can keep working; the sheet will fill in as it goes." Each chunk is its own transaction, so a failure keeps the chunks already written and the progress badge reports "Import failed after N of M rows". The editor reloads when the batch finishes. A queue worker must be running (cron `queue:work`).
+- **Chunk size:** rows per chunk = `SHEET_IMPORT_CHUNK_CELLS` (default 5000) divided by the most non-empty cells in any row of the file, at least 1 and at most 500 rows. A chunk is therefore about 1 to 1.75 seconds of lock, however wide the file is.
+- **Pause between chunks:** `SHEET_IMPORT_CHUNK_PAUSE_MS` (default 250). SQLite gives the lock to whoever asks first, not to whoever waited longest, so back-to-back chunks starved a session write for the full 5 seconds in testing; the pause is the window other writers get.
+- The upload limit is still 10 MB. If rows or columns are inserted or deleted while a queued import runs, the rest of the import is cancelled and the person is told (see below).
+
+Set the variables in `.env` (see `.env.example`) and clear the config cache. Lower the cell values on a slower host; `0` for `SHEET_IMPORT_INLINE_MAX_CELLS` queues every import.
 
 ## Inserting and deleting rows and columns
 

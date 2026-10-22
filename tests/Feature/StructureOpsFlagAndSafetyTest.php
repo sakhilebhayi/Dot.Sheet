@@ -258,7 +258,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
     public function test_a_queued_import_is_cancelled_with_a_message_when_the_structure_moved_meanwhile(): void
     {
         config(['queue.default' => 'database']);
-        $lines = array_map(fn ($i) => "row{$i},{$i}", range(0, 1999));
+        $lines = array_map(fn ($i) => "row{$i},{$i},x{$i}", range(0, 1999));   // 6,000 cells: at the inline limit, so queued
 
         $batchId = $this->actingAs($this->user)
             ->post(route('spreadsheets.import', $this->spreadsheet), ['file' => UploadedFile::fake()->createWithContent('big.csv', implode("\n", $lines))])

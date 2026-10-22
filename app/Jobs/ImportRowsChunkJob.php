@@ -40,6 +40,19 @@ class ImportRowsChunkJob implements ShouldQueue
 
     public function handle(): void
     {
+        $this->writeUnderLock();
+
+        // SQLite does not queue writers fairly: a worker that takes the write lock again the moment it
+        // lets go (the next chunk) can keep a session or cache write waiting past busy_timeout. A short
+        // pause between chunks, outside any transaction, is the window those writers get.
+        $pauseMs = max(0, (int) config('sheet.import_chunk_pause_ms'));
+        if ($pauseMs > 0) {
+            usleep($pauseMs * 1000);
+        }
+    }
+
+    protected function writeUnderLock(): void
+    {
         if ($this->batch()?->cancelled()) {
             return;
         }

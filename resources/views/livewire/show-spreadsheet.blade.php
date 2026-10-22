@@ -812,7 +812,7 @@
         }, 900);
     }
 
-    async function startImportPolling(batchId) {
+    async function startImportPolling(batchId, queuedMessage) {
         const progressEl = document.getElementById('importProgress');
         if (!progressEl || !batchId) return;
 
@@ -823,8 +823,10 @@
             importPollHandle = null;
         }
 
+        // The sentence the server sent when it queued the file stays on screen while the chunks run.
+        const queuedNotice = queuedMessage || 'Import queued...';
         progressEl.classList.remove('hidden');
-        progressEl.textContent = 'Import queued...';
+        progressEl.textContent = queuedNotice;
 
         const poll = async () => {
             try {
@@ -845,7 +847,7 @@
 
                 const status = await response.json();
                 if (status.status === 'running') {
-                    progressEl.textContent = `Import ${status.progress}% (${status.processed}/${status.total} jobs)`;
+                    progressEl.textContent = `${queuedNotice} (${status.progress}%)`;
                     return;
                 }
 
@@ -1054,7 +1056,7 @@
         .then(data => {
             if (data.success) {
                 if (data.queued) {
-                    startImportPolling(data.batch_id);
+                    startImportPolling(data.batch_id, data.message);
                     return;
                 }
                 alert(`Imported ${data.cells} cells across ${data.rows} rows.`);

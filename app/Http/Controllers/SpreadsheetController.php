@@ -229,7 +229,8 @@ class SpreadsheetController extends Controller
                 $batch->cancel();
             }
             $rows = (int) Cache::get("import:{$batchId}:rows", 0);
-            $written = min($rows, max(0, $total - $failed) * 500);
+            $chunkRows = max(1, (int) Cache::get("import:{$batchId}:chunk_rows", SpreadsheetImportExportService::MAX_ROWS_PER_CHUNK));
+            $written = min($rows, max(0, $total - $failed) * $chunkRows);
 
             return response()->json($payload + [
                 'status' => 'failed', 'progress' => 100, 'rows' => $rows,

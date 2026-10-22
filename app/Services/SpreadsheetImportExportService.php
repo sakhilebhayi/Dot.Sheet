@@ -22,6 +22,10 @@ use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
 class SpreadsheetImportExportService
 {
+    public const MAX_ROWS_PER_CHUNK = 500;
+
+    public const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet reloads when it is done.';
+
     /**
      * Export spreadsheet to CSV string
      *
@@ -197,6 +201,18 @@ class SpreadsheetImportExportService
     }
 
     /**
+     * Whether an imported value is a cell at all (empty strings and nulls are not written).
+     */
+    public static function importedCellHasValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            $value = $value['text'] ?? '';
+        }
+
+        return (string) ($value ?? '') !== '';
+    }
+
+    /**
      * What to store for one imported value, or null for an empty one. A value starting with "="
      * is a formula unless the importer says the file holds values only ($valuesAreText) or the
      * cell is marked as text (['text' => value], see parseCsv()).
@@ -205,15 +221,16 @@ class SpreadsheetImportExportService
      */
     public static function importedCellAttributes(mixed $value, bool $valuesAreText = false): ?array
     {
-        if (is_array($value)) {
-            $valuesAreText = true;
-            $value = $value['text'] ?? '';
-        }
-
-        $value = (string) ($value ?? '');
-        if ($value === '') {
+        if (! self::importedCellHasValue($value)) {
             return null;
         }
+
+        if (is_array($value)) {
+            $valuesAreText = true;
+            $value = $value['text'];
+        }
+
+        $value = (string) $value;
 
         $isFormula = ! $valuesAreText && str_starts_with($value, '=');
 
@@ -304,43 +321,104 @@ class SpreadsheetImportExportService
             return ['success' => false, 'error' => 'Unsupported file type: '.$ext];
         }
 
-        $effectiveRows = count(array_filter($rows, fn ($row) => ! empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))));
-        $largeImportThreshold = 1500;
-        if ($effectiveRows >= $largeImportThreshold) {
-            $chunkSize = 500;
-            $chunks = array_chunk($rows, $chunkSize);
-            $structureVersion = StructureVersion::current($spreadsheet->id);
-            $jobs = [];
-            foreach ($chunks as $index => $chunk) {
-                $jobs[] = new ImportRowsChunkJob(
-                    spreadsheetId: $spreadsheet->id,
-                    sheetTabId: $sheetTab?->id,
-                    rows: $chunk,
-                    startRowIndex: $index * $chunkSize,
-                    valuesAreText: $valuesAreText,
-                    structureVersion: $structureVersion,
-                );
-            }
+        $size = self::measureRows($rows);
+        $inlineMaxCells = max(0, (int) config('sheet.import_inline_max_cells'));
 
-            $batch = Bus::batch($jobs)
-                ->name("import:spreadsheet:{$spreadsheet->id}")
-                ->allowFailures()
-                ->dispatch();
-
-            // For the status endpoint's "failed after N of M rows".
-            Cache::put("import:{$batch->id}:rows", $effectiveRows, 86400);
-
-            return [
-                'success' => true,
-                'queued' => true,
-                'batch_id' => $batch->id,
-                'rows' => $effectiveRows,
-                'chunks' => count($chunks),
-                'message' => 'Large import queued in background jobs.',
-            ];
+        // The write lock is held for about 0.35 ms per CELL, so the size of the inline path is counted
+        // in cells: a file of 1,499 rows x 20 columns kept it for 10 seconds, one of 1,499 x 2 does not.
+        if ($size['cells'] >= $inlineMaxCells && $size['cells'] > 0) {
+            return $this->queueImport($spreadsheet, $sheetTab, $rows, $size, $valuesAreText);
         }
 
         return $this->insertRows($spreadsheet, $rows, $sheetTab, $valuesAreText);
+    }
+
+    /**
+     * The non-empty rows and cells of a parsed file, and the most cells in any one row: what the
+     * import writes (the same test insertRows() and the chunk job apply), counted without writing.
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array{rows: int, cells: int, widest: int}
+     */
+    public static function measureRows(array $rows): array
+    {
+        $rowCount = 0;
+        $cellCount = 0;
+        $widest = 0;
+
+        foreach ($rows as $row) {
+            $inRow = 0;
+            foreach ((array) $row as $value) {
+                if (self::importedCellHasValue($value)) {
+                    $inRow++;
+                }
+            }
+            if ($inRow === 0) {
+                continue;
+            }
+            $rowCount++;
+            $cellCount += $inRow;
+            $widest = max($widest, $inRow);
+        }
+
+        return ['rows' => $rowCount, 'cells' => $cellCount, 'widest' => $widest];
+    }
+
+    /**
+     * Rows per queued chunk: one chunk is one write transaction, so it holds about
+     * sheet.import_chunk_cells cells (the widest row of the file decides), never fewer than one row
+     * and never more than 500.
+     */
+    public static function rowsPerChunk(int $widestRowCells): int
+    {
+        $budget = max(1, (int) config('sheet.import_chunk_cells'));
+
+        return max(1, min(self::MAX_ROWS_PER_CHUNK, intdiv($budget, max(1, $widestRowCells))));
+    }
+
+    /**
+     * Split a large file into chunk jobs on a batch. Chunks are consecutive runs of rows of one size
+     * (the last one shorter), and each knows the file row it starts at.
+     *
+     * @param  array<int, mixed>  $rows
+     * @param  array{rows: int, cells: int, widest: int}  $size
+     */
+    protected function queueImport(Spreadsheet $spreadsheet, ?SheetTab $sheetTab, array $rows, array $size, bool $valuesAreText): array
+    {
+        $chunkRows = self::rowsPerChunk($size['widest']);
+        $structureVersion = StructureVersion::current($spreadsheet->id);
+        $jobs = [];
+        $startRowIndex = 0;
+        foreach (array_chunk(array_values($rows), $chunkRows) as $chunk) {
+            $jobs[] = new ImportRowsChunkJob(
+                spreadsheetId: $spreadsheet->id,
+                sheetTabId: $sheetTab?->id,
+                rows: $chunk,
+                startRowIndex: $startRowIndex,
+                valuesAreText: $valuesAreText,
+                structureVersion: $structureVersion,
+            );
+            $startRowIndex += count($chunk);
+        }
+
+        $batch = Bus::batch($jobs)
+            ->name("import:spreadsheet:{$spreadsheet->id}")
+            ->allowFailures()
+            ->dispatch();
+
+        // For the status endpoint's "failed after N of M rows".
+        Cache::put("import:{$batch->id}:rows", $size['rows'], 86400);
+        Cache::put("import:{$batch->id}:chunk_rows", $chunkRows, 86400);
+
+        return [
+            'success' => true,
+            'queued' => true,
+            'batch_id' => $batch->id,
+            'rows' => $size['rows'],
+            'cells' => $size['cells'],
+            'chunks' => count($jobs),
+            'message' => self::QUEUED_MESSAGE,
+        ];
     }
 
     /**

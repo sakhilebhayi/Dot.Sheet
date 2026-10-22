@@ -74,7 +74,7 @@
 ## Import and Batch Progress
 
 - Small imports (under about 6,000 filled cells, counting cells, not rows) apply immediately, all or nothing.
-- Larger files queue in background jobs: you see "This file is large, so it is being imported in the background. You can keep working; the sheet will fill in as it goes." and the sheet reloads when it is done.
+- Larger files queue in background jobs: you see "This file is large, so it is being imported in the background. You can keep working; the sheet reloads when it is done." and the sheet reloads when it is done.
 - The import progress badge shows live status until completion.
 
 ## Sharing and Collaboration

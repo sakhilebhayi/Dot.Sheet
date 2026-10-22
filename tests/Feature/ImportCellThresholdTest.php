@@ -32,7 +32,7 @@ class ImportCellThresholdTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet will fill in as it goes.';
+    private const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet reloads when it is done.';
 
     private User $user;
 

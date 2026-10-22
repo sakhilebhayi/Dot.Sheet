@@ -24,7 +24,7 @@ class SpreadsheetImportExportService
 {
     public const MAX_ROWS_PER_CHUNK = 500;
 
-    public const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet will fill in as it goes.';
+    public const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet reloads when it is done.';
 
     /**
      * Export spreadsheet to CSV string

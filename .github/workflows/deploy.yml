@@ -180,6 +180,26 @@ jobs:
           ls -1t "$HOME"/dot-sheet-*.tgz | tail -n +4 | xargs -r rm -f
           echo "== Rollback copy: $BACKUP ($(du -h "$BACKUP" | cut -f1))  [restore: stop writes, tar xzf it over $DEPLOY_PATH]"
 
+          # ---- application folder guard (tolerant: it cannot fail the deploy)
+          # $DEPLOY_PATH sits inside the docroot (~/<host>/<key>), so without a deny file the web
+          # server hands out its database, logs and vendor/ (found 2026-10-20). Same rules as
+          # app-folder-guard.yml "apply". Placed BEFORE maintenance mode on purpose: a mistake here
+          # can never leave the site down. The file is untracked, so the `git reset --hard` below
+          # does not touch it. set +e and the `||` fallbacks keep a hiccup from failing the run.
+          set +e
+          GUARD_HT="$DEPLOY_PATH/.htaccess"
+          GUARD_PARENT="$(cd "$(dirname "$DEPLOY_PATH")" 2>/dev/null && pwd -P)" || GUARD_PARENT=""
+          if [ -z "$GUARD_PARENT" ] || [ "$GUARD_PARENT" = "$(cd "${HOME:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
+            echo "== app-folder guard: skipped (the app folder is not inside a docroot; a deny file there would block the whole site)"
+          elif [ -f "$GUARD_HT" ] && grep -q 'Require all denied' "$GUARD_HT"; then
+            echo "== app-folder guard: already present"
+          elif [ -f "$GUARD_HT" ]; then
+            cp "$GUARD_HT" "$GUARD_HT.before-guard" && printf '\n# Dot: the application folder is never served.\nRequire all denied\n' >> "$GUARD_HT" && echo "== app-folder guard: appended (original kept as .htaccess.before-guard)" || echo "::warning::app-folder guard: could not append to the app folder .htaccess; continuing"
+          else
+            printf '# Dot: the application folder is never served.\nRequire all denied\n' > "$GUARD_HT" && echo "== app-folder guard: written (new file)" || echo "::warning::app-folder guard: could not write the app folder .htaccess; continuing"
+          fi
+          set -e
+
           # A failure leaves the site exactly as it is -- DOWN if maintenance
           # mode had started -- and says which, with the way back.
           trap 'if [ -f storage/framework/down ]; then echo "::error::The deploy failed AFTER maintenance mode started. The site was left DOWN on purpose. Rollback copy: $BACKUP. Inspect with server-logs.yml and run again, or restore the copy and run: php artisan up"; else echo "::error::The deploy failed BEFORE maintenance mode started; the site is still serving the previous release. Rollback copy: $BACKUP."; fi' ERR
@@ -228,7 +248,7 @@ jobs:
           # ---- files on the host that main does not have
           # Untracked files survive a takeover on purpose (.env, uploads, local
           # state), so say what they are instead of only counting them.
-          UNTRACKED="$(git ls-files --others --exclude-standard | grep -vE '^(storage/|bootstrap/cache/|public/build|database/[^/]*[.]sqlite)' || true)"
+          UNTRACKED="$(git ls-files --others --exclude-standard | grep -vE '^(storage/|bootstrap/cache/|public/build|database/[^/]*[.]sqlite|[.]htaccess)' || true)"
           if [ -n "$UNTRACKED" ]; then
             echo "== Files on the host that main does not have (kept; first 40):"
             printf '%s\n' "$UNTRACKED" | head -40 | sed 's/^/   /'
@@ -447,3 +467,29 @@ jobs:
           rm -rf "$WORK"
           [ "$FAILED" -eq 0 ] || { echo "::error::Smoke check failed: the deploy is NOT healthy."; exit 1; }
           echo "== Smoke check passed."
+
+      - name: Probe the application folder from outside
+        # Public requests only (no SSH, nothing is read): the app folder next to the docroot
+        # must answer 403/404 (or a 301/302 to the login), never 200. Found 2026-10-20
+        # serving its database, logs and vendor/ on four platforms. Runs after the site is
+        # live again, so it can only turn the run red. Only status codes are printed.
+        run: |
+          set -uo pipefail
+          KEY="$(basename "$APP_PATH")"
+          [ -n "$KEY" ] && [ "$KEY" != "/" ] || { echo "::error::cannot work out the app folder name; the probe did not run"; exit 1; }
+          EXPOSED=0
+          UNREACHED=0
+          for P in .env .env.bak-secrets artisan composer.json composer.lock database/database.sqlite storage/logs/laravel.log vendor/autoload.php phpunit.xml; do
+            CODE=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$SITE_URL/$KEY/$P" || true)
+            case "$CODE" in
+              200) echo "::error::EXPOSED /$KEY/$P answered 200"; EXPOSED=1 ;;
+              000) echo "000 /$KEY/$P (no answer)"; UNREACHED=$((UNREACHED + 1)) ;;
+              *) echo "$CODE /$KEY/$P" ;;
+            esac
+          done
+          [ "$UNREACHED" -eq 0 ] || echo "::warning::$UNREACHED probe request(s) got no answer; those paths are unverified."
+          if [ "$EXPOSED" -ne 0 ]; then
+            echo "::error::The application folder is readable over HTTP (database, logs or vendor/ may be downloadable). Run the App Folder Guard workflow in InfoDot (mode apply) or add the deny file by hand, then re-run."
+            exit 1
+          fi
+          echo "== App-folder probe: no sensitive path answered 200 ($((9 - UNREACHED)) of 9 paths verified)."

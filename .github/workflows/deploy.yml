@@ -189,7 +189,14 @@ jobs:
           set +e
           GUARD_HT="$DEPLOY_PATH/.htaccess"
           GUARD_PARENT="$(cd "$(dirname "$DEPLOY_PATH")" 2>/dev/null && pwd -P)" || GUARD_PARENT=""
-          if [ -z "$GUARD_PARENT" ] || [ "$GUARD_PARENT" = "$(cd "${HOME:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
+          # Once the subdomain's document root is <app>/public (the docroot move, InfoDot docs S-2e) the app
+          # folder is not served at all, and a deny file in it would block the whole site: do not write one.
+          # The host's own answer decides; a marker file is the fallback if the lookup fails.
+          APP_REAL="$(cd "$DEPLOY_PATH" 2>/dev/null && pwd -P)" || APP_REAL=""
+          CURRENT_DOCROOT="$(uapi --output=json DomainInfo single_domain_data domain=sheets.infodot.co.za 2>/dev/null | sed -n 's/.*"documentroot" *: *"\([^"]*\)".*/\1/p' | head -1)"
+          if [ -n "$APP_REAL" ] && { [ "$CURRENT_DOCROOT" = "$APP_REAL/public" ] || [ -f "$DEPLOY_PATH/.docroot-is-public" ]; }; then
+            echo "== app-folder guard: skipped (the document root is $APP_REAL/public; the app folder is not served)"
+          elif [ -z "$GUARD_PARENT" ] || [ "$GUARD_PARENT" = "$(cd "${HOME:-/nonexistent}" 2>/dev/null && pwd -P)" ]; then
             echo "== app-folder guard: skipped (the app folder is not inside a docroot; a deny file there would block the whole site)"
           elif [ -f "$GUARD_HT" ] && grep -q 'Require all denied' "$GUARD_HT"; then
             echo "== app-folder guard: already present"

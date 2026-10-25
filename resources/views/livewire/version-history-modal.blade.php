@@ -7,6 +7,7 @@
                     <button wire:click="closeModal" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
                 </div>
 
+                @if ($canEdit)
                 <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                     <div class="flex gap-2">
                         <input type="text" wire:model.defer="snapshotLabel" placeholder="Snapshot label (optional)"
@@ -17,6 +18,7 @@
                         </button>
                     </div>
                 </div>
+                @endif
 
                 <div class="max-h-[420px] overflow-y-auto p-4 space-y-2">
                     @forelse ($versions as $version)
@@ -31,10 +33,12 @@
                                     · {{ count($version['cells_snapshot'] ?? []) }} cells
                                 </div>
                             </div>
-                            <button wire:click="restoreVersion({{ $version['id'] }})"
-                                    class="px-3 py-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white rounded">
-                                Restore
-                            </button>
+                            @if ($canEdit)
+                                <button wire:click="restoreVersion({{ $version['id'] }})"
+                                        class="px-3 py-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white rounded">
+                                    Restore
+                                </button>
+                            @endif
                         </div>
                     @empty
                         <div class="text-sm text-gray-500 dark:text-gray-400">No snapshots yet.</div>

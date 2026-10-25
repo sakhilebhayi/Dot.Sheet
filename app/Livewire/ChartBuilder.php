@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\Spreadsheet;
@@ -11,6 +12,7 @@ use Livewire\Component;
 class ChartBuilder extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     public $spreadsheet_id;
 
@@ -58,7 +60,7 @@ class ChartBuilder extends Component
 
     public function render()
     {
-        return view('livewire.chart-builder');
+        return view('livewire.chart-builder', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function loadCharts()
@@ -179,7 +181,9 @@ class ChartBuilder extends Component
                 ->whereBetween('row_index', [$lStartRow, $lEndRow])
                 ->where('col_index', $lCol)
                 ->orderBy('row_index')
-                ->pluck('computed_value')
+                ->get(['computed_value', 'raw_value'])
+                // A typed value is stored in raw_value only; computed_value is set for formulas.
+                ->map(fn (Cell $cell) => $cell->computed_value ?? $cell->raw_value)
                 ->toArray();
 
             $labels = $labelCells;
@@ -200,7 +204,8 @@ class ChartBuilder extends Component
 
             foreach (range($startRow, $endRow) as $row) {
                 $cell = $colCells->firstWhere('row_index', $row);
-                $values[] = is_numeric($cell?->computed_value) ? (float) $cell->computed_value : 0;
+                $value = $cell->computed_value ?? $cell?->raw_value;
+                $values[] = is_numeric($value) ? (float) $value : 0;
             }
 
             $datasets[] = [

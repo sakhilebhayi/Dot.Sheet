@@ -1,0 +1,206 @@
+/*
+ * Tailwind v4 entry for the signed-in pages that use the legacy layout
+ * (layouts/app.blade.php: dashboard, spreadsheet list and editor with its pivot,
+ * chart and sharing panels, profile and team pages, operator backups, and the
+ * public share page).
+ *
+ * That layout used to load the Tailwind v3 Play CDN with
+ * `tailwind.config = { corePlugins: { preflight: false } }`, and neither the
+ * forms nor the typography plugin. This entry reproduces exactly that: Tailwind's
+ * theme and utilities, NO preflight and NO plugins. The layout's own inline
+ * <style> (sidebar, dot-card, dot-btn ...) supplies the base styles, as it always
+ * did (so list styles, heading and paragraph margins, form-control borders and
+ * `box-sizing` come from the browser and that <style>, not from a reset). Do not import
+ * 'tailwindcss' (that brings preflight) or add the @tailwindcss/forms plugin
+ * here: either would restyle every page on this layout.
+ * resources/css/app.css is the other entry (preflight ON, forms and typography),
+ * used by every other layout; the v3 compatibility rules below are the same ones
+ * app.css carries, minus the ones that only exist to patch preflight.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import './tailwind-v3-palette.css';
+
+/*
+ * Class names exist only in the Blade views (the grid cells, toolbar, panels and
+ * modals are Blade, with literal class lists, and the inline <script>s inside them
+ * are scanned too). Nothing under app/, config/, database/ or resources/js builds
+ * or holds a class name: that was checked by scanning all of them as well and
+ * comparing the generated utilities (only the words `visible`, `static` and
+ * `contents` differed, from PHP keywords). Do not widen this to app/: it would
+ * generate utilities from PHP words, and do not scan storage/framework/views: it
+ * makes a local build differ from CI's, which has no compiled views. A class
+ * assembled by concatenation (`'bg-' . $colour`) is not seen by any scan: write
+ * the whole name.
+ */
+@source '../views/**/*.blade.php';
+@source '../../vendor/laravel/jetstream/**/*.blade.php';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+/* v3 compatibility: see the same-named rules in app.css. */
+@custom-variant hover (&:hover);
+@custom-variant ltr (&:where([dir='ltr'], [dir='ltr'] *));
+@custom-variant rtl (&:where([dir='rtl'], [dir='rtl'] *));
+
+@theme {
+    --breakpoint-sm: 640px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 1024px;
+    --breakpoint-xl: 1280px;
+    --breakpoint-2xl: 1536px;
+
+    /*
+     * v3 text sizes carried an absolute line-height (`text-xs` = 1rem); v4 uses a
+     * ratio, which a child with its own font-size (the grid cells set theirs inline)
+     * inherits as a different length. These are the v3 values.
+     */
+    --text-xs--line-height: 1rem;
+    --text-sm--line-height: 1.25rem;
+    --text-base--line-height: 1.5rem;
+    --text-lg--line-height: 1.75rem;
+    --text-xl--line-height: 1.75rem;
+    --text-2xl--line-height: 2rem;
+    --text-3xl--line-height: 2.25rem;
+    --text-4xl--line-height: 2.5rem;
+
+    --default-ring-width: 3px;
+    --default-ring-color: rgb(59 130 246 / 0.5);
+
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --radius: 0.25rem;
+    --radius-sm: 0.125rem;
+    --blur: 8px;
+    --blur-sm: 4px;
+}
+
+@layer utilities {
+    .transition {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity,
+            box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter;
+    }
+
+    .transition-colors {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    }
+
+    .outline-none,
+    .focus\:outline-none:focus {
+        outline: 2px solid transparent;
+        outline-offset: 2px;
+    }
+
+    /*
+     * Gradients: v3 interpolated in sRGB, v4's `bg-gradient-to-*` interpolates in
+     * oklab, which shifts every midtone. The direction without the `in oklab`.
+     */
+    .bg-gradient-to-t {
+        --tw-gradient-position: to top;
+    }
+
+    .bg-gradient-to-tr {
+        --tw-gradient-position: to top right;
+    }
+
+    .bg-gradient-to-r {
+        --tw-gradient-position: to right;
+    }
+
+    .bg-gradient-to-br {
+        --tw-gradient-position: to bottom right;
+    }
+
+    .bg-gradient-to-b {
+        --tw-gradient-position: to bottom;
+    }
+
+    .bg-gradient-to-bl {
+        --tw-gradient-position: to bottom left;
+    }
+
+    .bg-gradient-to-l {
+        --tw-gradient-position: to left;
+    }
+
+    .bg-gradient-to-tl {
+        --tw-gradient-position: to top left;
+    }
+
+    /*
+     * `space-y-*` / `space-x-*`: v3 put the margin on every child but the FIRST that
+     * is not `[hidden]`; v4 puts it on every child but the LAST. Same layout while
+     * every child is shown, but a hidden or conditionally absent edge child would now
+     * leave a stray gap. Each v4 rule is cancelled and the v3 rule is put back. The
+     * cancel is `revert-layer`, NOT 0: the browser's own margins (an `h3`, a `p`)
+     * survive on the first child in v3 (nothing resets them without preflight), and
+     * a 0 here would flatten them. It sits at the zero specificity the v4 rule was
+     * written with, so any utility on the child still wins. Only the sizes the views
+     * use are listed; add a size here before using it where a first or last child can
+     * be hidden.
+     */
+    :where(:is(.space-y-1, .space-y-2, .space-y-3, .space-y-4, .space-y-6) > :not(:last-child)) {
+        margin-block-start: revert-layer;
+        margin-block-end: revert-layer;
+    }
+
+    :where(.space-x-8 > :not(:last-child)) {
+        margin-inline-start: revert-layer;
+        margin-inline-end: revert-layer;
+    }
+
+    .space-x-8 > :not([hidden]) ~ :not([hidden]) {
+        margin-left: 2rem;
+        margin-right: 0;
+    }
+
+    .space-y-1 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0.25rem;
+        margin-bottom: 0;
+    }
+
+    .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+
+    .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0.75rem;
+        margin-bottom: 0;
+    }
+
+    .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 1rem;
+        margin-bottom: 0;
+    }
+
+    .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 1.5rem;
+        margin-bottom: 0;
+    }
+
+    /*
+     * Border style. v3 without preflight never set `border-style`: `border`,
+     * `border-t` ... only set a width, so on a div they drew nothing (the style
+     * stayed `none`), and on a button or input the browser's own style (outset,
+     * inset) stayed. v4's width utilities set `border-style: var(--tw-border-style)`,
+     * which defaults to solid and would turn every such rule into a visible line.
+     * The variable is `none` here (below), which reproduces the div case; the
+     * rule below puts the browser's own style back on the controls that have one.
+     * `border-solid` and the other style utilities set the variable themselves on
+     * the element, so they keep working, and are excluded from the revert.
+     */
+    :is(button, input, select, textarea, fieldset, hr):not(.border-solid, .border-dashed, .border-dotted, .border-double, .border-hidden, .border-none) {
+        border-style: revert;
+    }
+}
+
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop {
+        --tw-border-style: none;
+    }
+}

@@ -1,6 +1,275 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Tailwind v4 entry. Utilities, preflight and the two plugins are built by
+ * @tailwindcss/vite (vite.config.js); there is no tailwind.config.js,
+ * postcss.config.js or autoprefixer any more.
+ *
+ * No automatic source detection: `source(none)` plus the @source lines below are
+ * the old `content` globs from tailwind.config.js, nothing more. Do not widen
+ * them; v4 would otherwise scan app/, docs/, tests/ and ship every word in them
+ * that happens to be a utility name.
+ *
+ * Everything under "v3 compatibility" exists so that no page changes by a single
+ * pixel; see the Tailwind v4 section of README.md.
+ *
+ * Scope: this stylesheet is loaded by the guest layout (login, register, password
+ * and legal pages), the welcome page and the error pages. The signed-in app layout
+ * (layouts/app.blade.php) loads signed-in.css instead (no preflight, no plugins).
+ */
+@import 'tailwindcss' source(none);
+@import './tailwind-v3-palette.css';
+
+@source '../views/**/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../../vendor/laravel/jetstream/**/*.blade.php';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+/*
+ * v3 compatibility: v4 wraps `hover:` in `@media (hover: hover)`, which turns
+ * every hover style off on touch screens. v3 applied it everywhere.
+ */
+@custom-variant hover (&:hover);
+
+/*
+ * v3 compatibility: `ltr:` / `rtl:` only matched under an explicit dir="ltr" /
+ * dir="rtl"; v4 matches the computed direction, which would switch them on
+ * everywhere (no layout here sets `dir`, so Jetstream's dropdown
+ * `ltr:origin-top-*` would start applying).
+ */
+@custom-variant ltr (&:where([dir='ltr'], [dir='ltr'] *));
+@custom-variant rtl (&:where([dir='rtl'], [dir='rtl'] *));
+
+@theme {
+    /* v3 `ring` was 3px blue-500 at 50%; v4 made it 1px currentColor. */
+    --default-ring-width: 3px;
+    --default-ring-color: rgb(59 130 246 / 0.5);
+
+    /*
+     * v4 renamed the small end of three scales (shadow-sm -> shadow-xs, rounded-sm
+     * -> rounded-xs, blur-sm -> blur-xs) and moved the bare names up one step.
+     * Jetstream's views (and any vendor markup) still say shadow-sm / shadow /
+     * rounded / blur, so the old names keep their old values here instead of
+     * being renamed in every view.
+     */
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --radius: 0.25rem;
+    --radius-sm: 0.125rem;
+    --blur: 8px;
+    --blur-sm: 4px;
+}
+
+/*
+ * The font stacks and the ease-out curve, declared `inline` and NOT as plain
+ * theme variables: the layouts (guest, welcome, error pages) define their own
+ * `--font-mono` (Space Mono) and `--ease-out` on :root, and a shared name would
+ * make `font-mono`, preflight's `code`/`pre` rule and the `ease-out` utility
+ * pick those values instead of Tailwind's.
+ */
+@theme inline {
+    --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --default-font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+        monospace;
+    --default-mono-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+        'Courier New', monospace;
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/*
+ * v3 compatibility: preflight changed several defaults. Each is restored here, in
+ * the base layer after preflight, with the value v3 produced.
+ */
+@layer base {
+    /* border colour: v4 defaults to currentColor, v3 to gray-200. */
+    *,
+    ::after,
+    ::before,
+    ::backdrop {
+        border-color: #e5e7eb;
+    }
+
+    /* buttons: v4 uses the default cursor, v3 the pointer (and `default` when disabled). */
+    button,
+    [role='button'] {
+        cursor: pointer;
+    }
+
+    :disabled {
+        cursor: default;
+    }
+
+    /* placeholder: v4 is currentColor at 50%, v3 was gray-400. */
+    input::placeholder,
+    textarea::placeholder {
+        color: #9ca3af;
+    }
+
+    /*
+     * v4's reset zeroes padding and margin on EVERY element; v3 only on the ones
+     * its preflight listed, so the browser's own spacing survived on these. Each
+     * rule is the user-agent default put back.
+     */
+    option {
+        padding: 0 2px 1px;
+    }
+
+    th,
+    td {
+        padding: 1px;
+    }
+
+    dialog {
+        margin: auto;
+    }
+
+    /* v3 left the native file button alone; v4 strips its padding, border and colours. */
+    ::file-selector-button {
+        padding: 1px 6px;
+        border: 2px outset buttonborder;
+        background-color: buttonface;
+        color: buttontext;
+    }
+
+    input[type='search'] {
+        appearance: textfield;
+    }
+
+    /* v4 makes every form control's background transparent; v3 did so only for buttons. */
+    input[type='range'],
+    input[type='color'] {
+        background-color: revert-layer;
+    }
+}
+
+/*
+ * v3 compatibility: transition property lists. v4 adds outline-color (a focus
+ * outline would now fade in over 150ms where v3 snapped) and the gradient
+ * variables to `transition` and `transition-colors`. These are the v3 lists,
+ * plus translate/scale/rotate, which in v4 are what `translate-*`, `scale-*`
+ * and `rotate-*` set instead of `transform`.
+ *
+ * Plain rules at the end of the utilities layer, not `@utility`: an `@utility`
+ * of the same name is merged BEFORE the built-in one, which would win.
+ */
+@layer utilities {
+    .transition {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity,
+            box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter;
+    }
+
+    .transition-colors {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    }
+
+    /*
+     * `outline-none` was a transparent 2px outline in v3 (it still shows in
+     * forced-colors mode); v4 made it `outline-style: none` and moved the old
+     * behaviour to `outline-hidden`.
+     */
+    .outline-none,
+    .focus\:outline-none:focus {
+        outline: 2px solid transparent;
+        outline-offset: 2px;
+    }
+
+    /*
+     * The typography plugin takes its colours from Tailwind's DEFAULT theme and
+     * ignores the v3 palette above, so `prose` and `prose-neutral` came out in
+     * oklch(), 1-2/255 off on every shade. These are the v3 values, set on the
+     * variables the plugin reads and placed after the plugin's own rules. The
+     * invert set is never remapped, so it sits on the bare class; the default
+     * set is kept off `.prose-invert`, which remaps `--tw-prose-body` etc. onto
+     * the invert set and must keep winning.
+     */
+    .prose {
+        --tw-prose-invert-body: #d1d5db;
+        --tw-prose-invert-headings: #fff;
+        --tw-prose-invert-lead: #9ca3af;
+        --tw-prose-invert-links: #fff;
+        --tw-prose-invert-bold: #fff;
+        --tw-prose-invert-counters: #9ca3af;
+        --tw-prose-invert-bullets: #4b5563;
+        --tw-prose-invert-hr: #374151;
+        --tw-prose-invert-quotes: #f3f4f6;
+        --tw-prose-invert-quote-borders: #374151;
+        --tw-prose-invert-captions: #9ca3af;
+        --tw-prose-invert-kbd: #fff;
+        --tw-prose-invert-kbd-shadows: #ffffff1a;
+        --tw-prose-invert-code: #fff;
+        --tw-prose-invert-pre-code: #d1d5db;
+        --tw-prose-invert-pre-bg: #00000080;
+        --tw-prose-invert-th-borders: #4b5563;
+        --tw-prose-invert-td-borders: #374151;
+    }
+
+    .prose:not(.prose-invert) {
+        --tw-prose-body: #374151;
+        --tw-prose-headings: #111827;
+        --tw-prose-lead: #4b5563;
+        --tw-prose-links: #111827;
+        --tw-prose-bold: #111827;
+        --tw-prose-counters: #6b7280;
+        --tw-prose-bullets: #d1d5db;
+        --tw-prose-hr: #e5e7eb;
+        --tw-prose-quotes: #111827;
+        --tw-prose-quote-borders: #e5e7eb;
+        --tw-prose-captions: #6b7280;
+        --tw-prose-kbd: #111827;
+        --tw-prose-kbd-shadows: #1118271a;
+        --tw-prose-code: #111827;
+        --tw-prose-pre-code: #e5e7eb;
+        --tw-prose-pre-bg: #1f2937;
+        --tw-prose-th-borders: #d1d5db;
+        --tw-prose-td-borders: #e5e7eb;
+    }
+
+    .prose-neutral {
+        --tw-prose-invert-body: #d4d4d4;
+        --tw-prose-invert-headings: #fff;
+        --tw-prose-invert-lead: #a3a3a3;
+        --tw-prose-invert-links: #fff;
+        --tw-prose-invert-bold: #fff;
+        --tw-prose-invert-counters: #a3a3a3;
+        --tw-prose-invert-bullets: #525252;
+        --tw-prose-invert-hr: #404040;
+        --tw-prose-invert-quotes: #f5f5f5;
+        --tw-prose-invert-quote-borders: #404040;
+        --tw-prose-invert-captions: #a3a3a3;
+        --tw-prose-invert-kbd: #fff;
+        --tw-prose-invert-kbd-shadows: #ffffff1a;
+        --tw-prose-invert-code: #fff;
+        --tw-prose-invert-pre-code: #d4d4d4;
+        --tw-prose-invert-pre-bg: #00000080;
+        --tw-prose-invert-th-borders: #525252;
+        --tw-prose-invert-td-borders: #404040;
+    }
+
+    .prose-neutral:not(.prose-invert) {
+        --tw-prose-body: #404040;
+        --tw-prose-headings: #171717;
+        --tw-prose-lead: #525252;
+        --tw-prose-links: #171717;
+        --tw-prose-bold: #171717;
+        --tw-prose-counters: #737373;
+        --tw-prose-bullets: #d4d4d4;
+        --tw-prose-hr: #e5e5e5;
+        --tw-prose-quotes: #171717;
+        --tw-prose-quote-borders: #e5e5e5;
+        --tw-prose-captions: #737373;
+        --tw-prose-kbd: #171717;
+        --tw-prose-kbd-shadows: #1717171a;
+        --tw-prose-code: #171717;
+        --tw-prose-pre-code: #e5e5e5;
+        --tw-prose-pre-bg: #262626;
+        --tw-prose-th-borders: #d4d4d4;
+        --tw-prose-td-borders: #e5e5e5;
+    }
+}
 
 [x-cloak] {
     display: none;

@@ -2,17 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ImportRowsChunkJob;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
+use App\Services\ExportTooLargeException;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class SpreadsheetController extends Controller
 {
+    /** Keys of the settings JSON a request may set. */
+    /** Largest JSON size of one of those keys. */
+    public const MAX_SETTING_BYTES = 100000;
+
+    public const EDITABLE_SETTINGS_KEYS = [
+        'row_heights', 'col_widths', 'hidden_rows', 'hidden_cols',
+        'validation_rules', 'conditional_formatting_rules', 'filter_rules',
+    ];
+
     /**
      * Display a listing of spreadsheets
      */
@@ -57,8 +71,11 @@ class SpreadsheetController extends Controller
         $user = auth()->user();
 
         // Verify team ownership if team_id provided
-        if ($validated['team_id']) {
-            $user->teams()->findOrFail($validated['team_id']);
+        if (! empty($validated['team_id'])) {
+            $team = $user->teams()->findOrFail($validated['team_id']);
+
+            // A read-only member (viewer) may belong to the team but not add sheets to it.
+            $this->authorize('createSpreadsheet', $team);
         }
 
         $spreadsheet = Spreadsheet::create([
@@ -105,7 +122,22 @@ class SpreadsheetController extends Controller
             'settings' => 'nullable|array',
         ]);
 
-        $spreadsheet->update($validated);
+        $spreadsheet->update(['name' => $validated['name']]);
+
+        // Only the editor's layout keys can be set here, merged into what is stored. Scripts, macros and
+        // workflows have their own panels (and scripts their own switch); replacing the whole JSON from
+        // a request would also wipe them.
+        if (! empty($validated['settings'])) {
+            $layout = Arr::only($validated['settings'], self::EDITABLE_SETTINGS_KEYS);
+            foreach ($layout as $key => $value) {
+                if (strlen((string) json_encode($value)) > self::MAX_SETTING_BYTES) {
+                    throw ValidationException::withMessages(["settings.{$key}" => 'This setting is too large (at most '.number_format(self::MAX_SETTING_BYTES).' bytes).']);
+                }
+            }
+            if ($layout !== []) {
+                Spreadsheet::updateSettings($spreadsheet->id, fn (array $settings) => array_replace($settings, $layout));
+            }
+        }
 
         return redirect()->route('spreadsheets.show', $spreadsheet)
             ->with('success', 'Spreadsheet updated successfully!');
@@ -178,28 +210,41 @@ class SpreadsheetController extends Controller
         }
 
         $total = max(1, (int) $batch->totalJobs);
+        $failed = (int) $batch->failedJobs;
         $processed = (int) $batch->processedJobs();
-        $progress = (int) floor(($processed / $total) * 100);
+        $payload = ['batch_id' => $batchId, 'total' => $total, 'processed' => $processed, 'failed' => $failed];
 
-        if ($batch->finished()) {
-            return response()->json([
-                'status' => $batch->cancelled() ? 'cancelled' : 'finished',
-                'batch_id' => $batchId,
-                'total' => $total,
-                'processed' => $processed,
-                'progress' => 100,
-                'failed' => (int) $batch->failedJobs,
+        // Rows or columns moved while the import was queued: the rest was cancelled, say so.
+        if (Cache::get(ImportRowsChunkJob::cancelledKey($batchId)) === 'structure') {
+            return response()->json($payload + [
+                'status' => 'cancelled', 'progress' => 100,
+                'message' => 'The import was cancelled because rows or columns moved while it was running. Part of it may already be on the sheet: check it and import again.',
             ]);
         }
 
-        return response()->json([
-            'status' => 'running',
-            'batch_id' => $batchId,
-            'total' => $total,
-            'processed' => $processed,
-            'progress' => $progress,
-            'failed' => (int) $batch->failedJobs,
-        ]);
+        // A failed chunk with allowFailures() leaves the batch "pending" for good (the failed job is never
+        // counted as done), which showed as running forever. Nothing left to run but the failures: it is over.
+        if ($failed > 0 && ((int) $batch->pendingJobs - $failed) <= 0) {
+            if (! $batch->cancelled()) {
+                $batch->cancel();
+            }
+            $rows = (int) Cache::get("import:{$batchId}:rows", 0);
+            $chunkRows = max(1, (int) Cache::get("import:{$batchId}:chunk_rows", SpreadsheetImportExportService::MAX_ROWS_PER_CHUNK));
+            $written = min($rows, max(0, $total - $failed) * $chunkRows);
+
+            return response()->json($payload + [
+                'status' => 'failed', 'progress' => 100, 'rows' => $rows,
+                'message' => "Import failed after {$written} of {$rows} rows; the rows already written are kept.",
+            ]);
+        }
+
+        $progress = (int) floor(($processed / $total) * 100);
+
+        if ($batch->finished()) {
+            return response()->json($payload + ['status' => $batch->cancelled() ? 'cancelled' : 'finished', 'progress' => 100]);
+        }
+
+        return response()->json($payload + ['status' => 'running', 'progress' => $progress]);
     }
 
     /**
@@ -228,7 +273,12 @@ class SpreadsheetController extends Controller
         $this->authorize('view', $spreadsheet);
 
         $service = new SpreadsheetImportExportService;
-        $filePath = $service->exportExcel($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
+
+        try {
+            $filePath = $service->exportExcel($spreadsheet, $this->resolveSheetTab($request, $spreadsheet));
+        } catch (ExportTooLargeException $e) {
+            abort(413, $e->getMessage());
+        }
 
         $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.xlsx';
 
@@ -280,7 +330,12 @@ class SpreadsheetController extends Controller
             abort(410, 'This public link has expired.');
         }
 
-        $cells = Cell::where('spreadsheet_id', $spreadsheet->id)->get();
+        // A share link shows the first tab only. Cells of every tab used to be merged into one grid,
+        // so values from different tabs landed on top of each other.
+        $tab = $spreadsheet->defaultSheetTab();
+        $cells = $tab
+            ? Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $tab->id)->get()
+            : collect();
 
         if ($cells->isEmpty()) {
             return view('spreadsheets.public-show', [

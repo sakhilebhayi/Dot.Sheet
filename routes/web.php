@@ -8,9 +8,15 @@ use App\Http\Middleware\AuthenticateGuardian;
 use App\Models\Spreadsheet;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Features;
 use Laravel\Jetstream\Jetstream;
 
-Route::get('/auth/ecosystem', [EcosystemAuthController::class, 'handle'])->name('auth.ecosystem');
+Route::post('/auth/ecosystem', [EcosystemAuthController::class, 'handle'])
+    ->withoutMiddleware(['Illuminate\Foundation\Http\Middleware\PreventRequestForgery', 'Illuminate\Foundation\Http\Middleware\VerifyCsrfToken', 'Illuminate\Foundation\Http\Middleware\ValidateCsrfToken'])->name('auth.ecosystem');
+
+// Links minted before the token moved into a POST body carried it in the URL. They are no longer honoured:
+// the visitor is sent to the normal sign-in page and the token in the URL is never read.
+Route::get('/auth/ecosystem', [EcosystemAuthController::class, 'legacy']);
 
 Route::get('/', function () {
     return view('welcome');
@@ -73,3 +79,9 @@ Route::get('/up/scheduler', SchedulerProbeController::class)->name('up.scheduler
 Route::get('/guardian/health', GuardianHealthController::class)
     ->middleware(AuthenticateGuardian::class)
     ->name('guardian.health');
+
+// Public sign-up is closed (accounts are created by InfoDot at first sign-in). Keep the named route so any link or
+// invitation email that points at it lands on the login page instead of failing.
+if (! Features::enabled(Features::registration())) {
+    Route::redirect('/register', '/login')->name('register');
+}

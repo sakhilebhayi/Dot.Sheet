@@ -51,6 +51,9 @@ class SpreadsheetSharingPanel extends Component
     {
         if ($this->spreadsheet_id) {
             $this->spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
+
+            // Checked on every request, not only at mount: sharing rights can be taken away while the panel is open.
+            $this->authorize('manageSharing', $this->spreadsheet);
         }
     }
 

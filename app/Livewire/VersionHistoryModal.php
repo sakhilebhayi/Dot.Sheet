@@ -2,9 +2,13 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Models\Cell;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
+use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +17,7 @@ use Livewire\Component;
 class VersionHistoryModal extends Component
 {
     use AuthorizesRequests;
+    use ChecksSheetEditAccess;
 
     public $spreadsheet_id;
 
@@ -39,7 +44,7 @@ class VersionHistoryModal extends Component
 
     public function render()
     {
-        return view('livewire.version-history-modal');
+        return view('livewire.version-history-modal', ['canEdit' => $this->canEditSheet()]);
     }
 
     public function openModal(): void
@@ -67,9 +72,7 @@ class VersionHistoryModal extends Component
     public function createSnapshot(): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (! Auth::user()->can('update', $spreadsheet)) {
-            return;
-        }
+        $this->authorize('update', $spreadsheet);
 
         $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
@@ -91,15 +94,22 @@ class VersionHistoryModal extends Component
     public function restoreVersion($versionId): void
     {
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
-        if (! Auth::user()->can('update', $spreadsheet)) {
-            return;
-        }
+        $this->authorize('update', $spreadsheet);
 
         $version = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
-            ->findOrFail($versionId);
+            ->find($versionId);
 
-        DB::transaction(function () use ($version) {
+        // The tab (and its versions) can be deleted from another browser while this modal is open.
+        if ($version === null || ! SheetTab::whereKey($this->sheet_tab_id)->exists()) {
+            $this->open = false;
+            $this->dispatch('structure-stale');
+
+            return;
+        }
+
+        $busy = false;
+        WriteLock::guard(fn () => DB::transaction(function () use ($version) {
             Cell::where('spreadsheet_id', $this->spreadsheet_id)
                 ->where('sheet_tab_id', $this->sheet_tab_id)
                 ->delete();
@@ -117,7 +127,19 @@ class VersionHistoryModal extends Component
                     'updated_at' => now(),
                 ]);
             }
+
+            // Every cell may have moved: editors that had the old grid open must reload.
+            StructureVersion::bump((int) $this->spreadsheet_id);
+        }), function () use (&$busy) {
+            $busy = true;
         });
+
+        if ($busy) {
+            $this->open = false;
+            $this->dispatch('sheet-busy');
+
+            return;
+        }
 
         $this->dispatch('external-cell-updated');
         $this->loadVersions();

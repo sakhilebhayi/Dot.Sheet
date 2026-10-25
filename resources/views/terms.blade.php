@@ -5,7 +5,7 @@
                 <x-authentication-card-logo />
             </div>
 
-            <div class="w-full sm:max-w-2xl mt-8 p-6 sm:p-10 bg-white border border-[var(--line)] shadow-lg overflow-hidden sm:rounded-xl prose prose-neutral max-w-none prose-headings:font-display prose-headings:text-[var(--ink)] prose-p:text-[var(--slate)] prose-li:text-[var(--slate)] prose-a:text-[var(--ink)] hover:prose-a:text-[var(--green)]">
+            <div class="w-full sm:max-w-2xl mt-8 p-6 sm:p-10 bg-white border border-[var(--line)] shadow-lg overflow-hidden sm:rounded-xl prose prose-neutral max-w-none prose-headings:font-display prose-headings:text-[var(--ink)] prose-p:text-[var(--slate)] prose-li:text-[var(--slate)] prose-a:text-[var(--ink)] prose-a:hover:text-[var(--green)]">
                 {!! $terms !!}
             </div>
         </div>

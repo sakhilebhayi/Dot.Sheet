@@ -1,5 +1,7 @@
 # Redis + Horizon Deployment Checklist
 
+> **Not used in production.** Production runs on a cPanel shared host with SQLite, the database queue and no Redis or websocket server (`QUEUE_CONNECTION=database`, `BROADCAST_CONNECTION=null`). Horizon is not a dependency of this repo. Keep this page only for an environment that deliberately adds Redis and Horizon.
+
 Use this checklist when preparing a production deployment that relies on queued jobs and realtime collaboration.
 
 ## Redis

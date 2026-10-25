@@ -3,7 +3,9 @@
 namespace App\Livewire;
 
 use App\Models\Spreadsheet;
+use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class ScriptsEditor extends Component
@@ -14,8 +16,12 @@ class ScriptsEditor extends Component
 
     protected ?Spreadsheet $spreadsheet = null;
 
+    // Locked: the lists are only ever changed by the actions below. A browser that could set
+    // them would get its own code stored the next time anything (a macro) is saved.
+    #[Locked]
     public $scripts = [];
 
+    #[Locked]
     public $scriptMacros = [];
 
     public $selectedScriptId = null;
@@ -42,16 +48,44 @@ class ScriptsEditor extends Component
     {
         if ($this->spreadsheet_id) {
             $this->spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
+
+            // Checked on every request, not only at mount: a person demoted meanwhile keeps the component open.
+            $this->authorize('update', $this->spreadsheet);
         }
     }
 
     public function render()
     {
-        return view('livewire.scripts-editor');
+        return view('livewire.scripts-editor', ['scriptsEnabled' => $this->scriptsEnabled()]);
+    }
+
+    /**
+     * Saved scripts are code. Off unless config('sheet.scripts_enabled') says otherwise (see
+     * config/sheet.php); every script action checks it again on the server, because a
+     * Livewire action can be called without the button that would normally trigger it.
+     */
+    protected function scriptsEnabled(): bool
+    {
+        return (bool) config('sheet.scripts_enabled');
+    }
+
+    protected function refuseWhenScriptsAreOff(): bool
+    {
+        if ($this->scriptsEnabled()) {
+            return false;
+        }
+
+        $this->status = 'Scripts are turned off on this server.';
+
+        return true;
     }
 
     public function newScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->selectedScriptId = null;
         $this->scriptName = '';
         $this->scriptBody = "// Return action list\nreturn [\n  { type: 'set', cell: 'A1', value: 'Hello' }\n];";
@@ -59,6 +93,10 @@ class ScriptsEditor extends Component
 
     public function loadScript(string $id): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $script = collect($this->scripts)->firstWhere('id', $id);
         if (! $script) {
             return;
@@ -71,6 +109,10 @@ class ScriptsEditor extends Component
 
     public function saveScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->validate([
             'scriptName' => 'required|string|min:2|max:80',
             'scriptBody' => 'required|string|min:5|max:20000',
@@ -100,12 +142,15 @@ class ScriptsEditor extends Component
         }
 
         $this->scripts = $scripts->values()->toArray();
-        $this->saveToSettings();
-        $this->status = 'Script saved.';
+        $this->status = $this->saveToSettings() ? 'Script saved.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function deleteScript(string $id): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         $this->scripts = collect($this->scripts)
             ->reject(fn ($s) => $s['id'] === $id)
             ->values()
@@ -115,12 +160,15 @@ class ScriptsEditor extends Component
             $this->newScript();
         }
 
-        $this->saveToSettings();
-        $this->status = 'Script deleted.';
+        $this->status = $this->saveToSettings() ? 'Script deleted.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function dispatchRunScript(): void
     {
+        if ($this->refuseWhenScriptsAreOff()) {
+            return;
+        }
+
         if (! $this->scriptBody) {
             return;
         }
@@ -142,9 +190,10 @@ class ScriptsEditor extends Component
     {
         $data = is_array($payload) ? $payload : [];
         $actions = $data['actions'] ?? [];
-        if (empty($actions)) {
+        if (empty($actions) || ! is_array($actions)) {
             return;
         }
+        $actions = array_slice($actions, 0, 1000);
 
         $name = trim($this->macroName) !== '' ? trim($this->macroName) : ('Macro '.now()->format('H:i:s'));
         $this->scriptMacros = collect($this->scriptMacros)
@@ -158,8 +207,7 @@ class ScriptsEditor extends Component
             ->toArray();
 
         $this->macroName = '';
-        $this->saveToSettings();
-        $this->status = 'Macro saved.';
+        $this->status = $this->saveToSettings() ? 'Macro saved.' : WriteLock::BUSY_MESSAGE;
     }
 
     public function playMacro(string $id): void
@@ -182,8 +230,7 @@ class ScriptsEditor extends Component
             ->values()
             ->toArray();
 
-        $this->saveToSettings();
-        $this->status = 'Macro deleted.';
+        $this->status = $this->saveToSettings() ? 'Macro deleted.' : WriteLock::BUSY_MESSAGE;
     }
 
     protected function loadFromSettings(): void
@@ -193,12 +240,29 @@ class ScriptsEditor extends Component
         $this->scriptMacros = $settings['macros'] ?? [];
     }
 
-    protected function saveToSettings(): void
+    protected function saveToSettings(): bool
     {
-        $settings = $this->spreadsheet->settings ?? [];
-        $settings['scripts'] = $this->scripts;
-        $settings['macros'] = $this->scriptMacros;
-        $this->spreadsheet->settings = $settings;
-        $this->spreadsheet->save();
+        // Merge into the stored settings under the write lock, and leave the stored scripts alone
+        // unless scripts are on: with the flag off no action may add or change a script, whatever
+        // this component holds in memory.
+        $scripts = $this->scripts;
+        $macros = $this->scriptMacros;
+        $scriptsEnabled = $this->scriptsEnabled();
+
+        return WriteLock::guard(
+            function () use ($scripts, $macros, $scriptsEnabled) {
+                Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($scripts, $macros, $scriptsEnabled) {
+                    if ($scriptsEnabled) {
+                        $settings['scripts'] = $scripts;
+                    }
+                    $settings['macros'] = $macros;
+
+                    return $settings;
+                });
+
+                return true;
+            },
+            fn () => false
+        );
     }
 }

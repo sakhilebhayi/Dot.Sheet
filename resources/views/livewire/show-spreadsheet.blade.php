@@ -1,4 +1,10 @@
 <div class="w-full h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    @if ($structureNotice !== '')
+        <div role="status" class="flex items-center justify-between gap-3 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 border-b border-amber-300 dark:border-amber-700 px-4 py-2 text-sm">
+            <span>{{ $structureNotice }}</span>
+            <button type="button" wire:click="dismissStructureNotice" class="text-xs underline">Dismiss</button>
+        </div>
+    @endif
     <!-- Header Bar -->
     <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <!-- Top Row: Name + Actions -->
@@ -10,7 +16,7 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                     Last edited {{ $spreadsheet->updated_at->diffForHumans() }}
                 </p>
-                <div id="activeUsers" class="mt-1 flex items-center gap-1"></div>
+                <div id="activeUsers" wire:ignore class="mt-1 flex items-center gap-1"></div>
             </div>
             <div class="flex items-center gap-2">
                 <!-- Formula Bar -->
@@ -30,6 +36,7 @@
 
                 <!-- Import / Export -->
                 <div class="flex gap-1.5">
+                    @if ($canEdit)
                     <label class="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
                                   text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium cursor-pointer border
                                   border-gray-300 dark:border-gray-600 flex items-center gap-1" title="Import CSV">
@@ -41,6 +48,7 @@
                         <input type="file" accept=".csv,.xlsx,.xls" class="hidden"
                                onchange="handleImport(event)">
                     </label>
+                    @endif
                     <div class="relative" x-data="{ open: false }">
                         <button @click="open = !open"
                                 class="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
@@ -92,11 +100,13 @@
                                    flex items-center gap-1" title="Version History">
                         🕘 History
                     </button>
+                    @if ($canEdit)
                     <button onclick="document.dispatchEvent(new CustomEvent('open-formula-modal'))"
                             class="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium
                                    flex items-center gap-1" title="AI Formula">
                         ✨ Formula
                     </button>
+                    @endif
                     <button onclick="document.getElementById('analysisPanel').classList.toggle('hidden')"
                             class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium
                                    flex items-center gap-1" title="AI Analyze">
@@ -112,7 +122,9 @@
         </div>
 
         <!-- Formatting Toolbar Row -->
-        @livewire('spreadsheet-toolbar', ['spreadsheet_id' => $spreadsheet->id])
+        @if ($canEdit)
+            @livewire('spreadsheet-toolbar', ['spreadsheet_id' => $spreadsheet->id])
+        @endif
     </div>
 
     <!-- Main Content Area -->
@@ -281,11 +293,11 @@
                         {{ $scrollRowOffset + 1 }}-{{ min($scrollRowOffset + $viewportRows, $totalRows) }} of {{ number_format($totalRows) }} rows
                     </div>
 
-                    <div id="bulkPasteProgress" class="absolute bottom-2 left-2 hidden text-xs px-2 py-1 rounded bg-indigo-600 text-white pointer-events-none"></div>
-                    <div id="importProgress" class="absolute bottom-8 left-2 hidden text-xs px-2 py-1 rounded bg-emerald-600 text-white pointer-events-none"></div>
+                    <div id="bulkPasteProgress" wire:ignore class="absolute bottom-2 left-2 hidden text-xs px-2 py-1 rounded bg-indigo-600 text-white pointer-events-none"></div>
+                    <div id="importProgress" wire:ignore class="absolute bottom-8 left-2 hidden text-xs px-2 py-1 rounded bg-emerald-600 text-white pointer-events-none"></div>
 
                     <!-- Remote collaborator cursors -->
-                    <div id="remoteCursorsLayer" class="absolute inset-0 pointer-events-none z-10"></div>
+                    <div id="remoteCursorsLayer" wire:ignore class="absolute inset-0 pointer-events-none z-10"></div>
                 </div>
             </div>
 
@@ -295,15 +307,17 @@
                     <div class="group flex items-center">
                         <button type="button"
                                 wire:click="switchTab({{ $tab['id'] }})"
+                                @if ($canEdit)
                                 @dblclick="const name = prompt('Rename sheet', '{{ addslashes($tab['name']) }}'); if (name) $wire.renameTab({{ $tab['id'] }}, name)"
                                 title="Double-click to rename"
+                                @endif
                                 class="px-3 py-1 text-xs font-medium rounded-t-md border-t border-l border-r
                                        {{ (int) $tab['id'] === (int) $activeSheetTabId
                                             ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400'
                                             : 'bg-gray-200 dark:bg-gray-800/40 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700' }}">
                             {{ $tab['name'] }}
                         </button>
-                        @if (count($sheetTabs) > 1)
+                        @if (count($sheetTabs) > 1 && $canEdit)
                             <button type="button" wire:click="deleteTab({{ $tab['id'] }})"
                                     title="Delete sheet"
                                     class="opacity-0 group-hover:opacity-100 -ml-4 mr-1 text-gray-400 hover:text-red-500 text-xs px-1">
@@ -312,15 +326,17 @@
                         @endif
                     </div>
                 @endforeach
+                @if ($canEdit)
                 <button type="button" wire:click="createTab()" title="Add sheet"
                         class="px-2 py-1 text-sm font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
                     +
                 </button>
+                @endif
             </div>
         </div>
 
         <!-- Right Sidebar - Analysis Panel (AI) -->
-        <aside id="analysisPanel" class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto hidden flex-shrink-0">
+        <aside id="analysisPanel" wire:ignore class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto hidden flex-shrink-0">
             @livewire('ai-analysis-panel', ['spreadsheet_id' => $spreadsheet->id])
         </aside>
 
@@ -380,10 +396,12 @@
                 </div>
             @endcan
 
-            <!-- Scripts & Macros Section -->
-            <div class="p-3 border-b border-gray-200 dark:border-gray-700">
-                @livewire('scripts-editor', ['spreadsheet_id' => $spreadsheet->id])
-            </div>
+            <!-- Scripts & Macros Section (editing: a read-only member cannot even mount it) -->
+            @if ($canEdit)
+                <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+                    @livewire('scripts-editor', ['spreadsheet_id' => $spreadsheet->id])
+                </div>
+            @endif
 
             <!-- Spacer -->
             <div class="flex-1"></div>
@@ -397,11 +415,13 @@
         </aside>
     </div>
 
-<div id="spreadsheetContextMenu" class="fixed z-50 hidden min-w-[180px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
+<div id="spreadsheetContextMenu" wire:ignore class="fixed z-50 hidden min-w-[180px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl">
+    @if (config('sheet.structure_ops_enabled'))
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-row-selected'); closeSpreadsheetContextMenu();">Insert Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('delete-row-selected'); closeSpreadsheetContextMenu();">Delete Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('insert-column-selected'); closeSpreadsheetContextMenu();">Insert Column</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('delete-column-selected'); closeSpreadsheetContextMenu();">Delete Column</button>
+    @endif
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('toggle-hide-row-selected'); closeSpreadsheetContextMenu();">Hide/Unhide Row</button>
     <button type="button" class="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700" onclick="Livewire.dispatch('toggle-hide-column-selected'); closeSpreadsheetContextMenu();">Hide/Unhide Column</button>
 </div>
@@ -523,8 +543,8 @@
             marker.style.left = `${x}px`;
             marker.style.top = `${y}px`;
             marker.innerHTML = `
-                <div class="w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm"></div>
-                <div class="absolute -top-4 left-0 text-[10px] px-1 py-0.5 bg-orange-500 text-white rounded">${cursor.user_name}</div>
+                <div class="w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm"><\/div>
+                <div class="absolute -top-4 left-0 text-[10px] px-1 py-0.5 bg-orange-500 text-white rounded">${cursor.user_name}<\/div>
             `;
 
             layer.appendChild(marker);
@@ -781,16 +801,18 @@
                 return;
             }
 
-            if (status.status === 'cancelled' || status.status === 'missing') {
-                progressEl.textContent = 'Bulk paste stopped';
+            if (status.status === 'cancelled' || status.status === 'failed' || status.status === 'missing') {
+                progressEl.textContent = status.message || 'Bulk paste stopped';
                 clearInterval(bulkPastePollHandle);
                 bulkPastePollHandle = null;
-                setTimeout(() => progressEl.classList.add('hidden'), 1400);
+                if (!status.message) {
+                    setTimeout(() => progressEl.classList.add('hidden'), 1400);
+                }
             }
         }, 900);
     }
 
-    async function startImportPolling(batchId) {
+    async function startImportPolling(batchId, queuedMessage) {
         const progressEl = document.getElementById('importProgress');
         if (!progressEl || !batchId) return;
 
@@ -801,8 +823,10 @@
             importPollHandle = null;
         }
 
+        // The sentence the server sent when it queued the file stays on screen while the chunks run.
+        const queuedNotice = queuedMessage || 'Import queued...';
         progressEl.classList.remove('hidden');
-        progressEl.textContent = 'Import queued...';
+        progressEl.textContent = queuedNotice;
 
         const poll = async () => {
             try {
@@ -823,7 +847,7 @@
 
                 const status = await response.json();
                 if (status.status === 'running') {
-                    progressEl.textContent = `Import ${status.progress}% (${status.processed}/${status.total} jobs)`;
+                    progressEl.textContent = `${queuedNotice} (${status.progress}%)`;
                     return;
                 }
 
@@ -836,10 +860,15 @@
                     return;
                 }
 
-                progressEl.textContent = 'Import stopped';
+                // cancelled or failed: say why and leave the message on screen
+                progressEl.textContent = status.message || 'Import stopped';
                 clearInterval(importPollHandle);
                 importPollHandle = null;
-                setTimeout(() => progressEl.classList.add('hidden'), 1600);
+                if (status.message) {
+                    alert(status.message);
+                } else {
+                    setTimeout(() => progressEl.classList.add('hidden'), 1600);
+                }
             } catch (_) {
                 progressEl.textContent = 'Import poll error';
                 clearInterval(importPollHandle);
@@ -1027,7 +1056,7 @@
         .then(data => {
             if (data.success) {
                 if (data.queued) {
-                    startImportPolling(data.batch_id);
+                    startImportPolling(data.batch_id, data.message);
                     return;
                 }
                 alert(`Imported ${data.cells} cells across ${data.rows} rows.`);
@@ -1049,7 +1078,7 @@
 @livewire('version-history-modal', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('version-history-modal-'.$activeSheetTabId))
 
 <!-- AI Natural Language Query Modal -->
-<div id="nlqModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">
+<div id="nlqModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-5/6 max-w-2xl" @click.stop>
         <div class="flex flex-col h-full">
             <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
@@ -1069,7 +1098,7 @@
 </div>
 
 <!-- Keyboard Shortcuts Modal -->
-<div id="shortcutsModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleShortcutsModal(false)">
+<div id="shortcutsModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleShortcutsModal(false)">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg mx-4">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Keyboard Shortcuts</h3>
@@ -1089,7 +1118,7 @@
 </div>
 
 <!-- Help Modal -->
-<div id="helpModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleHelpModal(false)">
+<div id="helpModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleHelpModal(false)">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl mx-4">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Spreadsheet Help</h3>

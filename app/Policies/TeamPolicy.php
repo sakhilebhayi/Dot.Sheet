@@ -67,6 +67,15 @@ class TeamPolicy
     }
 
     /**
+     * Determine whether the user can put a new spreadsheet into the team: the team's owner, or a
+     * member whose role has the 'create' permission (admin and editor, not viewer).
+     */
+    public function createSpreadsheet(User $user, Team $team): bool
+    {
+        return $user->hasTeamPermission($team, 'create');
+    }
+
+    /**
      * Determine whether the user can delete the model.
      */
     public function delete(User $user, Team $team): bool

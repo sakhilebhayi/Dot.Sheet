@@ -1,4 +1,4 @@
-<!-- Named Ranges Panel -->
+{{-- Named Ranges Panel --}}
 <div>
     @if (count($ranges))
         <div class="flex flex-wrap gap-2 mb-3">
@@ -9,13 +9,16 @@
                         🏷️ {{ $range['name'] }}
                     </span>
                     <span class="text-teal-500 dark:text-teal-400 font-mono">{{ $range['reference'] }}</span>
-                    <button wire:click="deleteRange({{ $range['id'] }})"
-                            class="text-teal-400 hover:text-red-500 ml-1">✕</button>
+                    @if ($canEdit)
+                        <button wire:click="deleteRange({{ $range['id'] }})"
+                                class="text-teal-400 hover:text-red-500 ml-1">✕</button>
+                    @endif
                 </div>
             @endforeach
         </div>
     @endif
 
+    @if ($canEdit)
     <div class="flex gap-1.5">
         <input type="text" wire:model="name" placeholder="Name (e.g. Revenue)"
                class="w-28 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs
@@ -30,6 +33,7 @@
             Add
         </button>
     </div>
+    @endif
     @if ($error)
         <p class="text-red-500 text-xs mt-1">{{ $error }}</p>
     @endif

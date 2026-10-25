@@ -18,11 +18,13 @@
                         <p class="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{{ $thread['content'] }}</p>
                     </div>
                     <div class="flex gap-1">
+                        @if($canComment)
                         <button wire:click="toggleResolved({{ $thread['id'] }})"
                                 class="text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">
                             {{ $thread['resolved'] ? 'Reopen' : 'Resolve' }}
                         </button>
-                        @if(($thread['user_id'] ?? null) === auth()->id())
+                        @endif
+                        @if($canComment && ($thread['user_id'] ?? null) === auth()->id())
                             <button wire:click="deleteComment({{ $thread['id'] }})"
                                     class="text-xs px-2 py-0.5 rounded border border-red-300 text-red-600">Del</button>
                         @endif
@@ -40,6 +42,7 @@
                     </div>
                 @endif
 
+                @if($canComment)
                 <div class="mt-2 flex gap-1">
                     <input type="text"
                            wire:model.defer="replyDrafts.{{ $thread['id'] }}"
@@ -51,6 +54,7 @@
                         Reply
                     </button>
                 </div>
+                @endif
             </div>
         @empty
             <div class="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/40 rounded p-2">
@@ -59,6 +63,7 @@
         @endforelse
     </div>
 
+    @if($canComment)
     <div class="space-y-1">
         <textarea
             wire:model.defer="newComment"
@@ -76,4 +81,5 @@
             </button>
         </div>
     </div>
+    @endif
 </div>

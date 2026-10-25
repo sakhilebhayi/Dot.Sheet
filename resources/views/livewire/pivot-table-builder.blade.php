@@ -1,4 +1,4 @@
-<!-- Pivot Table Builder Panel -->
+{{-- Pivot Table Builder Panel --}}
 <div>
     @if (count($pivots))
         <div class="flex flex-wrap gap-2 mb-3">
@@ -9,13 +9,16 @@
                             class="text-indigo-800 dark:text-indigo-200 hover:underline font-medium">
                         🧮 {{ $pivot['title'] }}
                     </button>
-                    <button wire:click="deletePivot({{ $pivot['id'] }})"
-                            class="text-indigo-400 hover:text-red-500 ml-1">✕</button>
+                    @if ($canEdit)
+                        <button wire:click="deletePivot({{ $pivot['id'] }})"
+                                class="text-indigo-400 hover:text-red-500 ml-1">✕</button>
+                    @endif
                 </div>
             @endforeach
         </div>
     @endif
 
+    @if ($canEdit)
     <button wire:click="openModal"
             class="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700
                    text-white rounded-lg font-medium">
@@ -25,6 +28,7 @@
         </svg>
         New Pivot Table
     </button>
+    @endif
 
     <!-- Pivot Builder Modal -->
     @if ($showModal)

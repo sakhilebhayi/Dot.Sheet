@@ -1,0 +1,146 @@
+{
+  "assessors": [],
+  "automated": [
+    {
+      "artifact_ref": "check:d1.copy_profile_language_lint:static-scan/d1.copy_profile_language_lint",
+      "check_id": "d1.copy_profile_language_lint",
+      "detail": "527 user-facing string(s) scanned against 6 banned phrase(s) of profile dot-ecosystem; 0 string(s) trip a banned phrase or an unsupported-claim pattern (claim hits are listed under d6.claim_lint).",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d10.error_pages:static-scan/d10.error_pages",
+      "check_id": "d10.error_pages",
+      "detail": "5 of 5 error statuses (403, 404, 419, 500, 503) have a custom page with a link or button. Laravel layout: resources/views/errors. Rendering with the right status needs a running app and is not measured.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d10.health_endpoint:bootstrap/app.php",
+      "check_id": "d10.health_endpoint",
+      "detail": "exists: yes (framework health route /up with no DiagnosingHealth listener (it answers 200 whenever the app boots)); answers: not measured (needs a running app); reports failure honestly: not seen. The share is out of three, so it cannot exceed 2/3 statically.",
+      "value": 0.3333
+    },
+    {
+      "artifact_ref": "check:d2.font_palette_deny_list:resources/views/dashboard.blade.php",
+      "check_id": "d2.font_palette_deny_list",
+      "detail": "7 of 8 fonts/palette values are off the deny-list. Fonts found: Syne, Inter, Sora, Fraunces, Space Mono, JetBrains Mono, Material Symbols Rounded, Manrope; the profile writes no hex colour in its prohibited list, so the palette was not evaluated. Matching is by name only.",
+      "value": 0.875
+    },
+    {
+      "artifact_ref": "check:d3.field_counts:static-scan/d3.field_counts",
+      "check_id": "d3.field_counts",
+      "detail": "7 of 7 forms have at most 8 fields (engine default bound; the profile declares none). Whether each field is needed is not measured.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d3.heading_structure:resources/views/profile/two-factor-authentication-form.blade.php",
+      "check_id": "d3.heading_structure",
+      "detail": "11 of 12 screens have exactly one <h1> and no skipped level; 22 layout(s) and page(s) that rely on a layout were left out because the outline is split between files. Headings rendered by components or inserted by scripts are not seen.",
+      "value": 0.9167
+    },
+    {
+      "artifact_ref": "check:d3.nav_depth:static-scan/d3.nav_depth",
+      "check_id": "d3.nav_depth",
+      "detail": "12 of 12 navigation links are within 3 level(s) (engine default bound; the profile declares none) across 4 <nav> landmark(s). Click paths through pages are not measured.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d4.reduced_motion:resources/css/app.css",
+      "check_id": "d4.reduced_motion",
+      "detail": "4 of 48 motion declarations are covered by prefers-reduced-motion (no global override); utility classes counted per element. Motion from JavaScript is not scanned.",
+      "value": 0.0833
+    },
+    {
+      "artifact_ref": "check:d5.dead_links:static-scan/d5.dead_links",
+      "check_id": "d5.dead_links",
+      "detail": "37 of 37 checkable internal links resolve; 21 link(s) could not be judged statically and are not counted; 8 link(s) sit inside a Route::has() guard for the route they name and are not counted either. 23 route(s) read from 4 file(s) in routes/ plus 2 page(s) the framework registers (Jetstream terms and privacy); package-provided routes (login, register, ...) are treated as unverifiable.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d5.route_inventory_vs_claims:README.md",
+      "check_id": "d5.route_inventory_vs_claims",
+      "detail": "3 of 9 claimed features share a keyword with 37 route, page or view name word(s). This is a keyword match against names, not a test that the feature works.",
+      "value": 0.3333
+    },
+    {
+      "artifact_ref": "check:d5.stubs_placeholders:static-scan/d5.stubs_placeholders",
+      "check_id": "d5.stubs_placeholders",
+      "detail": "44 of 44 surfaces with static text are free of visible stub content. Surfaces whose text is all dynamic, and text produced by scripts, are not seen.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d6.privacy_terms_present:static-scan/d6.privacy_terms_present",
+      "check_id": "d6.privacy_terms_present",
+      "detail": "6 of 6 conditions hold (privacy and terms: present, not a placeholder, linked from shared markup). \"Reachable from every public page\" is approximated by a link in a layout, footer or partial; content served from a database or a CMS is not seen.",
+      "value": 1
+    },
+    {
+      "artifact_ref": "check:d8.focus_visible:resources/views/components/banner.blade.php",
+      "check_id": "d8.focus_visible",
+      "detail": "14 of 16 outline removals or positive tabindex uses are safe (replaced by a visible indicator); the rest are listed. Rendered focus order and indicator visibility are not measured.",
+      "value": 0.875
+    },
+    {
+      "artifact_ref": "check:d8.labels_alt_lang:resources/views/components/dropdown.blade.php",
+      "check_id": "d8.labels_alt_lang",
+      "detail": "25/78 form fields labelled (reusable component files are skipped: their consumer supplies the label), 11/11 images with alt, 5/5 documents with lang; 19 element(s) with dynamic attributes and all components were skipped. Title, name, iframe, viewport and ARIA findings do not change this share.",
+      "value": 0.4362
+    },
+    {
+      "artifact_ref": "check:d8.token_pair_contrast:resources/views/dashboard.blade.php",
+      "check_id": "d8.token_pair_contrast",
+      "detail": "8 of 9 pair/theme combinations meet their threshold (4.5:1 text; 3:1 large text and focus indicators); themes evaluated: light; pair sources: usage 9; 17 combination(s) undetermined and not counted; translucent backgrounds are undetermined; panel backgrounds are tokens named bg/panel/surface/card/sunken.",
+      "value": 0.8889
+    },
+    {
+      "artifact_ref": "check:d9.token_usage_vs_profile:resources/css/app.css",
+      "check_id": "d9.token_usage_vs_profile",
+      "detail": "1498 of 2144 values come from tokens: colour 1498 token / 178 literal / 220 framework-default utility; spacing and type size 0 token / 248 literal; 46 font-family declaration(s) not counted. The profile cites no token source, so any declared custom property counts.",
+      "value": 0.6987
+    }
+  ],
+  "built_by": "claude-code",
+  "context": {
+    "assistive_technology_testing_possible": false
+  },
+  "evidence_version": "1.0.0",
+  "expert": [],
+  "findings": [
+    {
+      "artifact_ref": "resources/views/dashboard.blade.php",
+      "criterion": "1.4.3",
+      "detail": "Contrast 3.80:1 on the light theme is below 4.5:1 for #71717a on #141416; source: usage, .dash-action-btn. (resources/views/dashboard.blade.php:237)",
+      "id": "d8.token_pair_contrast.ce503d82614d",
+      "kind": "wcag_failure",
+      "level": "AA"
+    }
+  ],
+  "generated_at": "2026-10-25T20:00:00Z",
+  "input": {
+    "commit": "b7cc81ad4f0e4021f81438eaa80f02c2aaa0aa56",
+    "repo": "sakhilebhayi/Dot.Sheet"
+  },
+  "observed": [],
+  "x-provenance": {
+    "analysis_sha256": "f1d2b8c9ccb5fe08378f0b7aac34a1ccd3ee93662d413f8874b829813d89099b",
+    "automated": {
+      "d1.copy_profile_language_lint": "check:d1.copy_profile_language_lint",
+      "d10.error_pages": "check:d10.error_pages",
+      "d10.health_endpoint": "check:d10.health_endpoint",
+      "d2.font_palette_deny_list": "check:d2.font_palette_deny_list",
+      "d3.field_counts": "check:d3.field_counts",
+      "d3.heading_structure": "check:d3.heading_structure",
+      "d3.nav_depth": "check:d3.nav_depth",
+      "d4.reduced_motion": "check:d4.reduced_motion",
+      "d5.dead_links": "check:d5.dead_links",
+      "d5.route_inventory_vs_claims": "check:d5.route_inventory_vs_claims",
+      "d5.stubs_placeholders": "check:d5.stubs_placeholders",
+      "d6.privacy_terms_present": "check:d6.privacy_terms_present",
+      "d8.focus_visible": "check:d8.focus_visible",
+      "d8.labels_alt_lang": "check:d8.labels_alt_lang",
+      "d8.token_pair_contrast": "check:d8.token_pair_contrast",
+      "d9.token_usage_vs_profile": "check:d9.token_usage_vs_profile"
+    },
+    "profile": "dot-ecosystem@0.1.0",
+    "rubric": "bxqs@1.0.0"
+  }
+}

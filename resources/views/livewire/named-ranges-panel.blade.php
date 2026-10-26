@@ -20,11 +20,11 @@
 
     @if ($canEdit)
     <div class="flex gap-1.5">
-        <input type="text" wire:model="name" placeholder="Name (e.g. Revenue)"
+        <input aria-label="Name" type="text" wire:model="name" placeholder="Name (e.g. Revenue)"
                class="w-28 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs
                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                       focus:ring-2 focus:ring-teal-500">
-        <input type="text" wire:model="rangeInput" placeholder="A1:B10"
+        <input aria-label="A1:B10" type="text" wire:model="rangeInput" placeholder="A1:B10"
                class="w-24 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-xs font-mono
                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                       focus:ring-2 focus:ring-teal-500">

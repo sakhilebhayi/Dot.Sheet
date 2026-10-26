@@ -44,7 +44,7 @@
 
                 @if($canComment)
                 <div class="mt-2 flex gap-1">
-                    <input type="text"
+                    <input aria-label="Reply" type="text"
                            wire:model.defer="replyDrafts.{{ $thread['id'] }}"
                            wire:keydown.enter="addReply({{ $thread['id'] }})"
                            placeholder="Reply (use @name to mention)"
@@ -65,7 +65,7 @@
 
     @if($canComment)
     <div class="space-y-1">
-        <textarea
+        <textarea aria-label="Add a comment... Use @name to mention"
             wire:model.defer="newComment"
             wire:keydown.enter.prevent="addComment"
             rows="2"

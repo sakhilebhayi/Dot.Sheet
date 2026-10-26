@@ -10,7 +10,7 @@
                 @if ($canEdit)
                 <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                     <div class="flex gap-2">
-                        <input type="text" wire:model.defer="snapshotLabel" placeholder="Snapshot label (optional)"
+                        <input aria-label="Snapshot label" type="text" wire:model.defer="snapshotLabel" placeholder="Snapshot label (optional)"
                                class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                         <button wire:click="createSnapshot"
                                 class="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">

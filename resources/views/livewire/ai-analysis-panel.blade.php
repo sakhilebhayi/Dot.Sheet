@@ -18,9 +18,9 @@
     </div>
 
     <div class="px-4 pt-3 pb-2 border-b border-gray-200 dark:border-gray-700 space-y-2">
-        <label class="text-xs text-gray-600 dark:text-gray-300">Active Range</label>
+        <label for="livewire-ai-analysis-panel-selected-range" class="text-xs text-gray-600 dark:text-gray-300">Active Range</label>
         <div class="flex gap-2">
-            <input
+            <input id="livewire-ai-analysis-panel-selected-range"
                 type="text"
                 wire:model.defer="selected_range"
                 placeholder="A1:B20"
@@ -218,7 +218,7 @@
         <!-- OCR Tab -->
         @if ($active_tab === 'ocr')
             <div class="space-y-3">
-                <input
+                <input aria-label="Ocrimage"
                     type="file"
                     wire:model="ocrImage"
                     accept="image/*"
@@ -235,7 +235,7 @@
                 </button>
 
                 @if ($ocrText)
-                    <textarea
+                    <textarea aria-label="Ocrtext"
                         wire:model="ocrText"
                         rows="7"
                         class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
@@ -254,20 +254,20 @@
         @if ($active_tab === 'workflows')
             <div class="space-y-3">
                 <div class="space-y-2 rounded border border-gray-200 dark:border-gray-700 p-3">
-                    <input
+                    <input aria-label="Rule name"
                         type="text"
                         wire:model.defer="workflow_name"
                         placeholder="Rule name"
                         class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                     >
                     <div class="grid grid-cols-2 gap-2">
-                        <input
+                        <input aria-label="Column"
                             type="text"
                             wire:model.defer="workflow_column"
                             placeholder="Column"
                             class="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                         >
-                        <select
+                        <select aria-label="Workflow operator"
                             wire:model.defer="workflow_operator"
                             class="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                         >
@@ -279,13 +279,13 @@
                             <option value="!=">!=</option>
                         </select>
                     </div>
-                    <input
+                    <input aria-label="Trigger value"
                         type="text"
                         wire:model.defer="workflow_value"
                         placeholder="Trigger value"
                         class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                     >
-                    <select
+                    <select aria-label="Workflow action"
                         wire:model.defer="workflow_action"
                         class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100"
                     >

@@ -102,7 +102,7 @@
     <!-- Input Area -->
     <div class="border-t border-gray-200 dark:border-gray-700 p-4 space-y-3 bg-gray-50 dark:bg-gray-700/50 rounded-b-lg">
         <div class="flex gap-2">
-            <textarea wire:model="query" 
+            <textarea aria-label="Ask a question about your data" wire:model="query" 
                       placeholder="Ask a question about your data..."
                       @keydown.enter.meta="$wire.submitQuery()"
                       @keydown.enter.ctrl="$wire.submitQuery()"

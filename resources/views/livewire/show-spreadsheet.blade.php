@@ -23,7 +23,7 @@
                 <div class="flex gap-1.5 items-center">
                     <span class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 min-w-[48px] text-center"
                           id="cellRef">A1</span>
-                    <input type="text" id="formulaInput" placeholder="Enter formula or value..."
+                    <input aria-label="Enter formula or value" type="text" id="formulaInput" placeholder="Enter formula or value..."
                         class="w-64 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm
                                bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                focus:ring-2 focus:ring-blue-500 focus:border-transparent">
@@ -253,7 +253,7 @@
                                             
                                             @if ($editingCell === "{$row}_{$col}")
                                                 <!-- Edit Mode -->
-                                                <input type="text" 
+                                                <input aria-label="Editingvalue" type="text" 
                                                     wire:model="editingValue"
                                                     wire:key="edit-input-{{ $row }}-{{ $col }}"
                                                     @keydown.enter="saveCell()"

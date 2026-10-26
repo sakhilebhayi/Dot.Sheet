@@ -38,14 +38,14 @@
         </div>
 
         <div class="space-y-2">
-            <input
+            <input aria-label="Script name"
                 type="text"
                 wire:model.defer="scriptName"
                 placeholder="Script name"
                 class="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
             />
 
-            <textarea
+            <textarea aria-label="Scriptbody"
                 wire:model.defer="scriptBody"
                 rows="10"
                 class="w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-xs focus:border-indigo-500 focus:outline-none"
@@ -82,7 +82,7 @@
         <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900">Macros</h3>
             <div class="flex items-center gap-2">
-                <input
+                <input aria-label="Macro name"
                     type="text"
                     wire:model.defer="macroName"
                     placeholder="Macro name"

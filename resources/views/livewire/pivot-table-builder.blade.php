@@ -41,18 +41,18 @@
 
                 <div class="p-6 space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title</label>
-                        <input type="text" wire:model="title"
+                        <label for="livewire-pivot-table-builder-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Title</label>
+                        <input id="livewire-pivot-table-builder-title" type="text" wire:model="title"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                         @error('title') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <label for="livewire-pivot-table-builder-source-range" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             Source Range <span class="text-gray-400 font-normal">(first row = headers, e.g. A1:D50)</span>
                         </label>
-                        <input type="text" wire:model="source_range" placeholder="A1:D50"
+                        <input id="livewire-pivot-table-builder-source-range" type="text" wire:model="source_range" placeholder="A1:D50"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
                                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                         @error('source_range') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
@@ -60,19 +60,19 @@
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label for="livewire-pivot-table-builder-row-field" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Rows <span class="text-gray-400 font-normal">(column letter)</span>
                             </label>
-                            <input type="text" wire:model="row_field" placeholder="A"
+                            <input id="livewire-pivot-table-builder-row-field" type="text" wire:model="row_field" placeholder="A"
                                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
                                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                             @error('row_field') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label for="livewire-pivot-table-builder-column-field" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Columns <span class="text-gray-400 font-normal">(optional)</span>
                             </label>
-                            <input type="text" wire:model="column_field" placeholder="B"
+                            <input id="livewire-pivot-table-builder-column-field" type="text" wire:model="column_field" placeholder="B"
                                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
                                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                             @error('column_field') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
@@ -81,17 +81,17 @@
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label for="livewire-pivot-table-builder-value-field" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Values <span class="text-gray-400 font-normal">(column letter)</span>
                             </label>
-                            <input type="text" wire:model="value_field" placeholder="C"
+                            <input id="livewire-pivot-table-builder-value-field" type="text" wire:model="value_field" placeholder="C"
                                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
                                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                             @error('value_field') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Aggregation</label>
-                            <select wire:model="aggregation"
+                            <label for="livewire-pivot-table-builder-aggregation" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Aggregation</label>
+                            <select id="livewire-pivot-table-builder-aggregation" wire:model="aggregation"
                                     class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                            bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
                                 <option value="sum">Sum</option>

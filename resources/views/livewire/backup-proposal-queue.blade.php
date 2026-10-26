@@ -24,7 +24,7 @@
 
             @if($rejectingProposalId === $proposal->id)
                 <div class="flex items-center gap-2">
-                    <input type="text" wire:model="rejectReason" placeholder="Reason for keeping this backup"
+                    <input aria-label="Reason for keeping this backup" type="text" wire:model="rejectReason" placeholder="Reason for keeping this backup"
                         class="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
                     <button wire:click="confirmReject({{ $proposal->id }})" class="text-xs px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white font-medium">
                         Confirm Reject

@@ -9,18 +9,18 @@
 
     <div class="space-y-2 border border-gray-200 dark:border-gray-700 rounded-lg p-2">
         <div class="text-xs font-medium text-gray-700 dark:text-gray-300">Invite by Email</div>
-        <input type="email" wire:model.defer="inviteEmail" placeholder="person@example.com"
+        <input aria-label="person@example.com" type="email" wire:model.defer="inviteEmail" placeholder="person@example.com"
                class="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
 
         <div class="grid grid-cols-2 gap-2">
-            <select wire:model.defer="invitePermission"
+            <select aria-label="Invitepermission" wire:model.defer="invitePermission"
                     class="px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="view">View</option>
                 <option value="comment">Comment</option>
                 <option value="edit">Edit</option>
                 <option value="admin">Admin</option>
             </select>
-            <input type="number" min="1" max="90" wire:model.defer="inviteExpiryDays"
+            <input aria-label="Expiry" type="number" min="1" max="90" wire:model.defer="inviteExpiryDays"
                    class="px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                    placeholder="Expiry (days)" />
         </div>
@@ -39,7 +39,7 @@
                     <div class="text-xs text-gray-800 dark:text-gray-200 truncate">{{ $user['name'] }}</div>
                     <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate">{{ $user['email'] }}</div>
                 </div>
-                <select wire:change="updatePermission({{ $user['id'] }}, $event.target.value)"
+                <select aria-label="Permission for {{ $user['name'] }}" wire:change="updatePermission({{ $user['id'] }}, $event.target.value)"
                         class="text-xs px-1 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     @foreach(['view','comment','edit','admin'] as $perm)
                         <option value="{{ $perm }}" {{ ($user['pivot']['permission'] ?? 'view') === $perm ? 'selected' : '' }}>{{ ucfirst($perm) }}</option>
@@ -68,10 +68,10 @@
 
     <div class="space-y-2 border border-gray-200 dark:border-gray-700 rounded-lg p-2">
         <div class="text-xs font-medium text-gray-700 dark:text-gray-300">Public View-Only Link</div>
-        <label class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+        <label for="livewire-spreadsheet-sharing-panel-publicexpiresat" class="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
             <input type="checkbox" wire:model="publicEnabled" /> Enable public link
         </label>
-        <input type="datetime-local" wire:model="publicExpiresAt"
+        <input id="livewire-spreadsheet-sharing-panel-publicexpiresat" type="datetime-local" wire:model="publicExpiresAt"
                class="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
 
         @if($publicUrl)

@@ -11,7 +11,7 @@
                     <h2 class="text-2xl font-bold">✨ AI Formula Generator</h2>
                     <p class="text-blue-100 text-sm">Generate formulas using AI - Cell {{ $cell_reference }}</p>
                 </div>
-                <button type="button" class="text-white hover:text-blue-200"
+                <button type="button" aria-label="Close" class="text-white hover:text-blue-200"
                         @click="$el.closest('.fixed').classList.add('hidden')">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>

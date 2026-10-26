@@ -5,7 +5,7 @@
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
         <button wire:click="updateFontSize({{ max(6, $font_size - 1) }})"
                 class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold">−</button>
-        <input type="number" wire:change="updateFontSize($event.target.value)" value="{{ $font_size }}"
+        <input type="number" aria-label="Font size" wire:change="updateFontSize($event.target.value)" value="{{ $font_size }}"
                min="6" max="72"
                class="w-12 text-center border border-gray-300 dark:border-gray-600 rounded text-xs
                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white py-0.5">
@@ -70,7 +70,7 @@
 
     <!-- Number Format -->
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
-        <select wire:change="setNumberFormat($event.target.value)"
+        <select aria-label="Number format" wire:change="setNumberFormat($event.target.value)"
                 class="text-xs border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             @foreach (['general' => 'General', 'number' => '1,234.00', 'currency' => '$1,234', 'percent' => '12%', 'date' => 'Date', 'time' => 'Time', 'text' => 'Text'] as $val => $label)
@@ -115,32 +115,32 @@
 
     <!-- Resize -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <input type="number" wire:model="row_height_input" min="18" max="120" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="RowH">
+        <input aria-label="RowH" type="number" wire:model="row_height_input" min="18" max="120" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="RowH">
         <button wire:click="resizeRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set Row</button>
-        <input type="number" wire:model="col_width_input" min="48" max="420" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="ColW">
+        <input aria-label="ColW" type="number" wire:model="col_width_input" min="48" max="420" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="ColW">
         <button wire:click="resizeColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set Col</button>
     </div>
 
     <!-- Validation -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <select wire:model="validation_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <select aria-label="Validation type" wire:model="validation_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="number">Number</option>
             <option value="text_length">Text Length</option>
             <option value="list">List</option>
         </select>
-        <input type="text" wire:model="validation_min" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Min">
-        <input type="text" wire:model="validation_max" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Max">
-        <input type="text" wire:model="validation_items" class="w-24 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="a,b,c">
+        <input aria-label="Min" type="text" wire:model="validation_min" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Min">
+        <input aria-label="Max" type="text" wire:model="validation_max" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Max">
+        <input aria-label="a,b,c" type="text" wire:model="validation_items" class="w-24 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="a,b,c">
         <button wire:click="addValidationRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Validation</button>
     </div>
 
     <!-- Conditional Formatting -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <select wire:model="conditional_target" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <select aria-label="Conditional target" wire:model="conditional_target" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="cell">Cell</option>
             <option value="column">Column</option>
         </select>
-        <select wire:model="conditional_operator" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <select aria-label="Conditional operator" wire:model="conditional_operator" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value=">">&gt;</option>
             <option value=">=">&gt;=</option>
             <option value="<">&lt;</option>
@@ -148,28 +148,28 @@
             <option value="==">==</option>
             <option value="!=">!=</option>
         </select>
-        <input type="text" wire:model="conditional_value" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value">
-        <input type="color" wire:model="conditional_color" class="w-8 h-6 rounded border-0 p-0">
+        <input aria-label="Value" type="text" wire:model="conditional_value" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value">
+        <input aria-label="Conditional color" type="color" wire:model="conditional_color" class="w-8 h-6 rounded border-0 p-0">
         <button wire:click="addConditionalRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Rule</button>
     </div>
 
     <!-- Sort & Filter -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <select wire:model="sort_direction" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <select aria-label="Sort direction" wire:model="sort_direction" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="asc">Sort Asc</option>
             <option value="desc">Sort Desc</option>
         </select>
         <button wire:click="sortSelectedColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Sort Col</button>
 
-        <input type="text" wire:model="filter_column" class="w-10 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="A">
-        <select wire:model="filter_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <input aria-label="A" type="text" wire:model="filter_column" class="w-10 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="A">
+        <select aria-label="Filter type" wire:model="filter_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="contains">Contains</option>
             <option value="number_between">Number Between</option>
             <option value="date_range">Date Range</option>
             <option value="color">By Color</option>
             <option value="condition">By Condition</option>
         </select>
-        <select wire:model="filter_operator" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
+        <select aria-label="Filter operator" wire:model="filter_operator" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value=">">&gt;</option>
             <option value=">=">&gt;=</option>
             <option value="<">&lt;</option>
@@ -178,9 +178,9 @@
             <option value="!=">!=</option>
             <option value="contains">contains</option>
         </select>
-        <input type="text" wire:model="filter_value" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 1">
-        <input type="text" wire:model="filter_value2" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 2">
-        <input type="color" wire:model="filter_color" class="w-8 h-6 rounded border-0 p-0">
+        <input aria-label="Value 1" type="text" wire:model="filter_value" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 1">
+        <input aria-label="Value 2" type="text" wire:model="filter_value2" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 2">
+        <input aria-label="Filter color" type="color" wire:model="filter_color" class="w-8 h-6 rounded border-0 p-0">
         <button wire:click="addFilterRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Filter</button>
         <button wire:click="clearFilters" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Clear Filters</button>
     </div>

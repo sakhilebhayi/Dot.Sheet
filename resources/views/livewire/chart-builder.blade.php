@@ -44,8 +44,8 @@
                 <div class="p-6 space-y-4">
                     <!-- Chart Title -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart Title</label>
-                        <input type="text" wire:model="title" placeholder="My Chart"
+                        <label for="livewire-chart-builder-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart Title</label>
+                        <input id="livewire-chart-builder-title" type="text" wire:model="title" placeholder="My Chart"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                       focus:ring-2 focus:ring-purple-500">
@@ -71,10 +71,10 @@
 
                     <!-- Data Range -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <label for="livewire-chart-builder-data-range" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             Data Range <span class="text-gray-400 font-normal">(e.g. B1:D10)</span>
                         </label>
-                        <input type="text" wire:model="data_range" placeholder="B1:D10"
+                        <input id="livewire-chart-builder-data-range" type="text" wire:model="data_range" placeholder="B1:D10"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                       font-mono bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                       focus:ring-2 focus:ring-purple-500">
@@ -83,10 +83,10 @@
 
                     <!-- Labels Range (optional) -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <label for="livewire-chart-builder-labels-range" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             Labels Range <span class="text-gray-400 font-normal">(optional, e.g. A1:A10)</span>
                         </label>
-                        <input type="text" wire:model="labels_range" placeholder="A1:A10"
+                        <input id="livewire-chart-builder-labels-range" type="text" wire:model="labels_range" placeholder="A1:A10"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                       font-mono bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                       focus:ring-2 focus:ring-purple-500">

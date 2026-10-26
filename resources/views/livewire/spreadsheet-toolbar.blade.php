@@ -5,7 +5,7 @@
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
         <button wire:click="updateFontSize({{ max(6, $font_size - 1) }})"
                 class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold">−</button>
-        <input type="number" wire:change="updateFontSize($event.target.value)" value="{{ $font_size }}"
+        <input type="number" aria-label="Font size" wire:change="updateFontSize($event.target.value)" value="{{ $font_size }}"
                min="6" max="72"
                class="w-12 text-center border border-gray-300 dark:border-gray-600 rounded text-xs
                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white py-0.5">
@@ -70,7 +70,7 @@
 
     <!-- Number Format -->
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
-        <select wire:change="setNumberFormat($event.target.value)"
+        <select aria-label="Number format" wire:change="setNumberFormat($event.target.value)"
                 class="text-xs border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5
                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             @foreach (['general' => 'General', 'number' => '1,234.00', 'currency' => '$1,234', 'percent' => '12%', 'date' => 'Date', 'time' => 'Time', 'text' => 'Text'] as $val => $label)

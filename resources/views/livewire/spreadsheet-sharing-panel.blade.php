@@ -39,7 +39,7 @@
                     <div class="text-xs text-gray-800 dark:text-gray-200 truncate">{{ $user['name'] }}</div>
                     <div class="text-[11px] text-gray-500 dark:text-gray-400 truncate">{{ $user['email'] }}</div>
                 </div>
-                <select wire:change="updatePermission({{ $user['id'] }}, $event.target.value)"
+                <select aria-label="Permission for {{ $user['name'] }}" wire:change="updatePermission({{ $user['id'] }}, $event.target.value)"
                         class="text-xs px-1 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     @foreach(['view','comment','edit','admin'] as $perm)
                         <option value="{{ $perm }}" {{ ($user['pivot']['permission'] ?? 'view') === $perm ? 'selected' : '' }}>{{ ucfirst($perm) }}</option>

@@ -112,7 +112,7 @@
                              resize-none" rows="2">
             </textarea>
             <div class="flex flex-col gap-2">
-                <button type="button" wire:click="submitQuery" :disabled="$wire.loading"
+                <button type="button" aria-label="Send query" wire:click="submitQuery" :disabled="$wire.loading"
                         class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium
                                flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed h-full">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

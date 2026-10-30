@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsurePlatformOperator;
+use App\Http\Middleware\SecurityHeaders;
 use App\Services\Guardian\ErrorCounter;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -20,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'operator' => EnsurePlatformOperator::class,
         ]);
+
+        // Last in the global stack so it sees every response, including 404s and error pages.
+        $middleware->append(SecurityHeaders::class);
     })
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('ops:backup')

@@ -1,4 +1,5 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
+import { fromText, toText } from './clipboard';
 import { cellName, columnIndex, show } from './format';
 import { Grid } from './grid';
 import { Server } from './server';
@@ -19,9 +20,8 @@ const bold = byId('do-bold');
 const percent = byId('do-percent');
 const rand = byId('do-rand');
 
-const MAX_EDITS = 500;
-const MAX_CLEARED = 5000;
-const CLEARED_ROWS = 6000;
+const MAX_CELLS = 5000;
+const MAX_STEPS = 100;
 
 const server = new Server(boot.id);
 const store = new Store(server, () => {
@@ -34,6 +34,9 @@ let version = boot.version;
 let tab = boot.tabs[0]?.id ?? null;
 let sending = 0;
 let told = '';
+let clip = null;
+const undoSteps = [];
+const redoSteps = [];
 
 function note(message) {
     told = message;
@@ -44,6 +47,7 @@ function restingNote() {
     const cell = store.get(grid.active.r, grid.active.c);
     if (cell?.e) return cell.e;
     if (cell?.s) return 'Part of the answer of a formula nearby. Change that formula to change this.';
+    if (clip) return 'Copied. Paste where you want it, or press Escape to let go of it.';
     return boot.canEdit ? '' : 'You can read this sheet. Ask its owner for edit access to change it.';
 }
 
@@ -62,6 +66,7 @@ async function open(id) {
     grid.active = { r: 0, c: 0 };
     grid.extent = { r: 0, c: 0 };
     grid.clearThreads();
+    grid.copied = clip?.tab === id ? clip.area : null;
     sheet.scrollTo(0, 0);
     grid.setLayout(body.layout);
     drawTabs();
@@ -254,16 +259,18 @@ function failed(status, body) {
 }
 
 /** Show the edits now and send them; the server's answer then replaces what was guessed here. */
-async function write(edits) {
-    if (!boot.canEdit || edits.length === 0) return;
+async function write(edits, { remember: keep = true } = {}) {
+    if (!boot.canEdit || edits.length === 0) return null;
 
     const old = edits.map(({ row, col }) => before(row, col));
-    edits.forEach(({ row, col, value }, i) => {
+    edits.forEach((edit, i) => {
+        const { row, col, value } = edit;
         store.hold(row, col);
         if (value !== '') store.reach(row, col);
+        const x = 'x' in edit ? edit.x ?? undefined : old[i]?.x;
         const formula = value.startsWith('=') && value.length > 1;
-        if (value === '' && !old[i]?.x) store.remove(row, col);
-        else store.put({ ...(old[i] ?? {}), r: row, c: col, v: formula ? old[i]?.v ?? '' : value, f: formula ? value : undefined, e: undefined });
+        if (value === '' && !x) store.remove(row, col);
+        else store.put({ ...(old[i] ?? {}), r: row, c: col, v: formula ? old[i]?.v ?? '' : value, f: formula ? value : undefined, e: undefined, x });
     });
     grid.paint();
     selected();
@@ -275,15 +282,30 @@ async function write(edits) {
 
     if (!ok) {
         edits.forEach(({ row, col }, i) => restore(row, col, old[i]));
-        note(failed(status, body));
-        grid.paint();
-        selected();
-        if (status === 409) reopen();
-        return;
+        refused(status, body);
+        return null;
     }
 
+    for (const { row, col, message } of body.refused) {
+        const i = edits.findIndex((e) => e.row === row && e.col === col);
+        restore(row, col, old[i]);
+        note(message);
+    }
+    if (keep) remember(body.undo);
+    await absorb(body, new Set(edits.map(({ row, col }) => `${row}:${col}`)));
+    return body;
+}
+
+function refused(status, body) {
+    note(failed(status, body));
+    grid.paint();
+    selected();
+    if (status === 409) reopen();
+}
+
+/** Take in what the server says the sheet now holds. */
+async function absorb(body, edited) {
     version = body.version;
-    const edited = new Set(edits.map(({ row, col }) => `${row}:${col}`));
     const moved = [];
     for (const cell of body.cells) {
         const key = `${cell.r}:${cell.c}`;
@@ -296,11 +318,6 @@ async function write(edits) {
         store.reach(cell.r, cell.c);
         if (!edited.has(key) && was !== show(cell).text) moved.push(key);
     }
-    for (const { row, col, message } of body.refused) {
-        const i = edits.findIndex((e) => e.row === row && e.col === col);
-        restore(row, col, old[i]);
-        note(message);
-    }
 
     if (moved.length) grid.flash(moved);
     if (body.reload) await store.refresh();
@@ -309,6 +326,51 @@ async function write(edits) {
     summarise();
     if (edited.has(`${grid.active.r}:${grid.active.c}`)) trace();
 }
+
+/* Undo and redo: each step is the edits that put things back, and doing them gives the way forward. */
+
+function remember(undo) {
+    undoSteps.push({ version, groups: undo });
+    if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+    redoSteps.length = 0;
+}
+
+async function retrace(from, to, nothing) {
+    await server.queue;
+    const step = from.pop();
+    if (!step) {
+        note(nothing);
+        return;
+    }
+    if (step.version !== version) {
+        undoSteps.length = 0;
+        redoSteps.length = 0;
+        note('Rows or columns changed since then, so undo starts again from here.');
+        return;
+    }
+
+    const back = [];
+    let last = null;
+    for (const group of step.groups) {
+        if (group.edits.length === 0) continue;
+        if (group.tab !== tab) await open(group.tab);
+        const body = await write(group.edits, { remember: false });
+        if (!body) return;
+        back.push(...body.undo);
+        last = group.edits;
+    }
+    to.push({ version, groups: back });
+
+    if (last) {
+        const rows = last.map((e) => e.row);
+        const cols = last.map((e) => e.col);
+        grid.reveal(Math.min(...rows), Math.min(...cols));
+        selectArea(Math.min(...rows), Math.min(...cols), Math.max(...rows), Math.max(...cols));
+    }
+}
+
+const undo = () => retrace(undoSteps, redoSteps, 'Nothing to undo.');
+const redo = () => retrace(redoSteps, undoSteps, 'Nothing to redo.');
 
 /** The sheet changed shape elsewhere: take the new layout, and keep the place. */
 async function reopen() {
@@ -321,27 +383,35 @@ async function reopen() {
     select(r, c);
 }
 
+/** The selection, cut down to where the sheet holds anything. */
+function usedArea() {
+    const area = grid.area();
+    return {
+        r1: area.r1,
+        c1: area.c1,
+        r2: Math.max(area.r1, Math.min(area.r2, store.lastRow ?? area.r1)),
+        c2: Math.max(area.c1, Math.min(area.c2, store.lastCol ?? area.c1)),
+    };
+}
+
+const cellCount = (area) => (area.r2 - area.r1 + 1) * (area.c2 - area.c1 + 1);
+
 async function clearSelection() {
     if (!boot.canEdit) return;
-    const area = grid.area();
-    const r2 = Math.min(area.r2, store.lastRow ?? -1);
-    if (r2 - area.r1 >= CLEARED_ROWS) {
-        note(`Select fewer rows to clear: ${CLEARED_ROWS.toLocaleString('en-ZA')} at most.`);
+    const area = usedArea();
+    if (cellCount(area) > MAX_CELLS) {
+        note(`Select fewer cells to clear: ${MAX_CELLS.toLocaleString('en-ZA')} at most.`);
         return;
     }
-    await store.ensure(area.r1, r2);
+    await store.ensure(area.r1, area.r2);
 
     const edits = [];
-    for (let r = area.r1; r <= r2; r++) {
+    for (let r = area.r1; r <= area.r2; r++) {
         for (const [c, cell] of store.rows.get(r) ?? []) {
             if (c >= area.c1 && c <= area.c2 && hasContent(cell) && !cell.s) edits.push({ row: r, col: c, value: '' });
         }
     }
-    if (edits.length > MAX_CLEARED) {
-        note(`Select fewer cells to clear: ${MAX_CLEARED.toLocaleString('en-ZA')} at most.`);
-        return;
-    }
-    for (let i = 0; i < edits.length; i += MAX_EDITS) write(edits.slice(i, i + MAX_EDITS));
+    write(edits);
 }
 
 async function applyFormat(patch) {
@@ -362,16 +432,153 @@ async function applyFormat(patch) {
 
     const { ok, status, body } = await server.format(tab, () => version, target, patch);
     if (ok) {
+        remember(body.undo);
         await store.refresh();
         grid.paint();
         return;
     }
     held.forEach(([r, c, cell]) => restore(r, c, cell));
-    note(failed(status, body));
+    refused(status, body);
+}
+
+/* Copy, cut and paste */
+
+const inTextField = (e) => e.target instanceof HTMLInputElement;
+
+// A selected cell is not selected text. Chrome sends clipboard events anyway; to not depend on every
+// browser doing so, focus sits for the one keystroke on a hidden field holding a selection, so the
+// browser has something to copy or paste into and the page gets its events.
+const catcher = document.createElement('textarea');
+catcher.className = 'sr';
+catcher.tabIndex = -1;
+catcher.setAttribute('aria-hidden', 'true');
+document.body.append(catcher);
+
+function readyClipboard() {
+    catcher.value = ' ';
+    catcher.focus({ preventScroll: true });
+    catcher.select();
+}
+
+function backToSheet() {
+    if (document.activeElement === catcher) sheet.focus({ preventScroll: true });
+}
+
+catcher.addEventListener('keyup', backToSheet);
+
+function letGo() {
+    clip = null;
+    grid.copied = null;
+    told = '';
     grid.paint();
     selected();
-    if (status === 409) reopen();
 }
+
+/** Plain text for other programs: the figures themselves, not how they are shown here. */
+function clipText(area) {
+    const rows = [];
+    for (let r = area.r1; r <= area.r2; r++) {
+        const row = [];
+        for (let c = area.c1; c <= area.c2; c++) row.push(String(store.get(r, c)?.v ?? ''));
+        rows.push(row);
+    }
+    return toText(rows);
+}
+
+function take(e, cut) {
+    if (inTextField(e) || palette.open) return;
+    e.preventDefault();
+    backToSheet();
+    if (cut && !boot.canEdit) return;
+
+    const area = usedArea();
+    if (cellCount(area) > MAX_CELLS) {
+        note(`Select fewer cells to copy: ${MAX_CELLS.toLocaleString('en-ZA')} at most.`);
+        return;
+    }
+
+    clip = { tab, area, cut, text: '' };
+    grid.copied = area;
+    told = '';
+    grid.paint();
+    selected();
+
+    if (store.holds(area.r1, area.r2)) {
+        clip.text = clipText(area);
+        e.clipboardData.setData('text/plain', clip.text);
+        return;
+    }
+    // Rows not loaded yet: the system clipboard has to be filled once they arrive.
+    const taken = clip;
+    store.ensure(area.r1, area.r2).then(() => {
+        taken.text = clipText(area);
+        navigator.clipboard?.writeText(taken.text);
+    });
+}
+
+async function pasteCopy(copy) {
+    const area = grid.area();
+    if (cellCount(copy.area) > 500 || cellCount(area) > 500) note('Working that out. A large paste takes a few seconds.');
+    const { ok, status, body } = await pasteRange(copy, area);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+
+    if (body.refused[0]) note(body.refused[0].message);
+    remember(body.undo);
+    told = '';
+    if (copy.cut) letGo();
+    const changed = new Set([...body.cells.map((c) => `${c.r}:${c.c}`)]);
+    await absorb(body, changed);
+    store.reach(body.area.r2, body.area.c2);
+    grid.fit();
+    selectArea(body.area.r1, body.area.c1, body.area.r2, body.area.c2);
+}
+
+function pasteRange(copy, area) {
+    return server.paste(tab, () => version, {
+        from_tab: copy.tab,
+        ...copy.area,
+        row: area.r1,
+        col: area.c1,
+        rows: Math.min(area.r2 - area.r1 + 1, MAX_CELLS),
+        cols: Math.min(area.c2 - area.c1 + 1, MAX_CELLS),
+        cut: copy.cut,
+    });
+}
+
+/** From another program: text only, starting at the active cell. */
+function pasteText(text) {
+    const rows = fromText(text);
+    const { r, c } = grid.active;
+    const width = Math.max(...rows.map((row) => row.length));
+    if (rows.length * width > MAX_CELLS) {
+        note(`Paste fewer cells at a time: ${MAX_CELLS.toLocaleString('en-ZA')} at most.`);
+        return;
+    }
+    if (r + rows.length > boot.rows || c + width > boot.cols) {
+        note('That does not fit on the sheet from here.');
+        return;
+    }
+
+    const edits = rows.flatMap((row, i) => row.map((value, j) => ({ row: r + i, col: c + j, value })));
+    write(edits).then((body) => {
+        if (body) selectArea(r, c, r + rows.length - 1, c + width - 1);
+    });
+}
+
+document.addEventListener('copy', (e) => take(e, false));
+document.addEventListener('cut', (e) => take(e, true));
+document.addEventListener('paste', (e) => {
+    if (inTextField(e) || palette.open) return;
+    e.preventDefault();
+    backToSheet();
+    if (!boot.canEdit) return;
+    const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n').replace(/\n$/, '');
+    if (clip && (text === '' || text === clip.text)) pasteCopy(clip);
+    else if (text !== '') pasteText(text);
+});
 
 function toggleBold() {
     const cell = store.get(grid.active.r, grid.active.c);
@@ -391,6 +598,7 @@ box.autocomplete = 'off';
 box.spellcheck = false;
 box.setAttribute('aria-label', 'Cell contents');
 let editing = null;
+let pointed = null;   // the reference in the formula that the last click on a cell put there
 
 function fit() {
     const width = Math.min(420, Math.max(grid.cols.sizeOf(editing.c), (box.value.length + 3) * 7.5));
@@ -424,6 +632,11 @@ function closeEdit(save) {
     const value = box.value;
     editing = null;
     box.remove();
+    if (pointed) {
+        pointed = null;
+        grid.clearThreads();
+        grid.paint();
+    }
 
     if (save && value !== contents(store.get(r, c))) write([{ row: r, col: c, value }]);
     line.value = contents(store.get(grid.active.r, grid.active.c));
@@ -457,10 +670,12 @@ function editingKeys(e) {
 box.addEventListener('keydown', editingKeys);
 line.addEventListener('keydown', editingKeys);
 box.addEventListener('input', () => {
+    pointed = null;
     line.value = box.value;
     fit();
 });
 line.addEventListener('input', () => {
+    pointed = null;
     box.value = line.value;
     if (editing) fit();
 });
@@ -474,6 +689,37 @@ line.addEventListener('blur', (e) => {
     if (e.relatedTarget !== box) closeEdit(true);
 });
 line.readOnly = !boot.canEdit;
+
+/* Pointing at cells while writing a formula */
+
+const typingIn = () => (document.activeElement === line ? line : box);
+
+/** True when the text at the caret is waiting for a reference, not ending one. */
+function canPoint() {
+    if (!editing || !box.value.startsWith('=')) return false;
+    if (pointed) return true;
+    const input = typingIn();
+    return /[=(,+\-*/^&<>:;%]\s*$/.test(input.value.slice(0, input.selectionStart));
+}
+
+function point(r1, c1, r2 = r1, c2 = c1) {
+    const input = typingIn();
+    const area = { r1: Math.min(r1, r2), r2: Math.max(r1, r2), c1: Math.min(c1, c2), c2: Math.max(c1, c2) };
+    const many = area.r1 !== area.r2 || area.c1 !== area.c2;
+    const reference = cellName(area.r1, area.c1) + (many ? `:${cellName(area.r2, area.c2)}` : '');
+
+    const start = pointed ? pointed.start : input.selectionStart;
+    const end = pointed ? pointed.end : input.selectionEnd;
+    const text = input.value.slice(0, start) + reference + input.value.slice(end);
+    box.value = text;
+    line.value = text;
+    fit();
+    pointed = { start, end: start + reference.length };
+    input.setSelectionRange(pointed.end, pointed.end);
+
+    grid.reads = [area];
+    grid.paint();
+}
 
 /* The keyboard */
 
@@ -503,11 +749,20 @@ sheet.addEventListener('keydown', (e) => {
     } else if (e.key === 'F2') {
         beginEdit(contents(store.get(r, c)));
     } else if (e.key === 'Escape') {
-        select(r, c);
+        if (clip) letGo();
+        else select(r, c);
+    } else if (command && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) redo();
+        else undo();
+    } else if (command && e.key.toLowerCase() === 'y') {
+        redo();
     } else if (command && e.key.toLowerCase() === 'a') {
         selectArea(0, 0, boot.rows - 1, boot.cols - 1);
     } else if (command && e.key.toLowerCase() === 'b') {
         toggleBold();
+    } else if (command && ['c', 'x', 'v'].includes(e.key.toLowerCase())) {
+        readyClipboard();
+        return;
     } else if (!command && !e.altKey && e.key.length === 1) {
         // Focus moves now and the key lands in the box, so accents and input methods still work.
         beginEdit('', true);
@@ -548,8 +803,21 @@ function pick(e) {
     }
 }
 
+// Keep the caret in the formula while pointing at cells.
+sheet.addEventListener('mousedown', (e) => {
+    if (e.target !== box && canPoint()) e.preventDefault();
+});
+
 sheet.addEventListener('pointerdown', (e) => {
     if (e.target === sheet || e.target === box || e.button !== 0) return;
+    if (canPoint()) {
+        const { r, c } = grid.hit(e.clientX, e.clientY);
+        if (e.pointerType === 'touch' || r < 0 || c < 0) return;
+        e.preventDefault();
+        dragging = { r, c };
+        point(r, c);
+        return;
+    }
     closeEdit(true);
     if (e.pointerType === 'touch') return;   // a finger scrolls; a tap selects when it lifts
     e.preventDefault();
@@ -566,6 +834,10 @@ window.addEventListener('pointermove', (e) => {
     else if (e.clientX < edge.left + grid.stuckWidth + 8) sheet.scrollLeft -= grid.cols.size;
 
     const { r, c } = grid.hit(Math.min(e.clientX, edge.right - 1), Math.min(e.clientY, edge.bottom - 1));
+    if (dragging.r !== undefined) {
+        point(dragging.r, dragging.c, Math.max(0, r), Math.max(0, c));
+        return;
+    }
     const to = {
         r: dragging === 'column' ? boot.rows - 1 : Math.max(0, r),
         c: dragging === 'row' ? boot.cols - 1 : Math.max(0, c),
@@ -577,14 +849,19 @@ window.addEventListener('pointermove', (e) => {
 
 window.addEventListener('pointerup', () => {
     if (!dragging) return;
+    const pointing = dragging.r !== undefined;
     dragging = null;
-    afterMove();
+    if (!pointing) afterMove();
 });
 
 let lastTap = { at: 0, r: -1, c: -1 };
 sheet.addEventListener('click', (e) => {
     if (e.target === box || e.pointerType !== 'touch') return;
     const { r, c } = grid.hit(e.clientX, e.clientY);
+    if (canPoint()) {
+        if (r >= 0 && c >= 0) point(r, c);
+        return;
+    }
     const again = r === lastTap.r && c === lastTap.c && e.timeStamp - lastTap.at < 350;
     lastTap = { at: e.timeStamp, r, c };
     pick(e);
@@ -614,6 +891,8 @@ function choices(query) {
 
     const commands = [
         ...(boot.canEdit ? [
+            { label: 'Undo', run: undo },
+            { label: 'Redo', run: redo },
             { label: 'Bold', run: toggleBold },
             { label: 'Show as a percentage', run: () => toggleNumber('percent') },
             { label: 'Show in rand', run: () => toggleNumber('currency') },

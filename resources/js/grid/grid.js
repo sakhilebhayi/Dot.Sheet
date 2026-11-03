@@ -87,6 +87,7 @@ export class Grid {
         this.reads = [];
         this.lines = [];
         this.fresh = new Set();
+        this.copied = null;
         this.onView = () => {};
 
         this.sheet.addEventListener('scroll', () => {
@@ -280,6 +281,7 @@ export class Grid {
         else if (this.isRead(r, c)) names += ' read';
         if (r === this.active.r && c === this.active.c) names += ' now';
         if (this.fresh.has(`${r}:${c}`)) names += ' moved';
+        if (this.isCopied(r, c)) names += ' copied';
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;
 
@@ -302,6 +304,11 @@ export class Grid {
         el.style.fontSize = x.font_size ? `${Number(x.font_size)}px` : '';
         el.title = cell?.e ?? '';
         el.firstChild.textContent = shown.text;
+    }
+
+    isCopied(r, c) {
+        const area = this.copied;
+        return Boolean(area) && r >= area.r1 && r <= area.r2 && c >= area.c1 && c <= area.c2;
     }
 
     isRead(r, c) {

@@ -191,6 +191,9 @@ seen and followed.
 **Active headers.** The row number and column letter of the selection fill with the thread colour,
 so position is clear from anywhere on screen.
 
+**Copied cells.** Their dots grow to 6px in the thread colour until the copy is pasted or dismissed.
+A marching outline would move at rest.
+
 **Palette.** Commands and the function catalogue in one search. Each function shows its plain summary.
 Choosing a function puts it in the cell.
 

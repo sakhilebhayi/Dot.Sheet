@@ -74,6 +74,7 @@ Route::middleware([
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
         Route::get('cells', [GridController::class, 'cells'])->name('cells');
         Route::post('cells', [GridController::class, 'edit'])->name('edit');
+        Route::post('paste', [GridController::class, 'paste'])->name('paste');
         Route::post('format', [GridController::class, 'format'])->name('format');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
         Route::get('trace/{row}/{col}', [GridController::class, 'trace'])->whereNumber(['row', 'col'])->name('trace');

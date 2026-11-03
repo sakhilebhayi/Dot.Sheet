@@ -56,7 +56,11 @@ class SignedInLayoutAssetsTest extends TestCase
             ->assertOk()
             ->getContent());
 
-        $this->assertBuiltAssetsOnly($html);
+        $this->assertStringContainsString('resources/css/dot-pages.css', $html);
+        $this->assertStringContainsString('resources/js/pages/shell.js', $html);
+        $this->assertStringNotContainsString('cdn.tailwindcss.com', $html);
+        $this->assertStringNotContainsString('unpkg.com', $html);
+        $this->assertStringNotContainsString('fonts.googleapis.com', $html);
     }
 
     public function test_the_spreadsheet_editor_loads_the_built_assets_and_no_cdn_tailwind_or_alpine(): void

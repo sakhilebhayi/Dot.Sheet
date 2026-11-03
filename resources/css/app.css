@@ -289,3 +289,6 @@
         scroll-behavior: auto !important;
     }
 }
+
+/* Every page opts in: a transition that ends on a page that has not opted in is an error in the console. */
+@view-transition { navigation: auto; }

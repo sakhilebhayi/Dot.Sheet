@@ -5,6 +5,7 @@
 import { Axis } from './axis';
 import { hasContent } from './store';
 import { cellName, columnName, show } from './format';
+import { threadCurve } from './thread';
 
 const OVERSCAN_ROWS = 6;
 const OVERSCAN_COLS = 2;
@@ -387,11 +388,8 @@ export class Grid {
         this.svg.replaceChildren();
         for (const target of this.lines) {
             const to = this.point(target.r, target.c);
-            const bend = Math.max(26, Math.abs(from.x - to.x) * 0.28, Math.abs(from.y - to.y) * 0.28);
-            // Curves stay below the column letters: near the top they bend down, not out of the sheet.
-            const lift = (y) => Math.max(10, y - bend);
             const path = document.createElementNS(SVG, 'path');
-            path.setAttribute('d', `M${from.x},${from.y} C${from.x + (to.x < from.x ? -bend : bend) * 0.4},${lift(from.y)} ${to.x + bend * 0.3},${lift(to.y)} ${to.x},${to.y}`);
+            path.setAttribute('d', threadCurve(from, to));
             path.setAttribute('pathLength', '1');
             if (animate) path.classList.add('draw');
             const dot = document.createElementNS(SVG, 'circle');

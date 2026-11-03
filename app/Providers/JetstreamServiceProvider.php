@@ -50,18 +50,18 @@ class JetstreamServiceProvider extends ServiceProvider
             'read',
             'update',
             'delete',
-        ])->description('Administrator users can perform any action.');
+        ])->description('Can change anything, including the team.');
 
         Jetstream::role('editor', 'Editor', [
             'read',
             'create',
             'update',
-        ])->description('Editor users have the ability to read, create, and update.');
+        ])->description('Can open, create and change spreadsheets.');
 
         // Read-only: may open and export the team's sheets, nothing else. SpreadsheetPolicy and
         // TeamPolicy::createSpreadsheet turn "no create / update permission" into a 403 on every write.
         Jetstream::role('viewer', 'Viewer', [
             'read',
-        ])->description('Viewer users can open and export the team\'s spreadsheets but cannot change them.');
+        ])->description('Can open and export spreadsheets, but not change them.');
     }
 }

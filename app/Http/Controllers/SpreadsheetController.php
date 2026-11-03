@@ -8,9 +8,12 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
+use App\Services\SheetPrint;
 use App\Services\SpreadsheetImportExportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -32,20 +35,44 @@ class SpreadsheetController extends Controller
     {
         $user = auth()->user();
 
-        // Get user's own spreadsheets and shared spreadsheets
+        // Everything this person can reach: their own sheets, sheets shared with them, their teams' sheets.
         $spreadsheets = Spreadsheet::where('owner_id', $user->id)
             ->orWhereHas('sharedUsers', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
             })
-            ->orWhereHas('team', function ($query) use ($user) {
-                $query->whereHas('users', function ($q) use ($user) {
-                    $q->where('user_id', $user->id);
-                });
+            ->orWhereIn('team_id', $user->allTeams()->pluck('id'))
+            ->with('owner', 'team', 'sheetTabs:id,spreadsheet_id,name,sort_order')
+            ->withCount([
+                'cells',
+                'sharedUsers',
+                'cells as formulas_count' => fn ($query) => $query->whereNotNull('formula'),
+                'cells as errors_count' => fn ($query) => $query->whereNotNull('formula_error'),
+            ])
+            ->withMax('cells', 'updated_at')
+            ->get()
+            ->each(function (Spreadsheet $spreadsheet) {
+                // A cell's edit does not touch the sheet's own timestamp.
+                $spreadsheet->setAttribute('edited_at', max($spreadsheet->updated_at, Carbon::parse($spreadsheet->cells_max_updated_at ?? $spreadsheet->updated_at)));
             })
-            ->latest()
-            ->get();
+            ->sortByDesc('edited_at')
+            ->values();
 
-        return view('spreadsheets.index', ['spreadsheets' => $spreadsheets]);
+        $first = $spreadsheets->first();
+
+        return view('dashboard', [
+            'spreadsheets' => $spreadsheets,
+            'firstPrint' => $first ? app(SheetPrint::class)->of($first) : null,
+        ]);
+    }
+
+    /**
+     * The print of a spreadsheet, for the list of sheets.
+     */
+    public function printOf(Spreadsheet $spreadsheet, SheetPrint $print): JsonResponse
+    {
+        $this->authorize('view', $spreadsheet);
+
+        return response()->json($print->of($spreadsheet));
     }
 
     /**

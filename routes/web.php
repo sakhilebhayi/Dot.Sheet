@@ -52,20 +52,11 @@ Route::middleware([
     config('jetstream.auth_session'),
     'verified',
 ])->group(function () {
-    Route::get('/dashboard', function () {
-        $user = auth()->user();
-        $spreadsheets = Spreadsheet::where('owner_id', $user->id)
-            ->orWhereHas('sharedUsers', fn ($q) => $q->where('user_id', $user->id))
-            ->withCount('cells')
-            ->with('owner', 'team')
-            ->latest()
-            ->get();
-
-        return view('dashboard', compact('spreadsheets'));
-    })->name('dashboard');
+    Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');
 
     // Spreadsheet routes
     Route::resource('spreadsheets', SpreadsheetController::class);
+    Route::get('spreadsheets/{spreadsheet}/print', [SpreadsheetController::class, 'printOf'])->name('spreadsheets.print');
 
     // Import / Export
     // The browser-drawn editor and the API it works through.

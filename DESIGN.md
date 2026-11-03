@@ -1,0 +1,207 @@
+---
+version: alpha
+name: The Dot Grid
+description: Dot.Sheets. A spreadsheet with no ruled lines, where cells sit on dot-grid paper and threads show what a formula reads.
+colors:
+  primary: "#15201B"
+  secondary: "#5C6A63"
+  tertiary: "#2438C9"
+  neutral: "#F7F9F6"
+  surface: "#F1F4F0"
+  surface-raised: "#E4E9E3"
+  dot: "#9FABA3"
+  dot-faint: "#D5DCD6"
+  thread-wash: "#E4E8FB"
+  thread-read: "#EEF0FC"
+  loss: "#C62A12"
+  on-primary: "#F7F9F6"
+  on-tertiary: "#FFFFFF"
+typography:
+  title:
+    fontFamily: Hanken Grotesk
+    fontSize: 16px
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: -0.01em
+  body:
+    fontFamily: Hanken Grotesk
+    fontSize: 14px
+    fontWeight: 400
+    lineHeight: 1.3
+    fontFeature: '"tnum"'
+  body-strong:
+    fontFamily: Hanken Grotesk
+    fontSize: 14px
+    fontWeight: 600
+    lineHeight: 1.3
+    fontFeature: '"tnum"'
+  label:
+    fontFamily: Hanken Grotesk
+    fontSize: 12px
+    fontWeight: 500
+    lineHeight: 1.3
+rounded:
+  sm: 3px
+  md: 10px
+  lg: 14px
+  full: 999px
+spacing:
+  xs: 4px
+  sm: 8px
+  md: 12px
+  lg: 20px
+  row: 30px
+  row-touch: 40px
+  column: 104px
+  column-label: 188px
+  gutter: 44px
+components:
+  bar:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    padding: 12px
+  sheet:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.lg}"
+  header-cell:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.secondary}"
+    typography: "{typography.label}"
+  header-cell-active:
+    backgroundColor: "{colors.tertiary}"
+    textColor: "{colors.on-tertiary}"
+    typography: "{typography.label}"
+  cell-dot:
+    backgroundColor: "{colors.dot}"
+    size: 4px
+  cell-dot-empty:
+    backgroundColor: "{colors.dot-faint}"
+    size: 4px
+  figure-loss:
+    textColor: "{colors.loss}"
+  cell-selected:
+    backgroundColor: "{colors.thread-wash}"
+    textColor: "{colors.primary}"
+  cell-read:
+    backgroundColor: "{colors.thread-read}"
+    textColor: "{colors.primary}"
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.on-primary}"
+    rounded: "{rounded.full}"
+    padding: 8px
+  button-quiet:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.full}"
+    padding: 8px
+  button-quiet-hover:
+    backgroundColor: "{colors.surface-raised}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.full}"
+  tab-active:
+    backgroundColor: "{colors.surface-raised}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.full}"
+  palette:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.lg}"
+  palette-row-hover:
+    backgroundColor: "{colors.thread-wash}"
+    textColor: "{colors.primary}"
+    rounded: "{rounded.md}"
+---
+
+## Overview
+
+Dot.Sheets is a spreadsheet drawn on dot-grid paper. There are no ruled lines: a cell is the space
+between four dots, and the name of the product is the mark on every corner.
+
+The idea does real work. Formulas are the hard part of a spreadsheet, and the engine knows exactly
+what each formula reads. So selecting a result draws **threads** from its dot to the cells it reads,
+and selecting an input draws them to the formulas that read it. Someone can see why a number is
+what it is without opening anything.
+
+This is a tool people work in for hours. The grid takes the screen, the chrome stays quiet, and
+nothing moves unless the person caused it. One calm bar holds the name, the cell, its contents and
+the few tools in use; everything else lives in the palette (Cmd or Ctrl K).
+
+The reference is `docs/programme/design/board-dot-grid.html`, a working board.
+
+## Colors
+
+Colour carries meaning, and each colour has one job.
+
+- **Primary (#15201B):** ink. Text, figures, the Share button.
+- **Secondary (#5C6A63):** row and column labels, the status line, anything that is not the data.
+- **Tertiary (#2438C9):** the thread. Selection, tracing, and focus. Nothing decorative is blue.
+- **Loss (#C62A12):** a negative figure, and only that. Never a selection, never an accent.
+- **Neutral (#F7F9F6)** is the sheet. **Surface (#F1F4F0)** is the desk around it.
+- **Dot (#9FABA3)** marks corners and dotted rules across data. **Dot-faint (#D5DCD6)** marks empty cells.
+- **Thread-wash (#E4E8FB)** fills the selection. **Thread-read (#EEF0FC)** fills the cells a formula reads.
+
+Error values such as `#DIV/0!` use loss. Their explanation is the cell's tooltip.
+
+## Typography
+
+One family, Hanken Grotesk, self-hosted. Tabular figures everywhere in the grid and status line, so
+columns of numbers align. Hierarchy comes from weight: totals and headings are 600, figures 400.
+
+Negative numbers use a true minus sign, and thousands are grouped with a space.
+
+## Layout
+
+The grid fills the window. Rows are 30px on desktop and 40px on touch, so a laptop shows about 28
+rows. Columns are 104px, the label column 188px, and the row gutter 44px. The first column and the
+header row are frozen.
+
+From top to bottom: the bar, the sheet, then the foot with sheet tabs on the left and sum, average
+and count of the selection on the right.
+
+On a phone the bar wraps so the cell and its contents get their own line, the formatting tools move
+into the palette, and the frozen label column stays. Leave part of the next column showing, which
+tells people there is more.
+
+## Elevation & Depth
+
+The sheet is flat. Only the palette floats, with one soft shadow over a dimmed page.
+
+## Shapes
+
+The sheet has 14px corners, and controls are full pills. Cells are square; the active cell has a
+3px corner so it reads as a mark on paper.
+
+## Components
+
+**Dots.** Each cell draws a 4px dot at its top-left corner. Selected and read cells turn their dot
+blue. Empty cells use dot-faint.
+
+**Dotted rules.** Rows that hold data have a 1px dotted line under them, which carries the eye across
+a row. They stop at the last used row. They are dots, never solid lines.
+
+**Threads.** A 1.5px blue curve from the active cell's dot to the first corner of each range it
+reads, drawn in about 340ms when the selection changes. Curves stay inside the sheet, below the
+column letters. They do not move at rest.
+
+**Recalculation.** Figures that change lift 3px and settle, in blue, over 700ms, so a change can be
+seen and followed.
+
+**Active headers.** The row number and column letter of the selection fill with the thread colour,
+so position is clear from anywhere on screen.
+
+**Palette.** Commands and the function catalogue in one search. Each function shows its plain summary.
+Choosing a function puts it in the cell.
+
+## Do's and Don'ts
+
+- Do keep red for losses and errors. If something else needs attention, it is not red.
+- Do use blue for selection and tracing only.
+- Do show the sum, average and count of whatever is selected.
+- Do honour reduced motion: threads appear without drawing, and figures do not move.
+- Don't add ruled gridlines or solid row lines; that removes the idea.
+- Don't float tools over the grid, where they hide figures. Tools live in the bar.
+- Don't animate anything at rest. People look at this screen for hours.
+- Don't add colour coding, gradients or icons in tinted boxes to the chrome.
+- Don't use a loader for ordinary work: the sheet appears, then fills.

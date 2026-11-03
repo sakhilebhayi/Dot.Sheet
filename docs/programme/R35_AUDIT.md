@@ -315,9 +315,8 @@ always the brief's phase numbers.
 
 ## 10. Decisions the owner holds
 
-1. **The design direction** (S3): choose one of three boards.
-2. **The dependency change** (S2): replace `maatwebsite/excel` with PhpSpreadsheet 5. (The repo's
-   own guidelines ask for approval before changing dependencies.)
+1. **The design direction** (S3): decided 2026-11-03. The owner chose The Dot Grid; see `DESIGN.md`.
+2. **The dependency change** (S2): approved and live 2026-11-03.
 3. **AI** (S6, S7, S10): which provider and model, and a monthly cost cap per business. Today
    `AI_PROVIDER=mock`.
 4. **Real-time collaboration** (S11): live editing needs a broadcast server (Reverb or Pusher) on
@@ -327,3 +326,6 @@ always the brief's phase numbers.
 
 - **Phase 1 audit and plan** (this document, 2026-11-03).
 - **Security fix** (PR #72, live 2026-11-03, `0d0a297`): section 6. The suite is now 468 tests.
+- **S1 Foundations** (live 2026-11-03): per-sheet layout (#74), safe versions (#75), browser tests in CI and the editor fixes they led to (#76).
+- **S2 Calculation engine** (live 2026-11-03): PhpSpreadsheet 5 (#77), the engine with dependencies and recalculation (#78), spilled answers and the function catalogue (#79).
+- **S3 Design direction** (2026-11-03): three working boards; the owner chose The Dot Grid. `DESIGN.md` is the system, and `docs/programme/design/` holds the working board.

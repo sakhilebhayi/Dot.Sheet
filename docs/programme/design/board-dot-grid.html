@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board A: The Dot Grid</title>
+<style>
+@font-face { font-family: 'Hanken Grotesk'; src: url(fonts/hanken-grotesk.woff2) format('woff2'); font-weight: 400 700; font-display: swap; }
+:root {
+  --paper: #f1f4f0; --sheet: #f7f9f6; --ink: #15201b; --soft: #5c6a63; --dot: #9faba3; --faint: #d5dcd6; --thread: #2438c9; --wash: #e4e8fb; --loss: #c62a12;
+  --row: 30px; --col: 104px; --label: 188px; --gutter: 44px;
+  --ease: cubic-bezier(.2,.7,.1,1);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: clip; }
+body { display: grid; grid-template-rows: auto 1fr auto; background: var(--paper); color: var(--ink); font: 400 14px/1.3 'Hanken Grotesk', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+button, input { font: inherit; color: inherit; }
+
+/* The one quiet bar */
+.bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; }
+.mark { width: 14px; height: 14px; border-radius: 50%; background: var(--thread); flex: none; transition: scale .3s var(--ease); }
+.bar:hover .mark { scale: 1.25; }
+h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; letter-spacing: -.01em; }
+.line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border-bottom: 1.5px solid var(--ink); }
+.line i { font-style: normal; color: var(--thread); font-weight: 600; }
+.line #ref { color: var(--soft); min-width: 44px; text-align: left; }
+#line { flex: 1; min-width: 0; border: 0; background: none; padding: 7px 0; outline: none; }
+.tool { border: 0; background: none; padding: 7px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: background .15s, translate .15s var(--ease); }
+.tool:hover { background: #e4e9e3; translate: 0 -1px; }
+.tool:active { translate: 0 0; background: #d9dfd8; }
+.tool.go { background: var(--ink); color: var(--sheet); }
+.tool.go:hover { background: var(--ink); translate: 0 -1px; }
+kbd { font: inherit; color: var(--soft); margin-left: 6px; }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+
+/* No ruled lines: a cell is the space between four dots */
+.sheet { position: relative; overflow: auto; background: var(--sheet); border-radius: 14px; margin: 0 12px; scroll-padding: 34px 12px 12px calc(var(--gutter) + var(--label)); }
+table { border-collapse: separate; border-spacing: 0; position: relative; z-index: 1; }
+th { position: sticky; background: var(--sheet); font-weight: 500; color: var(--soft); z-index: 3; font-size: 12px; }
+thead th { top: 0; height: 30px; text-align: right; padding: 0 12px; }
+thead th:nth-child(2) { text-align: left; }
+thead .corner { left: 0; z-index: 4; width: var(--gutter); min-width: var(--gutter); }
+th.row { left: 0; text-align: right; padding-right: 12px; width: var(--gutter); min-width: var(--gutter); }
+th.on { color: #fff; background: var(--thread); font-weight: 600; }
+td { position: relative; height: var(--row); min-width: var(--col); padding: 0 12px; text-align: right; white-space: nowrap; outline: none; cursor: cell; }
+td.label { min-width: var(--label); text-align: left; position: sticky; left: var(--gutter); background: var(--sheet); z-index: 2; }
+td.head { font-weight: 600; }
+tr.strong td { font-weight: 600; }
+/* dots again, not rules: a dotted line carries the eye along a row of data */
+tbody tr:nth-child(-n+13) td { border-bottom: 1px dotted var(--dot); }
+td::before { content: ''; position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: var(--dot); transition: background .15s, scale .25s var(--ease); z-index: 1; }
+td:hover::before { background: var(--ink); }
+td.negative { color: var(--loss); }
+td.blank::before { background: var(--faint); }
+td.blank:hover::before { background: var(--dot); }
+td.in { background: var(--wash); }
+td.label.in { background: var(--wash); }
+td.in::before { background: var(--thread); scale: 1.4; }
+td.now { box-shadow: inset 0 0 0 1.5px var(--thread); border-radius: 3px; }
+td.read { background: #eef0fc; }
+td.label.read { background: #eef0fc; }
+td.read::before { background: var(--thread); }
+.in-cell { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; padding: 0 12px; background: #fff; text-align: right; outline: 2px solid var(--ink); z-index: 5; }
+td.label .in-cell { text-align: left; }
+
+/* Threads: from a result to the cells it reads */
+#threads { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+#threads path { fill: none; stroke: var(--thread); stroke-width: 1.5; stroke-linecap: round; }
+#threads path.draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .34s var(--ease) forwards; }
+#threads circle { fill: var(--thread); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+td.moved span { animation: moved .7s var(--ease); display: inline-block; }
+@keyframes moved { 0% { color: var(--thread); translate: 0 -3px; } 100% { translate: 0 0; } }
+
+.fmt { display: flex; gap: 2px; }
+.fmt button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; cursor: pointer; transition: background .15s, translate .15s var(--ease); }
+.fmt button:hover { background: #e4e9e3; translate: 0 -1px; }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 20px; color: var(--soft); }
+.tabs { display: flex; gap: 4px; }
+.tabs button { border: 0; background: none; padding: 5px 10px; border-radius: 999px; cursor: pointer; transition: background .15s; }
+.tabs button:hover { background: #e4e9e3; color: var(--ink); }
+.tabs [aria-current] { color: var(--ink); font-weight: 600; background: #e4e9e3; }
+.stats { display: flex; gap: 18px; }
+.stats b { color: var(--ink); font-weight: 600; margin-left: 4px; }
+
+dialog { margin: 12vh auto auto; border: 0; padding: 0; width: min(560px, calc(100vw - 24px)); border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 70px rgba(21,32,27,.28); }
+dialog::backdrop { background: rgba(21,32,27,.28); }
+#find { width: 100%; border: 0; border-bottom: 1.5px solid var(--ink); background: none; padding: 16px 18px; outline: none; font-size: 16px; }
+#found { list-style: none; margin: 0; padding: 6px; max-height: 340px; overflow: auto; }
+#found button { width: 100%; display: flex; gap: 12px; justify-content: space-between; text-align: left; border: 0; background: none; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+#found button:hover, #found button:focus-visible { background: var(--wash); }
+#found b { font-weight: 600; }
+#found span { color: var(--soft); }
+.none { padding: 12px; color: var(--soft); }
+
+@media (max-width: 720px) {
+  :root { --row: 40px; --col: 92px; --label: 128px; --gutter: 26px; }
+  .bar { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+  .line { order: 3; flex-basis: 100%; }
+  .tool.go, .tool kbd { display: none; }
+  .tool { margin-left: auto; }
+  .sheet { margin: 0 6px; border-radius: 10px; }
+  .foot { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+  .tabs button { padding: 8px 12px; }
+  .stats { justify-content: space-between; }
+  .fmt { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, ::before { animation: none !important; transition: none !important; } #threads path.draw { stroke-dashoffset: 0; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <span class="mark" aria-hidden="true"></span>
+  <h1>Cash flow 2026</h1>
+  <label class="line"><span id="ref" aria-live="polite"></span><span class="sr">Cell contents</span><input id="line" autocomplete="off" spellcheck="false"></label>
+  <div class="fmt" role="toolbar" aria-label="Format selection">
+    <button type="button" aria-label="Bold"><b>B</b></button>
+    <button type="button" aria-label="Percent">%</button>
+    <button type="button" aria-label="Rand">R</button>
+  </div>
+  <button class="tool" data-palette type="button">Find anything<kbd>⌘K</kbd></button>
+  <button class="tool go" type="button">Share</button>
+</header>
+
+<main class="sheet" id="sheet">
+  <table id="grid" role="grid" aria-label="Cash flow 2026, sample data"></table>
+  <svg id="threads" aria-hidden="true"></svg>
+</main>
+
+<footer class="foot">
+  <nav class="tabs" aria-label="Sheets">
+    <button type="button" aria-current="page">Cash flow</button><button type="button">Stock</button><button type="button">Staff</button>
+  </nav>
+  <div class="stats" aria-live="polite">
+    <span>Sum<b id="s-sum"></b></span><span>Average<b id="s-avg"></b></span><span>Count<b id="s-count"></b></span>
+  </div>
+</footer>
+
+<dialog id="palette" aria-label="Find anything">
+  <input id="find" placeholder="A command or a function" autocomplete="off" aria-label="Find a command or function">
+  <ul id="found"></ul>
+</dialog>
+
+<script src="sheet-core.js"></script>
+<script>
+(function () {
+  const sheet = document.getElementById('sheet');
+  const svg = document.getElementById('threads');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  function corner(el) {
+    const a = el.getBoundingClientRect();
+    const b = sheet.getBoundingClientRect();
+    return { x: a.left - b.left + sheet.scrollLeft, y: a.top - b.top + sheet.scrollTop, w: a.width, h: a.height };
+  }
+
+  function thread(from, to, draw) {
+    const path = document.createElementNS(NS, 'path');
+    const bend = Math.max(26, Math.abs(from.x - to.x) * .28, Math.abs(from.y - to.y) * .28);
+    // Curves stay below the column letters: a thread near the top bends down, not out of the sheet.
+    const lift = (y) => Math.max(40, y - bend);
+    path.setAttribute('d', `M${from.x},${from.y} C${from.x + (to.x < from.x ? -bend : bend) * .4},${lift(from.y)} ${to.x + bend * .3},${lift(to.y)} ${to.x},${to.y}`);
+    path.setAttribute('pathLength', '1');
+    if (draw) path.classList.add('draw');
+    svg.appendChild(path);
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', to.x); dot.setAttribute('cy', to.y); dot.setAttribute('r', 3.5);
+    svg.appendChild(dot);
+    return path;
+  }
+
+  function show() {
+    svg.replaceChildren();
+    svg.setAttribute('width', sheet.scrollWidth);
+    svg.setAttribute('height', sheet.scrollHeight);
+    document.querySelectorAll('td.read').forEach((td) => td.classList.remove('read'));
+
+    const { r, c } = Sheet.active;
+    const k = Sheet.key(r, c);
+    const el = Sheet.cellEl(r, c);
+    const from = corner(el);
+    const text = Sheet.raw[k] || '';
+
+    if (text[0] === '=') {
+      Sheet.refs(text).forEach((g) => {
+        for (let y = g.r1; y <= g.r2; y++) for (let x = g.c1; x <= g.c2; x++) Sheet.cellEl(y, x)?.classList.add('read');
+        const first = Sheet.cellEl(g.r1, g.c1);
+        if (first) thread(from, corner(first), true);
+      });
+    } else if (Sheet.range().r1 === Sheet.range().r2 && Sheet.range().c1 === Sheet.range().c2) {
+      Sheet.readers(k).slice(0, 6).forEach((other) => {
+        const p = Sheet.pos(other);
+        Sheet.cellEl(p.r, p.c).classList.add('read');
+        thread(from, corner(Sheet.cellEl(p.r, p.c)), true);
+      });
+    }
+
+  }
+
+  Sheet.mount();
+  Sheet.on('select', show);
+  Sheet.on('recalc', ({ changed }) => {
+    show();
+    changed.forEach((k) => {
+      const p = Sheet.pos(k);
+      const td = Sheet.cellEl(p.r, p.c);
+      td.classList.remove('moved');
+      void td.offsetWidth;
+      td.classList.add('moved');
+    });
+  });
+  document.fonts.ready.then(show);
+  addEventListener('resize', show);
+  show();
+})();
+</script>
+</body>
+</html>

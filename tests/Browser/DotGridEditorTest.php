@@ -1,0 +1,222 @@
+<?php
+
+namespace Tests\Browser;
+
+use App\Models\Cell;
+use App\Models\SheetTab;
+use App\Models\Spreadsheet;
+use App\Models\User;
+use App\Services\CellWriter;
+use Facebook\WebDriver\WebDriverKeys;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
+use Laravel\Dusk\Browser;
+use Tests\DuskTestCase;
+
+/**
+ * The new editor in a real browser: the grid is drawn by the page's own scripts, so only a browser can
+ * show that it works. Each test also fails on any error the page writes to the console.
+ */
+class DotGridEditorTest extends DuskTestCase
+{
+    use DatabaseTruncation;
+
+    /**
+     * @return array{0: User, 1: Spreadsheet, 2: SheetTab}
+     */
+    private function sheet(): array
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $user->id, 'team_id' => $user->currentTeam?->id, 'name' => 'Cash flow']);
+        $tab = $sheet->sheetTabs()->firstOrFail();
+
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Sales'], ['row' => 0, 'col' => 1, 'value' => '1000'],
+            ['row' => 1, 'col' => 0, 'value' => 'Rent'], ['row' => 1, 'col' => 1, 'value' => '-400'],
+            ['row' => 2, 'col' => 0, 'value' => 'Net'], ['row' => 2, 'col' => 1, 'value' => '=SUM(B1:B2)'],
+        ], $user->id);
+
+        return [$user, $sheet, $tab];
+    }
+
+    private function open(Browser $browser, User $user, Spreadsheet $sheet): Browser
+    {
+        return $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}/grid")
+            ->waitUsing(10, 25, fn () => $browser->driver->executeScript("return [...document.querySelectorAll('.c')].some(c => c.textContent === 'Sales')"));
+    }
+
+    private function cell(Browser $browser, int $row, int $col): string
+    {
+        return (string) $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const x = px('--gutter') + (arguments[1] === 0 ? 0 : px('--label') + (arguments[1] - 1) * px('--col'));
+            const at = `translate(${x}px, ${arguments[0] * px('--row')}px)`;
+            return [...document.querySelectorAll('.c:not([hidden])')].find(c => c.style.transform === at)?.textContent ?? null;
+        JS, [$row, $col]);
+    }
+
+    private function clickCell(Browser $browser, int $row, int $col): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const x = sheet.left + px('--gutter') + (arguments[1] === 0 ? 20 : px('--label') + (arguments[1] - 1) * px('--col') + 20);
+            const y = sheet.top + px('--head') + arguments[0] * px('--row') + 10;
+            const target = document.elementFromPoint(x, y);
+            target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y }));
+        JS, [$row, $col]);
+    }
+
+    private function assertNoConsoleErrors(Browser $browser): void
+    {
+        $errors = collect($browser->driver->manage()->getLog('browser'))
+            ->filter(fn (array $entry) => ($entry['level'] ?? '') === 'SEVERE')
+            ->pluck('message')->values()->all();
+
+        $this->assertSame([], $errors, 'The page wrote errors to the console.');
+    }
+
+    public function test_the_sheet_opens_with_its_figures_in_house_style(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+
+            $this->assertSame('1 000', $this->cell($browser, 0, 1));
+            $this->assertSame("\u{2212}400", $this->cell($browser, 1, 1));
+            $this->assertSame('600', $this->cell($browser, 2, 1));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_type_a_figure_and_the_formula_answers(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 1);
+
+            $browser->keys('#sheet', '2000', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 1) === '1 600');
+
+            $this->assertSame('2000', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->value('raw_value'));
+            $browser->assertSeeIn('#ref', 'B2');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_keyboard_moves_edits_and_clears(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+
+            $browser->keys('#sheet', WebDriverKeys::ARROW_DOWN, WebDriverKeys::TAB);
+            $browser->assertSeeIn('#ref', 'B2');
+            $browser->assertInputValue('#line', '-400');
+
+            // Escape throws the typing away.
+            $browser->keys('#sheet', '7', WebDriverKeys::ESCAPE);
+            $browser->pause(100);
+            $this->assertSame("\u{2212}400", $this->cell($browser, 1, 1));
+
+            // Into the cell with F2, and the existing contents stay to be changed.
+            $browser->keys('#sheet', WebDriverKeys::F2, '5', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 1) === "\u{2212}4 005");
+
+            $browser->keys('#sheet', WebDriverKeys::ARROW_UP, WebDriverKeys::DELETE);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 1)->where('col_index', 1)->doesntExist());
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_selection_adds_up_in_the_foot(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 1);
+
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN], [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN]);
+
+            $browser->waitForTextIn('#s-sum', '1 200');
+            $browser->assertSeeIn('#s-avg', '400')->assertSeeIn('#s-count', '3');
+        });
+    }
+
+    public function test_threads_run_from_a_formula_to_what_it_reads(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+
+            $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return document.querySelectorAll('#threads path').length === 1"));
+
+            $this->assertSame(2, $browser->driver->executeScript("return document.querySelectorAll('.c.read').length"));
+            $browser->assertInputValue('#line', '=SUM(B1:B2)');
+        });
+    }
+
+    public function test_a_row_past_the_browsers_scrolling_limit_can_be_reached(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::CONTROL, 'k']);
+            $browser->waitFor('#find')->keys('#find', 'C900000', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#ref', 'C900000');
+
+            $browser->keys('#sheet', 'far', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 899999)->exists());
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, WebDriverKeys::HOME]);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_palette_starts_a_function_in_the_cell(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 3, 1);
+
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'sum', WebDriverKeys::ENTER);
+            $browser->waitFor('.edit')->keys('.edit', 'B1:B2)', WebDriverKeys::ENTER);
+
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '600');
+            $this->assertSame('=SUM(B1:B2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 3)->where('col_index', 1)->value('formula'));
+        });
+    }
+
+    public function test_someone_who_can_only_view_cannot_type(): void
+    {
+        [, $sheet, $tab] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet, $tab) {
+            $this->open($browser, $viewer, $sheet);
+            $this->clickCell($browser, 0, 1);
+
+            $browser->keys('#sheet', '9');
+            $browser->pause(100);
+            $browser->assertMissing('.edit');
+            $this->assertSame('1000', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->value('raw_value'));
+            $browser->assertSeeIn('#note', 'You can read this sheet');
+        });
+    }
+}

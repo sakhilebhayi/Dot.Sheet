@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\SheetTab;
 use App\Models\SpreadsheetVersion;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Copies of one sheet: taking them, putting one back, and keeping their number in check.
@@ -27,6 +28,9 @@ class SheetVersions
 
     /** Safety copies kept per sheet. */
     public const KEEP_SAFETY = 10;
+
+    /** Largest sheet copied automatically. */
+    public const AUTO_MAX_CELLS = 20000;
 
     private const CHUNK = 500;
 
@@ -55,6 +59,27 @@ class SheetVersions
         $this->prune($sheetTabId);
 
         return $version;
+    }
+
+    /**
+     * The automatic copy, at most one every five minutes. A sheet too large to copy in memory is skipped
+     * and the log says so; a manual copy is still possible.
+     */
+    public function autoSnapshot(int $spreadsheetId, int $sheetTabId, ?int $userId): void
+    {
+        $latest = SpreadsheetVersion::where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $sheetTabId)->latest()->first();
+        if ($latest?->created_at?->gt(now()->subMinutes(5))) {
+            return;
+        }
+
+        $count = $this->cells($spreadsheetId, $sheetTabId)->count();
+        if ($count > self::AUTO_MAX_CELLS) {
+            Log::notice('Auto snapshot skipped: tab too large', ['spreadsheet_id' => $spreadsheetId, 'sheet_tab_id' => $sheetTabId, 'cells' => $count, 'limit' => self::AUTO_MAX_CELLS]);
+
+            return;
+        }
+
+        $this->snapshot($spreadsheetId, $sheetTabId, $userId, self::AUTO, 'Auto Snapshot');
     }
 
     /**

@@ -27,6 +27,9 @@ class Recalculator
 
     public const CIRCULAR = 'Circular reference: this formula depends on its own result.';
 
+    /** Most readers one trace returns: threads to more than this are noise. */
+    public const MAX_TRACED = 24;
+
     /** Most cells one formula's answer may land on. */
     public const MAX_SPILLED_CELLS = 10000;
 
@@ -183,6 +186,28 @@ class Recalculator
         DB::transaction(fn () => $this->rebuildTab($spreadsheetId, $sheetTabId));
 
         return true;
+    }
+
+    /**
+     * What a cell reads, and which formulas read it, for drawing threads.
+     *
+     * @return array{reads: list<array{tab: int, r1: int, r2: int, c1: int, c2: int}>, readers: list<array{tab: int, row: int, col: int}>}
+     */
+    public function trace(int $sheetTabId, int $row, int $col): array
+    {
+        $reads = DB::table('cell_precedents')->where('sheet_tab_id', $sheetTabId)->where('row_index', $row)->where('col_index', $col)
+            ->get(['precedent_tab_id', 'row_from', 'row_to', 'col_from', 'col_to'])
+            ->map(fn ($r) => ['tab' => (int) $r->precedent_tab_id, 'r1' => (int) $r->row_from, 'r2' => (int) $r->row_to, 'c1' => (int) $r->col_from, 'c2' => (int) $r->col_to])
+            ->all();
+
+        $readers = DB::table('cell_precedents')->where('precedent_tab_id', $sheetTabId)
+            ->where('col_from', '<=', $col)->where('col_to', '>=', $col)
+            ->where('row_from', '<=', $row)->where('row_to', '>=', $row)
+            ->select('sheet_tab_id', 'row_index', 'col_index')->distinct()->limit(self::MAX_TRACED)->get()
+            ->map(fn ($r) => ['tab' => (int) $r->sheet_tab_id, 'row' => (int) $r->row_index, 'col' => (int) $r->col_index])
+            ->all();
+
+        return ['reads' => $reads, 'readers' => $readers];
     }
 
     /**

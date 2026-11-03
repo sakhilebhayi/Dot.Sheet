@@ -4,15 +4,15 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
-use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
-use App\Services\StructureVersion;
+use App\Services\SheetVersions;
 use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -72,12 +72,13 @@ class VersionHistoryModal extends Component
 
     public function loadVersions(): void
     {
+        // The list needs a few columns, never the snapshots themselves.
         $this->versions = SpreadsheetVersion::with('user:id,name')
             ->where('spreadsheet_id', $this->spreadsheet_id)
             ->where('sheet_tab_id', $this->sheet_tab_id)
             ->latest()
             ->limit(50)
-            ->get()
+            ->get(['id', 'user_id', 'label', 'kind', 'cell_count', 'created_at'])
             ->toArray();
     }
 
@@ -86,18 +87,8 @@ class VersionHistoryModal extends Component
         $spreadsheet = Spreadsheet::findOrFail($this->spreadsheet_id);
         $this->authorize('update', $spreadsheet);
 
-        $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('sheet_tab_id', $this->sheet_tab_id)
-            ->get(['row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting'])
-            ->toArray();
-
-        SpreadsheetVersion::create([
-            'spreadsheet_id' => $this->spreadsheet_id,
-            'sheet_tab_id' => $this->sheet_tab_id,
-            'user_id' => Auth::id(),
-            'label' => trim($this->snapshotLabel) !== '' ? trim($this->snapshotLabel) : 'Manual Snapshot',
-            'cells_snapshot' => $cells,
-        ]);
+        $label = trim($this->snapshotLabel) !== '' ? Str::limit(trim($this->snapshotLabel), 120, '') : 'Manual Snapshot';
+        app(SheetVersions::class)->snapshot((int) $this->spreadsheet_id, (int) $this->sheet_tab_id, Auth::id(), SheetVersions::MANUAL, $label);
 
         $this->snapshotLabel = '';
         $this->loadVersions();
@@ -122,26 +113,7 @@ class VersionHistoryModal extends Component
 
         $busy = false;
         WriteLock::guard(fn () => DB::transaction(function () use ($version) {
-            Cell::where('spreadsheet_id', $this->spreadsheet_id)
-                ->where('sheet_tab_id', $this->sheet_tab_id)
-                ->delete();
-
-            foreach ($version->cells_snapshot ?? [] as $cell) {
-                Cell::create([
-                    'spreadsheet_id' => $this->spreadsheet_id,
-                    'sheet_tab_id' => $this->sheet_tab_id,
-                    'row_index' => $cell['row_index'],
-                    'col_index' => $cell['col_index'],
-                    'raw_value' => $cell['raw_value'] ?? null,
-                    'computed_value' => $cell['computed_value'] ?? null,
-                    'formula' => $cell['formula'] ?? null,
-                    'formatting' => $cell['formatting'] ?? null,
-                    'updated_at' => now(),
-                ]);
-            }
-
-            // Every cell may have moved: editors that had the old grid open must reload.
-            StructureVersion::bump((int) $this->spreadsheet_id);
+            app(SheetVersions::class)->restore($version, (int) Auth::id());
         }), function () use (&$busy) {
             $busy = true;
         });

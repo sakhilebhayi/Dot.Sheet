@@ -12,11 +12,16 @@ class SpreadsheetVersion extends Model
         'sheet_tab_id',
         'user_id',
         'label',
+        'kind',
+        'cell_count',
+        'layout',
         'cells_snapshot',
     ];
 
     protected $casts = [
         'cells_snapshot' => 'array',
+        'layout' => 'json',
+        'cell_count' => 'integer',
     ];
 
     public function spreadsheet(): BelongsTo

@@ -16,6 +16,7 @@ use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\FormulaEvaluatorService;
 use App\Services\SheetStructureService;
+use App\Services\SheetVersions;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
@@ -985,17 +986,7 @@ class ShowSpreadsheet extends Component
             return;
         }
 
-        $cells = $this->cellsQuery()
-            ->get(['row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting'])
-            ->toArray();
-
-        SpreadsheetVersion::create([
-            'spreadsheet_id' => $this->spreadsheet_id,
-            'sheet_tab_id' => $this->activeSheetTabId,
-            'user_id' => Auth::id(),
-            'label' => 'Auto Snapshot',
-            'cells_snapshot' => $cells,
-        ]);
+        app(SheetVersions::class)->snapshot((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, Auth::id(), SheetVersions::AUTO, 'Auto Snapshot');
     }
 
     public function evaluateFormula($formula)

@@ -1,465 +1,132 @@
-<x-app-layout>
-    <style>
-        /* Dot OS token overrides for Dot.Sheet */
-        :root {
-            --ink: #f4f4f5;
-            --ink-soft: #71717a;
-            --line: rgba(255,255,255,0.07);
-            --sheet-card: #141416;
-            --accent-strong: #06b6d4;
-        }
+@php
+    $grouped = fn (int $number) => number_format($number, 0, '', ' ');
+    $tally = $spreadsheets->sum('cells_count');
+    $formulas = $spreadsheets->sum('formulas_count');
+    $facts = fn ($sheet) => [
+        'name' => $sheet->name,
+        'open' => route('spreadsheets.show', $sheet),
+        'grid' => route('spreadsheets.grid', $sheet),
+        'sheets' => $sheet->sheetTabs->sortBy('sort_order')->pluck('name')->implode(', '),
+        'sheetCount' => $sheet->sheetTabs->count(),
+        'errors' => $sheet->errors_count === 0 ? 'None' : $grouped($sheet->errors_count).($sheet->errors_count === 1 ? ' formula' : ' formulas'),
+        'cells' => $grouped($sheet->cells_count),
+        'cellCount' => $sheet->cells_count,
+        'formulas' => $grouped($sheet->formulas_count),
+        'formulaCount' => $sheet->formulas_count,
+        'edited' => $sheet->edited_at->diffInSeconds(now()) < 60 ? 'Just now' : $sheet->edited_at->diffForHumans(),
+        'editedAt' => $sheet->edited_at->timestamp,
+        'ownerName' => $sheet->owner_id === auth()->id() ? 'You' : ($sheet->owner?->name ?? 'Someone else'),
+        'shared' => collect([
+            $sheet->team?->name,
+            $sheet->shared_users_count > 0 ? $sheet->shared_users_count.($sheet->shared_users_count === 1 ? ' person' : ' people') : null,
+        ])->filter()->implode(', ') ?: 'Nobody',
+        'owner' => $sheet->owner_id === auth()->id() ? 'You' : ($sheet->owner?->name ?? 'Shared'),
+        'delete' => auth()->user()->can('delete', $sheet) ? route('spreadsheets.destroy', $sheet) : null,
+    ];
+    $first = $spreadsheets->first();
+@endphp
+<x-dot-layout title="Your spreadsheets" description="Every spreadsheet you can reach, with its shape, its size and when it last changed." page="sheets">
+    <x-slot:head>
+        @vite(['resources/js/pages/dashboard.js'])
+    </x-slot:head>
 
-        /* ── Dashboard Layout ── */
-        .dash-page {
-            width: min(1100px, calc(100% - 2.5rem));
-            margin: 2.5rem auto 4rem;
-        }
+    @if ($first)
+        <x-slot:bar>
+            <label class="line">
+                <span class="sr">Filter the list by name</span>
+                <input id="filter" type="search" placeholder="Filter this list" autocomplete="off" spellcheck="false">
+            </label>
+            <a class="button" href="{{ route('spreadsheets.create') }}">New spreadsheet</a>
+        </x-slot:bar>
 
-        /* ── Page header ── */
-        .dash-header {
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
+        <x-slot:status>
+            <span>Spreadsheets<b id="s-count">{{ $spreadsheets->count() }}</b></span>
+            <span>Cells<b id="s-cells">{{ $grouped($tally) }}</b></span>
+            <span>Formulas<b id="s-formulas">{{ $grouped($formulas) }}</b></span>
+        </x-slot:status>
 
-        .dash-kicker {
-            display: inline-block;
-            font-size: 0.76rem;
-            letter-spacing: 0.07em;
-            text-transform: uppercase;
-            color: #52525b;
-            margin-bottom: 0.3rem;
-        }
+        <div class="desk">
+            <aside class="stage" id="stage" aria-label="The spreadsheet in view">
+                <h2><a id="stage-title" href="{{ route('spreadsheets.show', $first) }}">{{ $first->name }}</a></h2>
+                <div class="plate">
+                    <svg id="print" role="img" aria-label="The shape of this spreadsheet: its cells as dots and its formulas as threads"></svg>
+                    <p id="stage-empty" hidden>Nothing here yet.</p>
+                </div>
+                <ul class="key">
+                    <li data-kind="t"><i class="t"></i>Text</li>
+                    <li data-kind="n"><i class="n"></i>Numbers</li>
+                    <li data-kind="l"><i class="l"></i>Negatives</li>
+                    <li data-kind="f"><i class="f"></i>Formulas, with a thread to what each reads</li>
+                </ul>
+                <p class="part-note" id="stage-part" hidden></p>
+                <dl class="rows">
+                    <div><dt>Tabs</dt><dd id="stage-sheets"></dd></div>
+                    <div><dt>Errors</dt><dd id="stage-errors"></dd></div>
+                    <div><dt>Owner</dt><dd id="stage-owner"></dd></div>
+                    <div><dt>Shared with</dt><dd id="stage-shared"></dd></div>
+                </dl>
+                <div class="deeds">
+                    <a class="button" id="stage-open" href="{{ route('spreadsheets.show', $first) }}">Open</a>
+                    <a class="link soft" id="stage-grid" href="{{ route('spreadsheets.grid', $first) }}">Preview the new editor</a>
+                    <button class="button quiet away" id="stage-delete" type="button" hidden>Delete</button>
+                </div>
+            </aside>
 
-        .dash-heading {
-            margin: 0;
-            font-family: 'Syne', sans-serif;
-            font-size: clamp(1.4rem, 3vw, 1.8rem);
-            font-weight: 700;
-            line-height: 1.2;
-            letter-spacing: -0.01em;
-            color: #f4f4f5;
-        }
+            <section class="ledger" aria-label="All spreadsheets">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col"><span class="sr">Print</span></th>
+                            <th scope="col"><button type="button" data-sort="name">Name</button></th>
+                            <th scope="col" class="fig wide"><button type="button" data-sort="sheetCount">Tabs</button></th>
+                            <th scope="col" class="fig"><button type="button" data-sort="cellCount">Cells</button></th>
+                            <th scope="col" class="fig wide"><button type="button" data-sort="formulaCount">Formulas</button></th>
+                            <th scope="col" class="fig"><button type="button" data-sort="editedAt">Edited</button></th>
+                            <th scope="col" class="wide"><button type="button" data-sort="owner">Owner</button></th>
+                        </tr>
+                    </thead>
+                    <tbody id="ledger-rows">
+                        @foreach ($spreadsheets as $sheet)
+                            @php($row = $facts($sheet))
+                            <tr data-id="{{ $sheet->id }}" data-print="{{ route('spreadsheets.print', $sheet) }}" data-facts="{{ json_encode($row) }}">
+                                <td class="thumb"><svg aria-hidden="true"></svg></td>
+                                <td class="name"><a href="{{ $row['open'] }}">{{ $sheet->name }}</a></td>
+                                <td class="fig wide">{{ $row['sheetCount'] }}</td>
+                                <td class="fig">{{ $row['cells'] }}</td>
+                                <td class="fig wide">{{ $row['formulas'] }}</td>
+                                <td class="fig">{{ $row['edited'] }}</td>
+                                <td class="wide">{{ $row['owner'] }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                <p class="none" id="ledger-none" hidden>No spreadsheet has that name.</p>
+            </section>
+        </div>
 
-        .dash-btn-new {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.6rem 1.15rem;
-            background: #06b6d4;
-            color: #09090b;
-            border-radius: 8px;
-            font-family: 'Inter', system-ui, sans-serif;
-            font-size: 0.825rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: filter .14s;
-            transition: transform 180ms ease, box-shadow 180ms ease;
-            white-space: nowrap;
-        }
+        <dialog id="confirm" aria-labelledby="confirm-title">
+            <h2 id="confirm-title">Delete <span id="confirm-name"></span>?</h2>
+            <p>This removes the spreadsheet for everyone it is shared with, and it cannot be undone.</p>
+            <form method="POST" id="confirm-form" class="deeds">
+                @csrf
+                @method('DELETE')
+                <button class="button quiet" type="button" id="confirm-keep">Cancel</button>
+                <button class="button" type="submit">Delete</button>
+            </form>
+        </dialog>
 
-        .dash-btn-new:hover {
-            transform: translateY(-2px);
-            filter:brightness(1.15);
-        }
-
-        /* ── Stats bar ── */
-        .dash-stats {
-            display: flex;
-            gap: 0.75rem;
-            margin-bottom: 1.6rem;
-            flex-wrap: wrap;
-        }
-
-        .dash-stat {
-            background:#141416;
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 0.75rem 1.15rem;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-        }
-
-        .dash-stat-value {
-            font-family:'Syne',sans-serif;
-            font-size: 1.3rem;
-            line-height: 1;
-            color:#f4f4f5;
-        }
-
-        .dash-stat-label {
-            font-size: 0.78rem;
-            color:#71717a;
-            line-height: 1.35;
-        }
-
-        /* ── Spreadsheet list ── */
-        .dash-list {
-            background:#141416;
-            border: 1px solid rgba(255, 255, 255, 0.65);
-            box-shadow: 0 8px 40px rgba(13, 38, 46, 0.12);
-            border-radius: 22px;
-            overflow: hidden;
-            animation: dashLiftIn 700ms cubic-bezier(0.2, 0.85, 0.26, 1) both;
-        }
-
-        .dash-list-header {
-            display: grid;
-            grid-template-columns: 1fr 160px 120px 80px 100px;
-            gap: 0.5rem;
-            padding: 0.75rem 1.4rem;
-            background:rgba(255,255,255,0.04);
-            border-bottom: 1px solid var(--line);
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            color:#71717a;
-        }
-
-        .dash-row {
-            display: grid;
-            grid-template-columns: 1fr 160px 120px 80px 100px;
-            gap: 0.5rem;
-            align-items: center;
-            padding: 0.95rem 1.4rem;
-            border-bottom: 1px solid var(--line);
-            transition: background 160ms ease;
-            text-decoration: none;
-            color: inherit;
-        }
-
-        .dash-row:last-child { border-bottom: none; }
-
-        .dash-row:hover {
-            background:rgba(6,182,212,0.06);
-        }
-
-        /* Name cell */
-        .dash-row-name {
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-            min-width: 0;
-        }
-
-        .dash-row-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background:linear-gradient(145deg,rgba(6,182,212,0.12) 0%,rgba(6,182,212,0.04) 100%);
-            border: 1px solid rgba(31, 157, 116, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .dash-row-icon svg { width: 16px; height: 16px; }
-
-        .dash-row-title {
-            font-size: 0.92rem;
-            font-weight: 600;
-            color:#f4f4f5;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* Team cell */
-        .dash-row-team {
-            font-size: 0.82rem;
-            color:#71717a;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .dash-badge-owner {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            background:rgba(6,182,212,0.1);
-            color: var(--accent-strong);
-            border: 1px solid rgba(31, 157, 116, 0.22);
-            border-radius: 999px;
-            padding: 0.22rem 0.62rem;
-            font-size: 0.72rem;
-            font-weight: 600;
-        }
-
-        .dash-badge-shared {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            background: rgba(234, 179, 8, 0.1);
-            color: #92660a;
-            border: 1px solid rgba(234, 179, 8, 0.28);
-            border-radius: 999px;
-            padding: 0.22rem 0.62rem;
-            font-size: 0.72rem;
-            font-weight: 600;
-        }
-
-        /* Cells count */
-        .dash-row-cells {
-            font-size: 0.84rem;
-            color:#71717a;
-            text-align: center;
-        }
-
-        /* Date */
-        .dash-row-date {
-            font-size: 0.8rem;
-            color:#71717a;
-        }
-
-        /* Actions */
-        .dash-row-actions {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 0.4rem;
-        }
-
-        .dash-action-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            border: 1px solid var(--line);
-            background:#141416;
-            color:#71717a;
-            text-decoration: none;
-            cursor: pointer;
-            transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
-        }
-
-        .dash-action-btn:hover {
-            background: rgba(255, 255, 255, 0.95);
-            color:#f4f4f5;
-            border-color: rgba(18, 34, 38, 0.22);
-        }
-
-        .dash-action-btn.danger:hover {
-            background: rgba(239, 68, 68, 0.08);
-            color: #b91c1c;
-            border-color: rgba(239, 68, 68, 0.3);
-        }
-
-        /* ── Empty state ── */
-        .dash-empty {
-            background:#141416;
-            border: 1px solid rgba(255, 255, 255, 0.65);
-            box-shadow: 0 8px 40px rgba(13, 38, 46, 0.12);
-            border-radius: 22px;
-            padding: 5rem 2rem;
-            text-align: center;
-            animation: dashLiftIn 700ms cubic-bezier(0.2, 0.85, 0.26, 1) both;
-        }
-
-        .dash-empty-icon {
-            width: 72px;
-            height: 72px;
-            margin: 0 auto 1.5rem;
-            border-radius: 20px;
-            background: linear-gradient(145deg, rgba(31,157,116,0.14), rgba(31,157,116,0.05));
-            border: 1px solid rgba(31, 157, 116, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .dash-empty-icon svg { width: 32px; height: 32px; }
-
-        .dash-empty h2 {
-            margin: 0 0 0.6rem;
-            font-family:'Syne',sans-serif;
-            font-size: 1.5rem;
-            color:#f4f4f5;
-        }
-
-        .dash-empty p {
-            margin: 0 0 2rem;
-            color:#71717a;
-            font-size: 0.93rem;
-            max-width: 36ch;
-            margin-left: auto;
-            margin-right: auto;
-            line-height: 1.65;
-        }
-
-        @keyframes dashLiftIn {
-            from { transform: translateY(14px) scale(0.99); opacity: 0; }
-            to   { transform: translateY(0)    scale(1);    opacity: 1; }
-        }
-
-        @media (max-width: 800px) {
-            .dash-list-header,
-            .dash-row {
-                grid-template-columns: 1fr 90px 80px;
-            }
-
-            .dash-list-header > *:nth-child(3),
-            .dash-row > *:nth-child(3),
-            .dash-list-header > *:nth-child(4),
-            .dash-row > *:nth-child(4) { display: none; }
-        }
-
-        @media (max-width: 560px) {
-            .dash-page { width: calc(100% - 1.4rem); }
-            .dash-list-header { display: none; }
-            .dash-row { grid-template-columns: 1fr 80px; }
-            .dash-row > *:nth-child(2),
-            .dash-row > *:nth-child(3),
-            .dash-row > *:nth-child(4) { display: none; }
-        }
-    </style>
-
-    <div class="dash-page">
-
-        {{-- Page Header --}}
-        <div class="dash-header">
+        <script type="application/json" id="first-print">@json($firstPrint, JSON_HEX_TAG | JSON_HEX_AMP)</script>
+    @else
+        <div class="first">
             <div>
-                <div class="dash-kicker">{{ auth()->user()->name }}</div>
-                <h1 class="dash-heading">Your workspace</h1>
+                <h2>Your first spreadsheet starts here</h2>
+                <p>Each one you make gets a print on this page: a dot for every cell and a thread for every formula.</p>
+                <a class="button" href="{{ route('spreadsheets.create') }}">New spreadsheet</a>
             </div>
-            <a href="{{ route('spreadsheets.create') }}" class="dash-btn-new">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;">
-                    <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z"/>
-                </svg>
-                New spreadsheet
-            </a>
+            <figure>
+                <div><svg id="example" role="img" aria-label="An example print"></svg></div>
+                <figcaption>The print of a small budget, as an example.</figcaption>
+            </figure>
         </div>
-
-        {{-- Stats bar --}}
-        @php
-            $mine = $spreadsheets->where('owner_id', auth()->id());
-            $shared = $spreadsheets->where('owner_id', '!=', auth()->id());
-        @endphp
-        <div class="dash-stats">
-            <div class="dash-stat">
-                <div class="dash-stat-value">{{ $spreadsheets->count() }}</div>
-                <div class="dash-stat-label">Total<br>spreadsheets</div>
-            </div>
-            <div class="dash-stat">
-                <div class="dash-stat-value">{{ $mine->count() }}</div>
-                <div class="dash-stat-label">Owned<br>by me</div>
-            </div>
-            <div class="dash-stat">
-                <div class="dash-stat-value">{{ $shared->count() }}</div>
-                <div class="dash-stat-label">Shared<br>with me</div>
-            </div>
-            <div class="dash-stat">
-                <div class="dash-stat-value">{{ $spreadsheets->sum('cells_count') }}</div>
-                <div class="dash-stat-label">Total<br>cells</div>
-            </div>
-        </div>
-
-        {{-- Spreadsheet list --}}
-        @if ($spreadsheets->isEmpty())
-            <div class="dash-empty">
-                <div class="dash-empty-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#1f9d74">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-1.5-3.75c.621 0 1.125.504 1.125 1.125" />
-                    </svg>
-                </div>
-                <h2>No spreadsheets yet</h2>
-                <p>Create your first spreadsheet to start working with formulas, AI assistance, and real-time collaboration.</p>
-                <a href="{{ route('spreadsheets.create') }}" class="dash-btn-new" style="display:inline-flex;">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width:16px;height:16px;">
-                        <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z"/>
-                    </svg>
-                    Create your first spreadsheet
-                </a>
-            </div>
-        @else
-            <div class="dash-list">
-                {{-- Table header --}}
-                <div class="dash-list-header">
-                    <div>Name</div>
-                    <div>Team</div>
-                    <div>Last edited</div>
-                    <div style="text-align:center">Cells</div>
-                    <div></div>
-                </div>
-
-                {{-- Rows --}}
-                @foreach ($spreadsheets as $sheet)
-                    <div class="dash-row">
-                        {{-- Name --}}
-                        <div class="dash-row-name">
-                            <div class="dash-row-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#1f9d74">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-1.5-3.75c.621 0 1.125.504 1.125 1.125" />
-                                </svg>
-                            </div>
-                            <a href="{{ route('spreadsheets.show', $sheet) }}" class="dash-row-title" title="{{ $sheet->name }}">
-                                {{ $sheet->name }}
-                            </a>
-                        </div>
-
-                        {{-- Team --}}
-                        <div class="dash-row-team">
-                            @if ($sheet->owner_id === auth()->id())
-                                <span class="dash-badge-owner">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" style="width:10px;height:10px;"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM12.735 14c.618 0 1.093-.561.872-1.139a6.002 6.002 0 0 0-11.215 0c-.22.578.254 1.139.872 1.139h9.47Z"/></svg>
-                                    Mine
-                                </span>
-                            @else
-                                <span class="dash-badge-shared">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" style="width:10px;height:10px;"><path d="M13.5 8.5a.5.5 0 0 1 0 1h-2.793l1.647 1.646a.5.5 0 0 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 1 1 .708.708L10.707 8.5H13.5ZM7.5 4a.5.5 0 0 1-.5.5H4.207l1.647 1.646a.5.5 0 1 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 1 1 .708.708L4.207 3.5H7a.5.5 0 0 1 .5.5Z"/></svg>
-                                    Shared
-                                </span>
-                            @endif
-                            @if ($sheet->team)
-                                <span style="display:block; margin-top: 0.25rem; font-size: 0.75rem;">{{ $sheet->team->name }}</span>
-                            @endif
-                        </div>
-
-                        {{-- Date --}}
-                        <div class="dash-row-date">
-                            {{ $sheet->updated_at->diffForHumans() }}
-                        </div>
-
-                        {{-- Cells count --}}
-                        <div class="dash-row-cells">
-                            {{ number_format($sheet->cells_count) }}
-                        </div>
-
-                        {{-- Actions --}}
-                        <div class="dash-row-actions">
-                            <a href="{{ route('spreadsheets.show', $sheet) }}"
-                               class="dash-action-btn" title="Open">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;">
-                                    <path d="M12.232 4.232a2.5 2.5 0 013.536 3.536l-1.225 1.224a.75.75 0 001.061 1.06l1.224-1.224a4 4 0 00-5.656-5.656l-3 3a4 4 0 00.225 5.865.75.75 0 00.977-1.138 2.5 2.5 0 01-.142-3.667l3-3z"/>
-                                    <path d="M11.603 7.963a.75.75 0 00-.977 1.138 2.5 2.5 0 01.142 3.667l-3 3a2.5 2.5 0 01-3.536-3.536l1.225-1.224a.75.75 0 00-1.061-1.06l-1.224 1.224a4 4 0 105.656 5.656l3-3a4 4 0 00-.225-5.865z"/>
-                                </svg>
-                            </a>
-
-                            @if ($sheet->owner_id === auth()->id())
-                                <form method="POST" action="{{ route('spreadsheets.destroy', $sheet) }}"
-                                      onsubmit="return confirm('Delete \'{{ addslashes($sheet->name) }}\'? This cannot be undone.')">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="dash-action-btn danger" title="Delete">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;">
-                                            <path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193v-.443A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd"/>
-                                        </svg>
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        @endif
-
-    </div>
-</x-app-layout>
+    @endif
+</x-dot-layout>

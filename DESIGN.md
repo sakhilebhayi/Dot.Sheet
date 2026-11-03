@@ -40,6 +40,18 @@ typography:
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.3
+  display:
+    fontFamily: Hanken Grotesk
+    fontSize: 40px
+    fontWeight: 600
+    lineHeight: 1.05
+    letterSpacing: -0.025em
+  display-phone:
+    fontFamily: Hanken Grotesk
+    fontSize: 28px
+    fontWeight: 600
+    lineHeight: 1.05
+    letterSpacing: -0.025em
 rounded:
   sm: 3px
   md: 10px
@@ -55,6 +67,8 @@ spacing:
   column: 104px
   column-label: 188px
   gutter: 44px
+  row-page: 40px
+  row-print: 52px
 components:
   bar:
     backgroundColor: "{colors.surface}"
@@ -196,6 +210,47 @@ A marching outline would move at rest.
 
 **Palette.** Commands and the function catalogue in one search. Each function shows its plain summary.
 Choosing a function puts it in the cell.
+
+## Signed-in pages
+
+```
+Idea:        The whole app is a workbook, and every spreadsheet has a picture drawn from its real cells.
+Metaphor:    A workbook: pages are sheets, navigation is sheet tabs, settings are rows.
+Signature:   The print. Point at a spreadsheet and its print draws itself: a dot for each real cell, a
+             thread for each real formula dependency. No two look alike, because no two sheets are.
+Emotion:     Calm recognition. These are my sheets, and I can see their shape.
+Motion verb: Settle, like paper. Threads draw; everything else lifts a little and settles.
+Screenshot:  The list of sheets beside one large print, threads running through it.
+```
+
+Why this idea: the engine stores what every formula reads, so the picture is true of each file and
+could not be drawn for any other product. Two other ideas were weighed: a history ledger of recent
+edits (common, and it needs lots of history to look like anything) and the app as a workbook on its
+own (strong, so it became the structure here, with the print as the signature).
+
+**The shell.** The bar and foot are the editor's. Sheet tabs along the foot are the navigation, so
+they sit under the thumb on a phone. The foot's right side keeps its job: figures about what is on
+screen. The account (team switching and signing out) is one quiet button in the bar.
+
+**The page.** A page is a sheet on the desk. Rows are 40px with dotted rules (52px when they carry a
+print), and they stop where the content stops. Labels sit in the first column at 188px, so a settings form reads as rows of a sheet
+and aligns with the editor. Column headers name real columns and sort them.
+
+**The print.** One colour for each kind of cell: dot for text, ink for a number, loss for a negative
+number, thread for a formula, with a key beside the large print. Threads run from a formula to the
+first corner of what it reads. The print shows the top left of the fullest tab. Its dots sit as far
+apart as the frame allows, up to 28px, so a sheet that fits shows every cell. A very large one stops at
+14px and says that it is only a part. It never shows values, so it is safe beside a name. Every row of the list carries a small one, so a file can be known by its shape.
+
+**Words.** A spreadsheet is the file, a tab is one sheet inside it, and the person reading is You.
+
+**Buttons.** One primary on a page: Save, Create, Open. Other actions are outlined. A destructive action
+is an ink outline, kept apart from the rest, and asks first: Cancel on the left, then the action in
+solid ink. Red stays with negative figures and errors.
+
+**Motion.** Pages settle in through the browser's own view transitions, and the print draws in about
+340ms when the selection changes. Nothing moves at rest, on purpose: this is a tool people look at for
+hours, and the rule in the Overview outranks any wish for the page to keep breathing.
 
 ## Do's and Don'ts
 

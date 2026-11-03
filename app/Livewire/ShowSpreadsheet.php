@@ -229,6 +229,7 @@ class ShowSpreadsheet extends Component
         $this->editingCell = null;
         $this->undoStack = [];
         $this->redoStack = [];
+        $this->loadFeatureSettings();
         $this->loadViewportCells(true);
 
         $this->dispatch('sheet-tab-switched', sheetTabId: $this->activeSheetTabId);
@@ -488,9 +489,19 @@ class ShowSpreadsheet extends Component
         $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
     }
 
+    /**
+     * The layout of the sheet on screen: what is stored, or the result a write just returned.
+     *
+     * @return array<string, mixed>
+     */
+    protected function storedLayout(): array
+    {
+        return $this->normalizeArrayValue(SheetTab::whereKey($this->activeSheetTabId)->value('layout') ?? []);
+    }
+
     protected function loadFeatureSettings(?array $stored = null): void
     {
-        $settings = $this->normalizeArrayValue($stored ?? $this->spreadsheet->settings ?? []);
+        $settings = $this->normalizeArrayValue($stored ?? ($this->activeSheetTabId ? $this->storedLayout() : []));
 
         $this->rowHeights = $this->normalizeArrayValue($settings['row_heights'] ?? []);
         $this->colWidths = $this->normalizeArrayValue($settings['col_widths'] ?? []);
@@ -517,7 +528,7 @@ class ShowSpreadsheet extends Component
         $stored = null;
 
         $written = $this->guardedWrite(function () use ($change, &$stored) {
-            $stored = Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($change) {
+            $stored = SheetTab::updateLayout((int) $this->activeSheetTabId, function (array $settings) use ($change) {
                 $new = $change($settings);
 
                 foreach (SpreadsheetController::EDITABLE_SETTINGS_KEYS as $key) {
@@ -534,7 +545,6 @@ class ShowSpreadsheet extends Component
             return false;
         }
 
-        $this->spreadsheet->refresh();
         $this->loadFeatureSettings($stored);
 
         return true;
@@ -1620,7 +1630,7 @@ class ShowSpreadsheet extends Component
         ];
 
         // The rows the filter hides are worked out from the data against ALL stored rules plus this one.
-        $stored = is_array($this->spreadsheet->fresh()?->settings['filter_rules'] ?? null) ? $this->spreadsheet->fresh()->settings['filter_rules'] : [];
+        $stored = is_array($this->storedLayout()['filter_rules'] ?? null) ? $this->storedLayout()['filter_rules'] : [];
         $this->filterRules = [...$stored, $rule];
         $this->applyFilterRules();
         $rules = $this->filterRules;

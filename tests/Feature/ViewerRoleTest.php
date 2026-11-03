@@ -240,7 +240,7 @@ class ViewerRoleTest extends TestCase
         } else {
             $response->assertForbidden();
             $this->assertSame('Team sheet', $this->sheet->fresh()->name);
-            $this->assertArrayNotHasKey('col_widths', $this->sheet->fresh()->settings ?? []);
+            $this->assertArrayNotHasKey('col_widths', $this->sheet->defaultSheetTab()->layout ?? []);
         }
     }
 
@@ -332,7 +332,7 @@ class ViewerRoleTest extends TestCase
             $this->attempt($role, ShowSpreadsheet::class, $this->sheetParams(), $allowed, $method, $args);
         }
 
-        $settings = $this->sheet->fresh()->settings ?? [];
+        $settings = $this->sheet->defaultSheetTab()->layout ?? [];
         foreach (['hidden_rows', 'hidden_cols', 'row_heights', 'col_widths', 'validation_rules', 'conditional_formatting_rules'] as $key) {
             $allowed ? $this->assertArrayHasKey($key, $settings, $key) : $this->assertArrayNotHasKey($key, $settings, $key);
         }

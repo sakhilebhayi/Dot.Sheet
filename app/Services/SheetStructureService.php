@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
-use App\Models\Spreadsheet;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -128,7 +127,7 @@ class SheetStructureService
             $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index, 1);
             $this->checkClock();
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
-            $this->shiftLayoutSettings($spreadsheetId, $axis, $index, 1);
+            $this->shiftLayoutSettings($sheetTabId, $axis, $index, 1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -145,7 +144,7 @@ class SheetStructureService
             $this->shiftCells($spreadsheetId, $sheetTabId, $axis, $index + 1, -1);
             $this->checkClock();
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
-            $this->shiftLayoutSettings($spreadsheetId, $axis, $index, -1);
+            $this->shiftLayoutSettings($sheetTabId, $axis, $index, -1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -300,11 +299,11 @@ class SheetStructureService
 
     /**
      * Row heights, hidden rows, column widths, hidden columns and the rules that carry a row or column
-     * (validation, conditional format, filters) live in the spreadsheet's settings and follow the move in
-     * the same transaction, so no other editor ever sees cells moved and these not. A rule on a deleted
-     * row or column is dropped.
+     * (validation, conditional format, filters) live in the sheet's layout and follow the move in the same
+     * transaction, so no other editor ever sees cells moved and these not. Other sheets keep theirs. A rule
+     * on a deleted row or column is dropped.
      */
-    protected function shiftLayoutSettings(int $spreadsheetId, string $axis, int $index, int $delta): void
+    protected function shiftLayoutSettings(int $sheetTabId, string $axis, int $index, int $delta): void
     {
         $isRow = $axis === 'row_index';
         $field = $isRow ? 'row' : 'col';
@@ -318,7 +317,7 @@ class SheetStructureService
             return $position === $index ? null : ($position > $index ? $position - 1 : $position);
         };
 
-        Spreadsheet::updateSettings($spreadsheetId, function (array $settings) use ($isRow, $field, $move) {
+        SheetTab::updateLayout($sheetTabId, function (array $settings) use ($isRow, $field, $move) {
             $sizesKey = $isRow ? 'row_heights' : 'col_widths';
             $hiddenKey = $isRow ? 'hidden_rows' : 'hidden_cols';
 

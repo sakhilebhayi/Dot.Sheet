@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Spreadsheet;
 use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -11,7 +12,9 @@ use Livewire\Component;
 class ScriptsEditor extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
     protected ?Spreadsheet $spreadsheet = null;
@@ -35,6 +38,20 @@ class ScriptsEditor extends Component
     public $status = '';
 
     protected $listeners = ['macro-recorded' => 'saveRecordedMacro'];
+
+    protected function clientWritable(): array
+    {
+        return [
+            'macroName',
+            'scriptBody',
+            'scriptName',
+        ];
+    }
+
+    protected function sheetAbility(): string
+    {
+        return 'update';
+    }
 
     public function mount($spreadsheet_id)
     {

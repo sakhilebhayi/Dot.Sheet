@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\StructureVersion;
@@ -14,7 +15,9 @@ use Livewire\Component;
 class SpreadsheetToolbar extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
     public $selected_row = 0;
@@ -95,6 +98,41 @@ class SpreadsheetToolbar extends Component
     #[Locked]
     public int $structureVersion = 0;
 
+    protected function clientWritable(): array
+    {
+        // The selection and the format being chosen describe this sheet only; writes authorize separately.
+        return [
+            'selected_row',
+            'selected_col',
+            'bold',
+            'italic',
+            'underline',
+            'strike',
+            'font_size',
+            'align',
+            'number_format',
+            'bg_color',
+            'col_width_input',
+            'conditional_color',
+            'conditional_operator',
+            'conditional_target',
+            'conditional_value',
+            'filter_color',
+            'filter_column',
+            'filter_operator',
+            'filter_type',
+            'filter_value',
+            'filter_value2',
+            'font_color',
+            'row_height_input',
+            'sort_direction',
+            'validation_items',
+            'validation_max',
+            'validation_min',
+            'validation_type',
+        ];
+    }
+
     public function mount($spreadsheet_id)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
@@ -122,7 +160,7 @@ class SpreadsheetToolbar extends Component
     #[On('sheet-tab-switched')]
     public function followTab($sheetTabId = null): void
     {
-        $this->sheet_tab_id = $sheetTabId ? (int) $sheetTabId : null;
+        $this->sheet_tab_id = $this->ownTabId($sheetTabId);
     }
 
     /**
@@ -174,7 +212,7 @@ class SpreadsheetToolbar extends Component
         $this->selected_row = $row;
         $this->selected_col = $col;
         if ($sheetTabId) {
-            $this->sheet_tab_id = (int) $sheetTabId;
+            $this->sheet_tab_id = $this->ownTabId($sheetTabId);
         }
 
         $cell = Cell::where('spreadsheet_id', $this->spreadsheet_id)

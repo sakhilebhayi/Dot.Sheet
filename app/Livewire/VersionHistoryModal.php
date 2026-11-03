@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -12,15 +13,19 @@ use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class VersionHistoryModal extends Component
 {
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
+    #[Locked]
     public $sheet_tab_id;
 
     public $open = false;
@@ -33,12 +38,19 @@ class VersionHistoryModal extends Component
         'open-version-history' => 'openModal',
     ];
 
+    protected function clientWritable(): array
+    {
+        return [
+            'snapshotLabel',
+        ];
+    }
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->sheet_tab_id = $sheet_tab_id;
+        $this->sheet_tab_id = $this->ownTabId($sheet_tab_id);
         $this->loadVersions();
     }
 

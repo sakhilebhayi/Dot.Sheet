@@ -13,8 +13,9 @@ use Illuminate\Support\Str;
  * Turns an InfoDot identity (already proven by the redeem endpoint) into a local user.
  *
  * Matches by verified email. An existing account whose email was never verified
- * here is taken over safely: its password is replaced, so whoever pre-registered
- * the address cannot keep using it. A person InfoDot vouches for but who has no
+ * here (pre-registered, or changed to this address without proof) is taken over
+ * safely: its password is replaced and its memberships of other teams removed, so
+ * whoever claimed the address cannot keep using it or see this person's work. A person InfoDot vouches for but who has no
  * account here gets one, with a random password and a personal team.
  */
 class ProvisionUserFromInfoDot
@@ -34,8 +35,16 @@ class ProvisionUserFromInfoDot
 
         if ($user) {
             if ($user->email_verified_at === null) {
-                $user->forceFill(['password' => Hash::make(Str::random(48)), 'email_verified_at' => now()])->save();
-                Log::notice('Unverified local account adopted by InfoDot sign-in; password replaced.', ['user_id' => $user->id]);
+                DB::transaction(function () use ($user) {
+                    $user->forceFill(['password' => Hash::make(Str::random(48)), 'email_verified_at' => now()])->save();
+
+                    // Whoever held the address before may have joined teams so that this person's work
+                    // lands where they can read it. The person InfoDot vouches for starts outside them.
+                    $user->teams()->detach();
+                    $personal = $user->ownedTeams()->where('personal_team', true)->first();
+                    $personal ? $user->switchTeam($personal) : $user->forceFill(['current_team_id' => null])->save();
+                });
+                Log::notice('Unverified local account adopted by InfoDot sign-in; password replaced and team memberships removed.', ['user_id' => $user->id]);
             }
 
             return $user;

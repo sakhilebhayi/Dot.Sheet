@@ -13,12 +13,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\ToArray;
-use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
-use Maatwebsite\Excel\Facades\Excel;
-use PhpOffice\PhpSpreadsheet\Cell\Cell as SpreadsheetCell;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet as Workbook;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class SpreadsheetImportExportService
 {
@@ -81,32 +80,30 @@ class SpreadsheetImportExportService
         $fileName = 'spreadsheet_'.$spreadsheet->id.'_'.now()->format('YmdHis').'_'.Str::random(8).'.xlsx';
         $filePath = 'exports/'.$fileName;
 
-        Excel::store(new class($rows) implements FromArray, WithCustomValueBinder
-        {
-            public function __construct(private array $data) {}
+        $workbook = new Workbook;
+        $sheet = $workbook->getActiveSheet();
+        foreach ($rows as $rowIndex => $row) {
+            foreach ($row as $colIndex => $value) {
+                if ($value === '') {
+                    continue;   // a blank stays an empty cell
+                }
 
-            public function array(): array
-            {
-                return $this->data;
-            }
+                // Values go in as values: text that starts with "=" must not become a formula, and the
+                // sheet's formulas are exported as their computed result. Plain numbers become numbers;
+                // text with leading zeros ("007") stays text.
+                $isPlainNumber = preg_match('/^-?(0|[1-9]\d{0,14})(\.\d{1,15})?$/', $value) === 1 && $value !== '-0';
 
-            /**
-             * Values go in as values: the default binder would turn any text that starts with "="
-             * into a formula, and the sheet's formulas are exported as their computed result.
-             * Plain numbers become numbers; text with leading zeros ("007") stays text.
-             */
-            public function bindValue(SpreadsheetCell $cell, $value): bool
-            {
-                $isPlainNumber = is_string($value) && preg_match('/^-?(0|[1-9]\d{0,14})(\.\d{1,15})?$/', $value) === 1 && $value !== '-0';
-
-                $cell->setValueExplicit(
-                    $isPlainNumber ? (str_contains($value, '.') ? (float) $value : (int) $value) : (string) $value,
+                $sheet->setCellValueExplicit(
+                    Coordinate::stringFromColumnIndex($colIndex + 1).($rowIndex + 1),
+                    $isPlainNumber ? (str_contains($value, '.') ? (float) $value : (int) $value) : $value,
                     $isPlainNumber ? DataType::TYPE_NUMERIC : DataType::TYPE_STRING,
                 );
-
-                return true;
             }
-        }, $filePath, 'local');
+        }
+
+        Storage::disk('local')->makeDirectory('exports');
+        (new Xlsx($workbook))->save(Storage::disk('local')->path($filePath));
+        $workbook->disconnectWorksheets();
 
         // The disk's own root: Laravel 11+ points "local" at storage/app/private, not storage/app.
         return Storage::disk('local')->path($filePath);
@@ -303,14 +300,7 @@ class SpreadsheetImportExportService
 
         if (in_array($ext, ['xlsx', 'xls'])) {
             try {
-                $data = Excel::toArray(new class implements ToArray
-                {
-                    public function array(array $array): array
-                    {
-                        return $array;
-                    }
-                }, $file);
-                $rows = $data[0] ?? [];
+                $rows = $this->readFirstSheet($file);
                 $valuesAreText = true;
             } catch (\Exception $e) {
                 return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
@@ -331,6 +321,30 @@ class SpreadsheetImportExportService
         }
 
         return $this->insertRows($spreadsheet, $rows, $sheetTab, $valuesAreText);
+    }
+
+    /**
+     * The first sheet of an Excel file as rows of raw values: a formula is read as its text, not its
+     * result, and nothing is formatted. Reading every sheet, formulas and formatting is S8.
+     *
+     * @return array<int, array<int, mixed>>
+     */
+    protected function readFirstSheet(UploadedFile $file): array
+    {
+        $reader = IOFactory::createReaderForFile($file->getRealPath());
+        $reader->setReadDataOnly(true);
+        $workbook = $reader->load($file->getRealPath());
+
+        try {
+            $sheet = $workbook->getSheet(0);
+
+            return $sheet->rangeToArray(
+                'A1:'.$sheet->getHighestDataColumn().$sheet->getHighestDataRow(),
+                null, false, false, false,
+            );
+        } finally {
+            $workbook->disconnectWorksheets();
+        }
     }
 
     /**
@@ -422,22 +436,12 @@ class SpreadsheetImportExportService
     }
 
     /**
-     * Import from Excel file using maatwebsite/excel
+     * Import from an Excel file
      */
     protected function importExcel(Spreadsheet $spreadsheet, UploadedFile $file, ?SheetTab $sheetTab = null): array
     {
         try {
-            $data = Excel::toArray(new class implements ToArray
-            {
-                public function array(array $array): array
-                {
-                    return $array;
-                }
-            }, $file);
-
-            $rows = $data[0] ?? [];
-
-            return $this->insertRows($spreadsheet, $rows, $sheetTab);
+            return $this->insertRows($spreadsheet, $this->readFirstSheet($file), $sheetTab);
         } catch (\Exception $e) {
             return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
         }

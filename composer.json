@@ -12,7 +12,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^3.6.4",
-        "maatwebsite/excel": "^3.1",
+        "phpoffice/phpspreadsheet": "^5.10",
         "pusher/pusher-php-server": "^7.2"
     },
     "require-dev": {

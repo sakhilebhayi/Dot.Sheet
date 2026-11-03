@@ -40,6 +40,12 @@ class DotGridEditorTest extends DuskTestCase
 
     private function open(Browser $browser, User $user, Spreadsheet $sheet): Browser
     {
+        // The browser carries over between tests, and the last test's page may still have a request on
+        // its way: left running, its answer overwrites the session cookie or logs an error against this
+        // test. Leave that page first, then let go of what it wrote to the console.
+        $browser->driver->get('about:blank');
+        $browser->driver->manage()->getLog('browser');
+
         return $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}/grid")
             ->waitUsing(10, 25, fn () => $browser->driver->executeScript("return [...document.querySelectorAll('.c')].some(c => c.textContent === 'Sales')"));
     }

@@ -6,6 +6,7 @@ use App\Jobs\ImportRowsChunkJob;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Services\Formula\Recalculator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -116,6 +117,11 @@ class SpreadsheetImportExportService
      */
     protected function exportBounds(Spreadsheet $spreadsheet, ?SheetTab $sheetTab): ?array
     {
+        // Results go out as they are stored: work a sheet nobody has opened since it changed out first.
+        if ($sheetTab) {
+            app(Recalculator::class)->ensureBuilt((int) $spreadsheet->id, (int) $sheetTab->id);
+        }
+
         $query = Cell::where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab?->id);
 
         $maxRow = $query->max('row_index');
@@ -487,6 +493,11 @@ class SpreadsheetImportExportService
 
                     $cellCount++;
                 }
+            }
+
+            // Imported formulas are worked out when the sheet is next shown.
+            if ($sheetTab) {
+                app(Recalculator::class)->markStale((int) $spreadsheet->id, (int) $sheetTab->id);
             }
 
             DB::commit();

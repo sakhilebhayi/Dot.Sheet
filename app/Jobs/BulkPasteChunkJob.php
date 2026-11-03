@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Cell;
 use App\Models\CellHistory;
+use App\Services\Formula\Recalculator;
 use App\Services\StructureVersion;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -63,6 +64,9 @@ class BulkPasteChunkJob implements ShouldQueue
 
     protected function writeChunk(): void
     {
+        // Formulas this chunk writes, and those that read its cells, are worked out on the next read.
+        app(Recalculator::class)->markStale($this->spreadsheetId, (int) $this->sheetTabId);
+
         foreach ($this->cells as $entry) {
             $row = (int) $entry['row_index'];
             $col = (int) $entry['col_index'];

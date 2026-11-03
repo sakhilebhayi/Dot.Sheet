@@ -263,15 +263,16 @@
                                                     class="w-full h-full px-1 border-0 text-xs bg-white dark:bg-gray-700
                                                            text-gray-900 dark:text-white focus:outline-none focus:ring-0"
                                                     style="font-weight: {{ $fontWeight }}; font-style: {{ $fontStyle }}; text-decoration: {{ $textDecoration }}; font-size: {{ $fontSize }}px; color: {{ $fontColor }}; background-color: {{ $bgColor }}; text-align: {{ $align }};"
-                                                    value="{{ $cell['raw_value'] }}">
+                                                    value="{{ $cell['formula'] ?: $cell['raw_value'] }}">
                                             @else
                                                 <!-- Display Mode -->
                                                 <div class="w-full h-full px-1 flex items-center text-xs
                                                             overflow-hidden text-ellipsis whitespace-nowrap
-                                                            {{ $cell['formula'] ? 'italic text-blue-600 dark:text-blue-400' : '' }}">
+                                                            {{ $cell['formula'] ? 'italic text-blue-600 dark:text-blue-400' : '' }}"
+                                                     @if (! empty($cell['formula_error'])) title="{{ $cell['formula_error'] }}" @endif>
                                                     <div class="w-full"
                                                         style="font-weight: {{ $fontWeight }}; font-style: {{ $fontStyle }}; text-decoration: {{ $textDecoration }}; font-size: {{ $fontSize }}px; color: {{ $fontColor }}; background-color: {{ $bgColor }}; text-align: {{ $align }};">
-                                                    {{ $cell['value'] ?: '' }}
+                                                    {{ $cell['value'] }}
                                                     </div>
                                                 </div>
                                             @endif

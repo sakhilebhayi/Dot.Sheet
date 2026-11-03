@@ -447,7 +447,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
             $this->assertTrue($result['error'], $formula);
         }
         $this->editor()->set('editingCell', '0_0')->call('saveCell', '=MAX()');
-        $this->assertSame('#ERROR', Cell::first()->computed_value);
+        $this->assertSame('#ERROR!', Cell::first()->computed_value);
     }
 
     public function test_a_big_tab_skips_the_automatic_snapshot_and_logs_it(): void

@@ -104,6 +104,41 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
         $this->assertNull($this->value($sheet, 0, 0));
     }
 
+    public function test_formulas_calculate_follow_their_inputs_and_show_their_errors(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = $this->sheetFor($user);
+
+        $this->browse(function (Browser $browser) use ($sheet) {
+            $enter = function (int $row, int $col, string $text) use ($browser) {
+                $browser->doubleClick($this->cell($row, $col))->settle()
+                    ->keys($this->cell($row, $col).' input', $text, '{enter}')->settle();
+            };
+
+            $browser->loginAs($sheet->owner)->openLivewire('/spreadsheets/'.$sheet->id);
+
+            $enter(0, 0, '4');
+            $enter(0, 1, '=A1*10');
+            $enter(0, 2, '=B1+2');
+            $browser->assertSeeIn($this->cell(0, 1), '40')->assertSeeIn($this->cell(0, 2), '42');
+
+            // Changing the input moves every formula on screen, and a formula opens as its text.
+            $browser->doubleClick($this->cell(0, 0))->settle()
+                ->keys($this->cell(0, 0).' input', '{end}', '{backspace}', '5', '{enter}')->settle()
+                ->assertSeeIn($this->cell(0, 1), '50')
+                ->assertSeeIn($this->cell(0, 2), '52')
+                ->doubleClick($this->cell(0, 1))->settle()
+                ->assertInputValue($this->cell(0, 1).' input', '=A1*10')
+                ->keys($this->cell(0, 1).' input', '{escape}')->settle();
+
+            $enter(1, 0, '=1/0');
+            $browser->assertSeeIn($this->cell(1, 0), '#DIV/0!')
+                ->assertAttribute($this->cell(1, 0).' > div', 'title', 'The formula divides by zero or by an empty cell.');
+
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
     public function test_save_from_the_formula_bar_and_reach_the_sharing_controls(): void
     {
         $user = User::factory()->withPersonalTeam()->create();

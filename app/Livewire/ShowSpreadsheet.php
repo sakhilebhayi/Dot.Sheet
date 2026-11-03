@@ -14,7 +14,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
-use App\Services\FormulaEvaluatorService;
+use App\Services\Formula\Recalculator;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\StaleStructure;
@@ -246,6 +246,8 @@ class ShowSpreadsheet extends Component
             'name' => $name && trim($name) !== '' ? trim($name) : "Sheet{$nextIndex}",
             'sort_order' => count($this->sheetTabs),
         ]);
+        // A formula that named this sheet before it existed answered #REF!: it can be worked out now.
+        app(Recalculator::class)->markWorkbookStale((int) $this->spreadsheet_id);
 
         $this->loadSheetTabs();
         $this->switchTab($tab->id);
@@ -263,8 +265,11 @@ class ShowSpreadsheet extends Component
         SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
             ->where('id', $sheetTabId)
             ->update(['name' => $name]);
+        app(Recalculator::class)->markWorkbookStale((int) $this->spreadsheet_id);
 
         $this->loadSheetTabs();
+        $this->loadedWindows = [];
+        $this->loadViewportCells(true);
     }
 
     public function deleteTab($sheetTabId): void
@@ -290,6 +295,7 @@ class ShowSpreadsheet extends Component
                 ->where('id', $sheetTabId)
                 ->delete();
             StructureVersion::bump((int) $this->spreadsheet_id);
+            app(Recalculator::class)->markWorkbookStale((int) $this->spreadsheet_id);
             $deleted = true;
         });
 
@@ -567,6 +573,12 @@ class ShowSpreadsheet extends Component
             return;
         }
 
+        // A sheet whose formulas this engine has not worked out yet (new, imported, pasted into, sorted,
+        // restored) is worked out before it is shown.
+        if ($this->activeSheetTabId && app(Recalculator::class)->ensureBuilt((int) $this->spreadsheet_id, (int) $this->activeSheetTabId)) {
+            $this->cellData = [];
+        }
+
         $cells = $this->cellsQuery()
             ->whereBetween('row_index', [$startRow, $endRow])
             ->whereBetween('col_index', [$startCol, $endCol])
@@ -585,6 +597,7 @@ class ShowSpreadsheet extends Component
                 'raw_value' => $cell->raw_value,
                 'computed_value' => $cell->computed_value,
                 'formula' => $cell->formula,
+                'formula_error' => $cell->formula_error,
                 'formatting' => $this->normalizeArrayValue($cell->formatting ?? []),
             ];
         }
@@ -676,6 +689,7 @@ class ShowSpreadsheet extends Component
                 'value' => $displayValue,
                 'raw_value' => $cell['raw_value'] ?? '',
                 'formula' => $cell['formula'],
+                'formula_error' => $cell['formula_error'] ?? null,
                 'formatting' => $formatting,
                 'isEditing' => $this->editingCell === $key,
             ];
@@ -762,7 +776,7 @@ class ShowSpreadsheet extends Component
 
         $this->editingCell = "{$row}_{$col}";
         $cell = $this->getCellData($row, $col);
-        $this->editingValue = $cell['raw_value'] ?? '';
+        $this->editingValue = $cell['formula'] ?: ($cell['raw_value'] ?? '');
     }
 
     #[On('cell-edit-complete')]
@@ -792,7 +806,8 @@ class ShowSpreadsheet extends Component
 
         // Everything from reading the cell to writing it and its history is one transaction that
         // re-checks the structure version first (see guardedWrite()).
-        $written = $this->guardedWrite(function () use ($value, $row, $col, &$invalid, &$cell, &$oldValue, &$oldState, &$rawValue, &$computedValue, &$formula) {
+        $recalculated = [];
+        $written = $this->guardedWrite(function () use ($value, $row, $col, &$invalid, &$cell, &$oldValue, &$oldState, &$rawValue, &$computedValue, &$formula, &$recalculated) {
             // Find or create cell
             $cell = $this->cellsQuery()
                 ->where('row_index', $row)
@@ -819,9 +834,8 @@ class ShowSpreadsheet extends Component
             $isFormula = str_starts_with($value, '=');
 
             if ($isFormula) {
-                // Parse and evaluate formula
-                $result = $this->evaluateFormula($value);
-                $computedValue = $result['error'] ? '#ERROR' : $result['value'];
+                // Worked out below, with everything that depends on this cell.
+                $computedValue = null;
                 $formula = $value;
                 $rawValue = '';
             } else {
@@ -858,6 +872,11 @@ class ShowSpreadsheet extends Component
                 'new_value' => $value,
                 'created_at' => now(),
             ]);
+
+            // This cell's formula (if any) and every formula that reads it, in the same transaction.
+            $recalculated = app(Recalculator::class)->cellsWritten((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, [[$row, $col]]);
+            $cell->refresh();
+            $computedValue = $cell->computed_value;
         });
 
         if (! $written) {
@@ -880,8 +899,15 @@ class ShowSpreadsheet extends Component
             'raw_value' => $rawValue,
             'computed_value' => $computedValue,
             'formula' => $formula,
+            'formula_error' => $cell->formula_error,
             'formatting' => $this->normalizeArrayValue($cell->formatting ?? []),
         ];
+
+        // Other formulas changed with it: show their new results.
+        if (array_diff($recalculated, ["{$this->activeSheetTabId}:{$row}:{$col}"]) !== []) {
+            $this->loadedWindows = [];
+            $this->loadViewportCells(true);
+        }
 
         // Clear editing state
         $this->editingCell = null;
@@ -987,13 +1013,6 @@ class ShowSpreadsheet extends Component
         }
 
         app(SheetVersions::class)->snapshot((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, Auth::id(), SheetVersions::AUTO, 'Auto Snapshot');
-    }
-
-    public function evaluateFormula($formula)
-    {
-        $evaluator = new FormulaEvaluatorService;
-
-        return $evaluator->evaluate($formula, $this->spreadsheet_id, $this->activeSheetTabId);
     }
 
     /**
@@ -1717,6 +1736,7 @@ class ShowSpreadsheet extends Component
             }
 
             StructureVersion::bump((int) $this->spreadsheet_id);
+            app(Recalculator::class)->markStale((int) $this->spreadsheet_id, (int) $this->activeSheetTabId);
             $sorted = true;
         });
 
@@ -2007,6 +2027,13 @@ class ShowSpreadsheet extends Component
                 'formula' => $formula,
                 'formatting' => $this->normalizeArrayValue($cell->formatting ?? []),
             ];
+        }
+
+        // The value put back may be a formula, and other formulas may read this cell: work them out.
+        $recalculated = app(Recalculator::class)->cellsWritten((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, [[$row, $col]]);
+        if ($recalculated !== []) {
+            $this->loadedWindows = [];
+            $this->loadViewportCells(true);
         }
 
         Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->activeSheetTabId}:cell_values");

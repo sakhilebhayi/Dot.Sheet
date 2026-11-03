@@ -266,7 +266,7 @@ class SpreadsheetExportTest extends TestCase
         $this->cell(0, 0, 'a');
         $this->cell(0, 1, 'He said "hi", then left');
         $this->cell(1, 1, "two\nlines");
-        $this->cell(2, 0, '', '10', '=SUM(A1:A2)');
+        $this->cell(2, 0, '', '10', '=5+5');
 
         $csv = app(SpreadsheetImportExportService::class)->exportCsv($this->spreadsheet);
 

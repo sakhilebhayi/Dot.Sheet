@@ -6,6 +6,7 @@ use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\NamedRange;
 use App\Models\Spreadsheet;
+use App\Services\Formula\Recalculator;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Locked;
@@ -195,5 +196,10 @@ class NamedRangesPanel extends Component
     {
         Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->sheet_tab_id}:named_ranges");
         Cache::forget("spreadsheet:{$this->spreadsheet_id}:tab:{$this->sheet_tab_id}:formula_dependency_graph");
+
+        // A formula using the name now reads a different range, or none: work the sheet out again.
+        if ($this->sheet_tab_id) {
+            app(Recalculator::class)->markStale((int) $this->spreadsheet_id, (int) $this->sheet_tab_id);
+        }
     }
 }

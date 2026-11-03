@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Services\CellFormat;
 use App\Services\CellWriter;
 use App\Services\Formula\FunctionCatalogue;
 use App\Services\Formula\Recalculator;
+use App\Services\RangeCopy;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\StructureVersion;
@@ -25,11 +27,16 @@ use Illuminate\View\View;
  */
 class GridController extends Controller
 {
+    public function __construct(private Recalculator $recalculator) {}
+
     /** Most rows one window of cells may ask for. */
     private const MAX_WINDOW_ROWS = 1000;
 
-    /** Most edits one request may carry. */
-    private const MAX_EDITS = 500;
+    /** Most edits one request may carry: undoing a move writes both its ends. */
+    private const MAX_EDITS = RangeCopy::MAX_CELLS * 2;
+
+    /** Most changed cells sent back with an answer; past it, the browser reloads what it holds. */
+    private const MAX_ANSWERED = 500;
 
     /** Most cells one format request may touch. */
     private const MAX_FORMATTED = 5000;
@@ -105,45 +112,59 @@ class GridController extends Controller
             'edits.*.row' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_ROWS - 1),
             'edits.*.col' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
             'edits.*.value' => 'present|nullable|string|max:32767',
+            'edits.*.x' => 'sometimes|nullable|array',
         ]);
 
-        $edits = array_map(fn (array $e) => ['row' => (int) $e['row'], 'col' => (int) $e['col'], 'value' => (string) ($e['value'] ?? '')], $input['edits']);
+        $edits = array_map(function (array $e) {
+            $edit = ['row' => (int) $e['row'], 'col' => (int) $e['col'], 'value' => (string) ($e['value'] ?? '')];
 
-        $result = null;
-        $written = false;
-        $busy = false;
-        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $edits, $writer, &$result, &$written) {
-            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($spreadsheet, $sheetTab, $edits, $writer, &$result) {
-                $result = $writer->write($spreadsheet->id, $sheetTab->id, $edits, (int) Auth::id());
-                app(SheetVersions::class)->autoSnapshot($spreadsheet->id, $sheetTab->id, (int) Auth::id());
-            });
-        }, function () use (&$busy) {
-            $busy = true;
-        });
+            return array_key_exists('x', $e) ? $edit + ['x' => CellFormat::clean($e['x'])] : $edit;
+        }, $input['edits']);
 
-        if ($busy) {
-            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
-        }
-        if (! $written) {
-            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
-        }
+        return $this->commit($spreadsheet, $sheetTab, (int) $input['version'], fn () => [$sheetTab->id => $edits], $writer);
+    }
 
-        // What changed on this sheet: the edited cells and every formula worked out because of them.
-        $changed = array_map(fn (array $e) => $e['row'].':'.$e['col'], $edits);
-        foreach ($result['recalculated'] as $node) {
-            [$tab, $row, $col] = explode(':', $node);
-            if ((int) $tab === $sheetTab->id) {
-                $changed[] = $row.':'.$col;
-            }
-        }
+    /**
+     * Copy or move a rectangle to another place in the workbook, formulas and formatting with it.
+     */
+    public function paste(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer, RangeCopy $copy): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
 
-        return response()->json([
-            'refused' => $result['refused'],
-            'cells' => $this->cellsAt($sheetTab->id, array_values(array_unique($changed))),
-            // An answer of many cells changed shape somewhere: the browser reloads what it holds.
-            'reload' => Cell::where('sheet_tab_id', $sheetTab->id)->whereNotNull('spill_rows')->exists(),
-            'version' => StructureVersion::current($spreadsheet->id),
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'from_tab' => 'required|integer',
+            'r1' => 'required|integer|min:0',
+            'r2' => 'required|integer|gte:r1',
+            'c1' => 'required|integer|min:0',
+            'c2' => 'required|integer|gte:c1',
+            'row' => 'required|integer|min:0',
+            'col' => 'required|integer|min:0',
+            'rows' => 'required|integer|min:1',
+            'cols' => 'required|integer|min:1',
+            'cut' => 'sometimes|boolean',
         ]);
+
+        $source = SheetTab::whereKey($input['from_tab'])->where('spreadsheet_id', $spreadsheet->id)->first();
+        abort_if($source === null, 404);
+
+        $area = array_intersect_key($input, array_flip(['r1', 'r2', 'c1', 'c2']));
+        $target = RangeCopy::target($area, (int) $input['row'], (int) $input['col'], (int) $input['rows'], (int) $input['cols']);
+        if ($target['r2'] >= SheetStructureService::GRID_ROWS || $target['c2'] >= SheetStructureService::GRID_COLS) {
+            return response()->json(['message' => 'That does not fit on the sheet from here.'], 422);
+        }
+        if (($target['r2'] - $target['r1'] + 1) * ($target['c2'] - $target['c1'] + 1) > RangeCopy::MAX_CELLS) {
+            return response()->json(['message' => 'Paste fewer cells at a time: '.number_format(RangeCopy::MAX_CELLS).' at most.'], 422);
+        }
+
+        return $this->commit(
+            $spreadsheet,
+            $sheetTab,
+            (int) $input['version'],
+            fn () => $copy->plan($source->id, $area, $sheetTab->id, $target, (bool) ($input['cut'] ?? false)),
+            $writer,
+            ['area' => $target],
+        );
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse
@@ -166,10 +187,13 @@ class GridController extends Controller
         }
 
         $patch = array_intersect_key($input, array_flip(['bold', 'number_format']));
+        $undo = [];
         $written = false;
         $busy = false;
-        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $patch, $writer, &$written) {
-            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], fn () => $writer->format($spreadsheet->id, $sheetTab->id, $input, $patch));
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $patch, $writer, &$written, &$undo) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($spreadsheet, $sheetTab, $input, $patch, $writer, &$undo) {
+                $undo = $writer->format($spreadsheet->id, $sheetTab->id, $input, $patch);
+            });
         }, function () use (&$busy) {
             $busy = true;
         });
@@ -181,7 +205,7 @@ class GridController extends Controller
             return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
         }
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'undo' => [['tab' => $sheetTab->id, 'edits' => $undo]]]);
     }
 
     public function trace(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $row, int $col, Recalculator $recalculator): JsonResponse
@@ -227,6 +251,73 @@ class GridController extends Controller
         }
 
         return response()->json(['sum' => $sum, 'average' => $numbers > 0 ? $sum / $numbers : null, 'count' => $count, 'numbers' => $numbers]);
+    }
+
+    /**
+     * Write edits to one or more sheets as one change, and answer with what this sheet now shows and
+     * how to put everything back.
+     *
+     * @param  callable(): array<int, list<array{row: int, col: int, value: string, x?: array<string, mixed>|null}>>  $plan  sheet id => edits, read inside the lock
+     * @param  array<string, mixed>  $extra
+     */
+    private function commit(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, callable $plan, CellWriter $writer, array $extra = []): JsonResponse
+    {
+        $results = [];
+        $plans = [];
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $version, $plan, $writer, &$results, &$plans, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, $version, function () use ($spreadsheet, $sheetTab, $plan, $writer, &$results, &$plans) {
+                $plans = $plan();
+                foreach ($plans as $tab => $edits) {
+                    $results[$tab] = $writer->write($spreadsheet->id, $tab, $edits, (int) Auth::id());
+                }
+                app(SheetVersions::class)->autoSnapshot($spreadsheet->id, $sheetTab->id, (int) Auth::id());
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        foreach ($results as $tab => $result) {
+            if ($result['stale']) {
+                $this->recalculator->ensureBuilt($spreadsheet->id, $tab);
+            }
+        }
+
+        // What changed on this sheet: the edited cells and every formula worked out because of them.
+        $here = $results[$sheetTab->id] ?? ['recalculated' => [], 'refused' => [], 'stale' => false];
+        $changed = array_map(fn (array $e) => $e['row'].':'.$e['col'], $plans[$sheetTab->id] ?? []);
+        foreach ($results as $result) {
+            foreach ($result['recalculated'] as $node) {
+                [$tab, $row, $col] = explode(':', $node);
+                if ((int) $tab === $sheetTab->id) {
+                    $changed[] = $row.':'.$col;
+                }
+            }
+        }
+        $large = $here['stale'] || count($changed) > self::MAX_ANSWERED;
+
+        $undo = [];
+        foreach ($results as $tab => $result) {
+            $undo[] = ['tab' => $tab, 'edits' => $result['undo']];
+        }
+
+        return response()->json([
+            'refused' => $here['refused'],
+            'cells' => $large ? [] : $this->cellsAt($sheetTab->id, array_values(array_unique($changed))),
+            // An answer of many cells changed shape somewhere: the browser reloads what it holds.
+            'reload' => $large || Cell::where('sheet_tab_id', $sheetTab->id)->whereNotNull('spill_rows')->exists(),
+            'undo' => $undo,
+            'version' => StructureVersion::current($spreadsheet->id),
+            ...$extra,
+        ]);
     }
 
     private function authorizeTab(string $ability, Spreadsheet $spreadsheet, SheetTab $sheetTab): void

@@ -116,6 +116,59 @@ final class FormulaText
         return $formula;
     }
 
+    /**
+     * The formula as it reads after moving by rows and cols: relative references follow, $ anchors stay.
+     * A reference pushed off the sheet becomes #REF!, as it does in a spreadsheet.
+     */
+    public static function moved(string $formula, int $rows, int $cols): string
+    {
+        foreach (array_reverse(self::references($formula)) as $reference) {
+            $start = $reference['offset'] + $reference['sheetLength'];
+            $length = $reference['length'] - $reference['sheetLength'];
+            $moved = self::movedReference(substr($formula, $start, $length), $rows, $cols);
+
+            $formula = $moved === null
+                ? substr_replace($formula, '#REF!', $reference['offset'], $reference['length'])
+                : substr_replace($formula, $moved, $start, $length);
+        }
+
+        return $formula;
+    }
+
+    /**
+     * @return string|null null when the reference leaves the sheet
+     */
+    private static function movedReference(string $reference, int $rows, int $cols): ?string
+    {
+        $ends = [];
+        foreach (explode(':', $reference) as $end) {
+            preg_match('/^(\$?)([A-Za-z]*)(\$?)(\d*)$/', $end, $m);
+            [, $firstAnchor, $letters, $rowAnchor, $digits] = $m;
+            if ($letters === '') {
+                $rowAnchor = $firstAnchor;   // a whole row: $2
+            }
+
+            $text = '';
+            if ($letters !== '') {
+                $col = self::columnIndex($letters) + ($firstAnchor === '' ? $cols : 0);
+                if ($col < 0 || $col >= SheetStructureService::GRID_COLS) {
+                    return null;
+                }
+                $text = $firstAnchor.self::columnLetters($col);
+            }
+            if ($digits !== '') {
+                $row = (int) $digits + ($rowAnchor === '' ? $rows : 0);
+                if ($row < 1 || $row > SheetStructureService::GRID_ROWS) {
+                    return null;
+                }
+                $text .= $rowAnchor.$row;
+            }
+            $ends[] = $text;
+        }
+
+        return implode(':', $ends);
+    }
+
     public static function columnIndex(string $letters): int
     {
         $index = 0;

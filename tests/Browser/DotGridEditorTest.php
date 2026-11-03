@@ -75,6 +75,20 @@ class DotGridEditorTest extends DuskTestCase
         JS, [$row, $col]);
     }
 
+    /**
+     * Fire a clipboard event. Real keys differ by platform here (Ctrl or Cmd), and these events are what
+     * the page listens to.
+     */
+    private function clipboard(Browser $browser, string $type, ?string $text = null): string
+    {
+        return (string) $browser->driver->executeScript(<<<'JS'
+            const data = new DataTransfer();
+            if (arguments[1] !== null) data.setData('text/plain', arguments[1]);
+            document.getElementById('sheet').dispatchEvent(new ClipboardEvent(arguments[0], { clipboardData: data, bubbles: true, cancelable: true }));
+            return data.getData('text/plain');
+        JS, [$type, $text]);
+    }
+
     private function assertNoConsoleErrors(Browser $browser): void
     {
         $errors = collect($browser->driver->manage()->getLog('browser'))
@@ -223,6 +237,143 @@ class DotGridEditorTest extends DuskTestCase
             $browser->assertMissing('.edit');
             $this->assertSame('1000', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->value('raw_value'));
             $browser->assertSeeIn('#note', 'You can read this sheet');
+        });
+    }
+
+    public function test_undo_and_redo_with_the_keyboard(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 1);
+
+            $browser->keys('#sheet', '2000', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 1) === '1 600');
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 1) === '600');
+            $this->assertSame('1 000', $this->cell($browser, 0, 1));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 1) === '1 600');
+
+            $this->assertSame('2000', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->value('raw_value'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_copy_and_paste_a_formula_inside_the_sheet(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+
+            $this->assertSame('600', $this->clipboard($browser, 'copy'));
+            $this->assertSame(1, $browser->driver->executeScript("return document.querySelectorAll('.c.copied').length"));
+
+            $this->clickCell($browser, 2, 2);
+            $this->clipboard($browser, 'paste', '600');
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->exists());
+
+            $this->assertSame('=SUM(C1:C2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->value('formula'));
+
+            // Copied cells stay marked until Escape.
+            $browser->keys('#sheet', WebDriverKeys::ESCAPE);
+            $this->assertSame(0, $browser->driver->executeScript("return document.querySelectorAll('.c.copied').length"));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_real_copy_and_paste_keys_work(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $command = PHP_OS_FAMILY === 'Darwin' ? WebDriverKeys::META : WebDriverKeys::CONTROL;
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $command) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+
+            $browser->keys('#sheet', [$command, 'c']);
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript("return document.querySelectorAll('.c.copied').length === 1"));
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $this->clickCell($browser, 2, 2);
+            $browser->keys('#sheet', [$command, 'v']);
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->exists());
+
+            $this->assertSame('=SUM(C1:C2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->value('formula'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_cut_moves_cells_and_undo_brings_them_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+
+            $text = $this->clipboard($browser, 'cut');
+            $this->clickCell($browser, 5, 3);
+            $this->clipboard($browser, 'paste', $text);
+
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 5, 3) === 'Sales');
+            $this->assertSame('', $this->cell($browser, 0, 0));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertSame('', $this->cell($browser, 5, 3));
+            $this->assertSame(0, Cell::where('sheet_tab_id', $tab->id)->where('row_index', 5)->count());
+        });
+    }
+
+    public function test_text_from_another_program_lands_in_rows_and_columns(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 5, 0);
+
+            $this->clipboard($browser, 'paste', "Stock\t120\r\n\"Two\nlines\"\t80\r\n");
+
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 6)->where('col_index', 1)->exists());
+            $this->assertSame('Stock', $this->cell($browser, 5, 0));
+            $this->assertSame('120', $this->cell($browser, 5, 1));
+            $this->assertSame("Two\nlines", Cell::where('sheet_tab_id', $tab->id)->where('row_index', 6)->where('col_index', 0)->value('raw_value'));
+            $browser->assertSeeIn('#s-count', '4');
+        });
+    }
+
+    public function test_clicking_cells_writes_them_into_a_formula(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 1);
+
+            $browser->keys('#sheet', '=');
+            $browser->waitFor('.edit');
+            $this->clickCell($browser, 0, 1);
+            $browser->assertInputValue('#line', '=B1');
+
+            // Clicking again changes the mind about the same reference.
+            $this->clickCell($browser, 1, 1);
+            $browser->assertInputValue('#line', '=B2');
+
+            $browser->keys('.edit', '+');
+            $this->clickCell($browser, 0, 1);
+            $browser->assertInputValue('#line', '=B2+B1');
+
+            $browser->keys('.edit', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 4, 1) === '600');
+            $this->assertSame('=B2+B1', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formula'));
+            $this->assertNoConsoleErrors($browser);
         });
     }
 }

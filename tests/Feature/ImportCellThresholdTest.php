@@ -16,9 +16,6 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
-use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Excel as ExcelWriter;
-use Maatwebsite\Excel\Facades\Excel;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -73,15 +70,7 @@ class ImportCellThresholdTest extends TestCase
     /** @param  list<list<mixed>>  $grid */
     private function xlsx(array $grid): UploadedFile
     {
-        $content = Excel::raw(new class($grid) implements FromArray
-        {
-            public function __construct(private array $grid) {}
-
-            public function array(): array
-            {
-                return $this->grid;
-            }
-        }, ExcelWriter::XLSX);
+        $content = $this->xlsxBytes($grid);
 
         return UploadedFile::fake()->createWithContent('data.xlsx', $content);
     }

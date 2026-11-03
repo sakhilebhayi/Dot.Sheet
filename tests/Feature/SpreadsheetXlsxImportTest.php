@@ -8,8 +8,6 @@ use App\Models\User;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Facades\Excel;
 use Tests\TestCase;
 
 class SpreadsheetXlsxImportTest extends TestCase
@@ -19,13 +17,7 @@ class SpreadsheetXlsxImportTest extends TestCase
     public function test_xlsx_file_can_be_imported_into_a_spreadsheet(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'xlsx');
-        file_put_contents($path, Excel::raw(new class implements FromArray
-        {
-            public function array(): array
-            {
-                return [['Name', 'Qty'], ['Widget', 3]];
-            }
-        }, \Maatwebsite\Excel\Excel::XLSX));
+        file_put_contents($path, $this->xlsxBytes([['Name', 'Qty'], ['Widget', 3]]));
 
         $user = User::factory()->create();
         $spreadsheet = Spreadsheet::create([

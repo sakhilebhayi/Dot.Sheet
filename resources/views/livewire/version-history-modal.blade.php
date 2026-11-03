@@ -30,7 +30,7 @@
                                     @if(!empty($version['user']['name']))
                                         · by {{ $version['user']['name'] }}
                                     @endif
-                                    · {{ count($version['cells_snapshot'] ?? []) }} cells
+                                    · {{ number_format((int) ($version['cell_count'] ?? 0)) }} cells
                                 </div>
                             </div>
                             @if ($canEdit)

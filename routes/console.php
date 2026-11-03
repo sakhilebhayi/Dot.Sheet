@@ -26,3 +26,6 @@ Schedule::job(new QueueHeartbeat)->everyFiveMinutes()->name('queue-heartbeat');
 
 // An Excel export is deleted after it is sent; one whose download was cancelled stays behind.
 Schedule::command('sheet:prune-exports')->hourly()->name('prune-exports')->withoutOverlapping();
+
+// Automatic and safety copies of each sheet beyond the newest few (SheetVersions::KEEP_*); copies people made stay.
+Schedule::command('sheet:prune-versions')->dailyAt('03:20')->name('prune-versions')->withoutOverlapping();

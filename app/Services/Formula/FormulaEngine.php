@@ -5,6 +5,7 @@ namespace App\Services\Formula;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Calculation\Calculation;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet as Workbook;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
@@ -39,7 +40,7 @@ class FormulaEngine
         '#NUM!' => 'The calculation gives a number that is not valid, or too large.',
         '#N/A' => 'A value the formula looks for was not found.',
         '#NULL!' => 'Two ranges in the formula do not overlap.',
-        '#SPILL!' => 'The result needs more cells, and something is in the way.',
+        '#SPILL!' => 'The answer needs more cells, and something is in the way.',
         '#CALC!' => 'The calculation gives no result, such as a filter that matches nothing.',
     ];
 
@@ -99,7 +100,7 @@ class FormulaEngine
      * Work one formula out in the current pass. Its result takes the formula's place in the
      * in-memory workbook, so a formula evaluated after it reads the new value.
      *
-     * @return array{value: string, error: ?string}
+     * @return array{value: string, error: ?string, spill?: list<list<string>>}
      */
     public function evaluate(int $sheetTabId, int $row, int $col, string $formula): array
     {
@@ -133,7 +134,8 @@ class FormulaEngine
 
             $sheet = $this->sheet($sheetTabId);
             $sheet->setCellValueExplicit($target, $text, DataType::TYPE_FORMULA);
-            $result = $this->result($sheet->getCell($target)->getCalculatedValue());
+            // The whole answer comes back; placing it (or refusing to) is the Recalculator's job.
+            $result = $this->result($this->workbook->getCalculationEngine()->calculateCellValue($sheet->getCell($target)));
         } catch (\Throwable $e) {
             $result = ['value' => self::UNREADABLE, 'error' => 'This formula could not be read: '.$this->reason($e->getMessage())];
         }
@@ -151,6 +153,7 @@ class FormulaEngine
         $this->workbook->removeSheetByIndex(0);
         // Each cell is calculated once and then holds its value: nothing here repeats.
         $this->workbook->getCalculationEngine()->setCalculationCacheEnabled(false);
+        $this->workbook->getCalculationEngine()->setInstanceArrayReturnType(Calculation::RETURN_ARRAY_AS_ARRAY);
         $this->sheets = [];
         $this->loaded = [];
         $this->held = 0;
@@ -191,11 +194,12 @@ class FormulaEngine
             ->where('spreadsheet_id', $this->spreadsheetId)->where('sheet_tab_id', $tabId)
             ->whereBetween('row_index', [$r1, $r2])
             ->whereBetween('col_index', [$c1, $c2])
-            ->select('row_index', 'col_index', 'raw_value', 'computed_value', 'formula')
+            ->select('row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'spill_row')
             ->cursor();
 
         foreach ($cells as $cell) {
-            $this->put($sheet, (int) $cell->row_index, (int) $cell->col_index, $cell->formula !== null ? $cell->computed_value : $cell->raw_value);
+            $worked = $cell->formula !== null || $cell->spill_row !== null;
+            $this->put($sheet, (int) $cell->row_index, (int) $cell->col_index, $worked ? $cell->computed_value : $cell->raw_value);
             $count++;
         }
 
@@ -272,25 +276,56 @@ class FormulaEngine
     }
 
     /**
-     * @return array{value: string, error: ?string}
+     * @return array{value: string, error: ?string, spill?: list<list<string>>}
      */
     protected function result(mixed $value): array
     {
-        while (is_array($value)) {
-            $value = $value === [] ? null : reset($value);   // the top-left of an array result (spilling is S2c)
+        if (is_array($value)) {
+            $grid = [];
+            foreach (array_values($value) as $row) {
+                $grid[] = array_map(fn (mixed $cell) => $this->text($cell, ''), is_array($row) ? array_values($row) : [$row]);
+            }
+
+            $height = count($grid);
+            $width = $height === 0 ? 0 : max(array_map('count', $grid));
+            if ($height === 0 || $width === 0) {
+                return ['value' => '0', 'error' => null];
+            }
+
+            $top = $grid[0][0] ?? '';
+            if ($height === 1 && $width === 1) {
+                return ['value' => $top, 'error' => self::EXPLANATIONS[$top] ?? null];
+            }
+
+            return ['value' => $top, 'error' => self::EXPLANATIONS[$top] ?? null, 'spill' => $grid];
         }
 
-        if (is_string($value) && in_array($value, self::ERRORS, true)) {
-            return ['value' => $value, 'error' => self::EXPLANATIONS[$value]];
-        }
+        $text = $this->text($value, '0');
 
-        return ['value' => match (true) {
-            $value === null => '0',
+        return ['value' => $text, 'error' => is_string($value) ? (self::EXPLANATIONS[$value] ?? null) : null];
+    }
+
+    private function text(mixed $value, string $empty): string
+    {
+        return match (true) {
+            $value === null => $empty,
             is_bool($value) => $value ? 'TRUE' : 'FALSE',
             is_int($value) => (string) $value,
             is_float($value) => self::number($value),
+            is_array($value) => $this->text(reset($value), $empty),
             default => (string) $value,
-        }, 'error' => null];
+        };
+    }
+
+    /**
+     * Put a value in the pass's workbook without storing it: a part of a spilled answer, so a formula
+     * evaluated later in the pass reads it.
+     */
+    public function place(int $sheetTabId, int $row, int $col, ?string $value): void
+    {
+        if ($this->workbook !== null) {
+            $this->put($this->sheet($sheetTabId), $row, $col, $value);
+        }
     }
 
     /**

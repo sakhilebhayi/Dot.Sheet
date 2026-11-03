@@ -131,6 +131,12 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
                 ->assertInputValue($this->cell(0, 1).' input', '=A1*10')
                 ->keys($this->cell(0, 1).' input', '{escape}')->settle();
 
+            // An answer of many cells fills them.
+            $enter(5, 0, '=SEQUENCE(3)');
+            $browser->assertSeeIn($this->cell(5, 0), '1')
+                ->assertSeeIn($this->cell(6, 0), '2')
+                ->assertSeeIn($this->cell(7, 0), '3');
+
             $enter(1, 0, '=1/0');
             $browser->assertSeeIn($this->cell(1, 0), '#DIV/0!')
                 ->assertAttribute($this->cell(1, 0).' > div', 'title', 'The formula divides by zero or by an empty cell.');

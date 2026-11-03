@@ -807,7 +807,8 @@ class ShowSpreadsheet extends Component
         // Everything from reading the cell to writing it and its history is one transaction that
         // re-checks the structure version first (see guardedWrite()).
         $recalculated = [];
-        $written = $this->guardedWrite(function () use ($value, $row, $col, &$invalid, &$cell, &$oldValue, &$oldState, &$rawValue, &$computedValue, &$formula, &$recalculated) {
+        $hadSpill = false;
+        $written = $this->guardedWrite(function () use ($value, $row, $col, &$invalid, &$cell, &$oldValue, &$oldState, &$rawValue, &$computedValue, &$formula, &$recalculated, &$hadSpill) {
             // Find or create cell
             $cell = $this->cellsQuery()
                 ->where('row_index', $row)
@@ -815,6 +816,7 @@ class ShowSpreadsheet extends Component
                 ->first();
 
             $oldValue = $cell?->raw_value;
+            $hadSpill = $cell?->spill_rows !== null;
             $oldState = [
                 'raw_value' => $cell?->raw_value,
                 'computed_value' => $cell?->computed_value,
@@ -903,8 +905,9 @@ class ShowSpreadsheet extends Component
             'formatting' => $this->normalizeArrayValue($cell->formatting ?? []),
         ];
 
-        // Other formulas changed with it: show their new results.
-        if (array_diff($recalculated, ["{$this->activeSheetTabId}:{$row}:{$col}"]) !== []) {
+        // Other formulas, or the cells an answer lands on, changed with it: show them.
+        if ($hadSpill || $cell->spill_rows !== null || array_diff($recalculated, ["{$this->activeSheetTabId}:{$row}:{$col}"]) !== []) {
+            $this->cellData = [];
             $this->loadedWindows = [];
             $this->loadViewportCells(true);
         }
@@ -2032,6 +2035,7 @@ class ShowSpreadsheet extends Component
         // The value put back may be a formula, and other formulas may read this cell: work them out.
         $recalculated = app(Recalculator::class)->cellsWritten((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, [[$row, $col]]);
         if ($recalculated !== []) {
+            $this->cellData = [];
             $this->loadedWindows = [];
             $this->loadViewportCells(true);
         }

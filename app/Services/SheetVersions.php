@@ -36,7 +36,8 @@ class SheetVersions
     public function snapshot(int $spreadsheetId, int $sheetTabId, ?int $userId, string $kind, string $label): SpreadsheetVersion
     {
         $cells = [];
-        foreach ($this->cells($spreadsheetId, $sheetTabId)->orderBy('row_index')->orderBy('col_index')->lazy(1000) as $cell) {
+        // Cells a formula's answer landed on are not content: the formula puts them back.
+        foreach ($this->cells($spreadsheetId, $sheetTabId)->whereNull('spill_row')->orderBy('row_index')->orderBy('col_index')->lazy(1000) as $cell) {
             $cells[] = $this->snapshotCell($cell);
         }
 
@@ -66,6 +67,8 @@ class SheetVersions
         $sheetTabId = (int) $version->sheet_tab_id;
 
         $this->snapshot($spreadsheetId, $sheetTabId, $userId, self::SAFETY, 'Before restoring “'.$version->label.'” of '.$version->created_at?->format('j M Y H:i'));
+
+        $this->cells($spreadsheetId, $sheetTabId)->whereNotNull('spill_row')->delete();
 
         $wanted = [];
         foreach ($version->cells_snapshot ?? [] as $cell) {

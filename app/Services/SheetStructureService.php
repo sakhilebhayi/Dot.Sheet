@@ -455,6 +455,13 @@ class SheetStructureService
         $recalculator = app(Recalculator::class);
         $recalculator->refreshDependencies($spreadsheetId, $sheetTabId);
 
+        // A spilled answer sits on cells that just moved: it is laid out again on the next read.
+        if (DB::table('cells')->where('sheet_tab_id', $sheetTabId)->whereNotNull('spill_rows')->exists()) {
+            $recalculator->markStale($spreadsheetId, $sheetTabId);
+
+            return;
+        }
+
         if ($recompute === []) {
             return;
         }

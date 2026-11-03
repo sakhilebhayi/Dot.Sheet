@@ -4,7 +4,8 @@ name: CI
 # before anything is shipped. One required check, "Quality gate", sums it up.
 #
 # What gates and what only informs:
-#   gates:   the PHP test suite, Pint (code style), PHPStan (larastan, level 5,
+#   gates:   the PHP test suite, the browser tests (Dusk: real Chrome against
+#            `php artisan serve`, failing on any console error), Pint (code style), PHPStan (larastan, level 5,
 #            with phpstan-baseline.neon holding the findings that existed when
 #            it was switched on: NEW findings fail, old ones are paid down by
 #            deleting baseline entries), the frontend build and a check that
@@ -129,6 +130,61 @@ jobs:
           print('OK')
           PY
 
+  browser:
+    name: Browser tests (Dusk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+          extensions: mbstring, intl, sqlite3, pdo_sqlite, bcmath, gd, zip, xml, fileinfo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies and build the assets
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund
+          npm run build
+
+      # The browser and the test share one database: a file, not the in-memory one of the PHP tests.
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/dusk.sqlite
+          sed -i "s|^APP_URL=.*|APP_URL=http://127.0.0.1:8000|" .env
+          sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite\nDB_DATABASE=${GITHUB_WORKSPACE}/database/dusk.sqlite|" .env
+          php artisan migrate --force
+
+      - name: ChromeDriver for the installed Chrome
+        run: php artisan dusk:chrome-driver --detect
+
+      - name: Serve the app
+        run: PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --port=8000 --no-reload > storage/logs/serve.log 2>&1 &
+
+      - name: Browser tests
+        run: php artisan dusk
+
+      - name: Keep screenshots, console output and logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dusk-failure
+          path: |
+            tests/Browser/screenshots
+            tests/Browser/console
+            storage/logs
+          retention-days: 7
+
   audit:
     name: Dependency audit (informational)
     runs-on: ubuntu-latest
@@ -154,14 +210,16 @@ jobs:
   gate:
     name: Quality gate (all checks must pass)
     runs-on: ubuntu-latest
-    needs: [tests, static-analysis, assets]
+    needs: [tests, static-analysis, assets, browser]
     if: always()
     steps:
-      - name: Require tests, static analysis and assets to have passed
+      - name: Require tests, static analysis, assets and browser tests to have passed
         run: |
           echo "tests:           ${{ needs.tests.result }}"
           echo "static-analysis: ${{ needs.static-analysis.result }}"
           echo "assets:          ${{ needs.assets.result }}"
+          echo "browser:         ${{ needs.browser.result }}"
           [ "${{ needs.tests.result }}" = "success" ] || exit 1
           [ "${{ needs.static-analysis.result }}" = "success" ] || exit 1
           [ "${{ needs.assets.result }}" = "success" ] || exit 1
+          [ "${{ needs.browser.result }}" = "success" ] || exit 1

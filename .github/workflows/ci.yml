@@ -169,7 +169,7 @@ jobs:
         run: php artisan dusk:chrome-driver --detect
 
       - name: Serve the app
-        run: PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --port=8000 > storage/logs/serve.log 2>&1 &
+        run: PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --port=8000 --no-reload > storage/logs/serve.log 2>&1 &
 
       - name: Browser tests
         run: php artisan dusk

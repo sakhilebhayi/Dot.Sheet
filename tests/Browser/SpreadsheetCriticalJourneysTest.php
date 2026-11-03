@@ -5,7 +5,7 @@ namespace Tests\Browser;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;
 
@@ -16,7 +16,7 @@ use Tests\DuskTestCase;
  */
 class SpreadsheetCriticalJourneysTest extends DuskTestCase
 {
-    use DatabaseMigrations;
+    use DatabaseTruncation;
 
     private function sheetFor(User $user, string $name = 'Browser sheet'): Spreadsheet
     {
@@ -42,6 +42,8 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
     {
         $errors = collect($browser->driver->manage()->getLog('browser'))
             ->filter(fn (array $entry) => ($entry['level'] ?? '') === 'SEVERE')
+            // The web fonts are refused on purpose (DuskTestCase).
+            ->reject(fn (array $entry) => str_contains($entry['message'] ?? '', 'fonts.g'))
             ->pluck('message')
             ->values()
             ->all();
@@ -57,12 +59,15 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
             $browser->visit('/login')
                 ->type('#email', $user->email)
                 ->type('#password', 'password')
-                ->press('Sign in')
-                ->assertPathIs('/dashboard')
+                // Submitting navigates away while the click is still being answered: wait for the next page.
+                ->keys('#password', '{enter}')
+                ->waitForLocation('/dashboard')
                 ->visit('/spreadsheets/create')
+                ->waitFor('#name')
                 ->type('#name', 'Dusk Flow Sheet')
-                ->press('Create Spreadsheet')
-                ->waitFor('#gridContainer')
+                ->assertInputValue('#name', 'Dusk Flow Sheet')
+                ->keys('#name', '{enter}')
+                ->waitFor('#gridContainer', 15)
                 ->assertPathBeginsWith('/spreadsheets/');
 
             $this->assertNoConsoleErrors($browser);
@@ -78,20 +83,19 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->visit('/spreadsheets/'.$sheet->id)
-                ->waitFor($this->cell(2, 1))
+                ->openLivewire('/spreadsheets/'.$sheet->id)
                 // Selecting cells is a round trip each time: it must leave the page working.
-                ->click($this->cell(3, 2))
-                ->waitFor($this->cell(3, 2).'.ring-2')
-                ->click($this->cell(0, 0))
-                ->waitFor($this->cell(0, 0).'.ring-2')
+                ->click($this->cell(3, 2))->settle()
+                ->assertPresent($this->cell(3, 2).'.ring-2')
+                ->click($this->cell(0, 0))->settle()
+                ->assertPresent($this->cell(0, 0).'.ring-2')
                 // Double-click opens the cell that was double-clicked.
-                ->doubleClick($this->cell(2, 1))
-                ->waitFor($this->cell(2, 1).' input')
-                ->type($this->cell(2, 1).' input', 'Typed in the grid')
-                ->keys($this->cell(2, 1).' input', '{enter}')
-                ->waitUntilMissing($this->cell(2, 1).' input')
-                ->waitForTextIn($this->cell(2, 1), 'Typed in the grid');
+                ->doubleClick($this->cell(2, 1))->settle()
+                ->assertPresent($this->cell(2, 1).' input')
+                // Keystrokes, as a person types: WebDriver's clear() blurs the input, and a cell saves on blur.
+                ->keys($this->cell(2, 1).' input', 'Typed in the grid', '{enter}')->settle()
+                ->assertMissing($this->cell(2, 1).' input')
+                ->assertSeeIn($this->cell(2, 1), 'Typed in the grid');
 
             $this->assertNoConsoleErrors($browser);
         });
@@ -107,17 +111,17 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->visit('/spreadsheets/'.$sheet->id)
-                ->waitFor('#formulaInput')
+                ->openLivewire('/spreadsheets/'.$sheet->id)
+                ->click($this->cell(1, 1))->settle()
                 ->type('#formulaInput', '99')
-                ->click('button[onclick="saveCurrentCell()"]')
-                ->waitForTextIn($this->cell(0, 0), '99')
+                ->click('button[onclick="saveCurrentCell()"]')->settle()
+                ->assertSeeIn($this->cell(1, 1), '99')
                 ->assertSee('Invite by Email');
 
             $this->assertNoConsoleErrors($browser);
         });
 
-        $this->assertSame('99', $this->value($sheet, 0, 0));
+        $this->assertSame('99', $this->value($sheet, 1, 1));
     }
 
     public function test_take_a_copy_change_the_sheet_and_restore_it(): void
@@ -128,23 +132,18 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->visit('/spreadsheets/'.$sheet->id)
-                ->waitForTextIn($this->cell(0, 0), 'original')
-                ->press('🕘 History')
-                ->waitFor('input[aria-label="Snapshot label"]')
+                ->openLivewire('/spreadsheets/'.$sheet->id)
+                ->assertSeeIn($this->cell(0, 0), 'original')
+                ->click('button[title="Version History"]')->settle()
                 ->type('input[aria-label="Snapshot label"]', 'Before the change')
-                ->press('Create Snapshot')
-                ->waitForText('Before the change')
-                ->click('button[wire\\:click="closeModal"]')
-                ->doubleClick($this->cell(0, 0))
-                ->waitFor($this->cell(0, 0).' input')
-                ->clear($this->cell(0, 0).' input')
-                ->type($this->cell(0, 0).' input', 'changed')
-                ->keys($this->cell(0, 0).' input', '{enter}')
-                ->waitForTextIn($this->cell(0, 0), 'changed')
-                ->press('🕘 History')
-                ->waitForText('Before the change')
-                ->press('Restore')
+                ->press('Create Snapshot')->settle()
+                ->assertSee('Before the change')
+                ->click('button[wire\\:click="closeModal"]')->settle()
+                ->doubleClick($this->cell(0, 0))->settle()
+                ->keys($this->cell(0, 0).' input', ...['{end}', ...array_fill(0, 8, '{backspace}'), 'changed', '{enter}'])->settle()
+                ->assertSeeIn($this->cell(0, 0), 'changed')
+                ->click('button[title="Version History"]')->settle()
+                ->press('Restore')->settle()
                 ->waitForTextIn($this->cell(0, 0), 'original');
 
             $this->assertNoConsoleErrors($browser);

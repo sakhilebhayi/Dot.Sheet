@@ -157,57 +157,62 @@ class StructureOpsFlagAndSafetyTest extends TestCase
     {
         config(['sheet.structure_ops_enabled' => true]);
         $this->cell(0, 0, 'x');
-        $this->spreadsheet->update(['settings' => [
+        $layout = [
             'row_heights' => [3 => 40, 6 => 50], 'hidden_rows' => [2, 5],
             'col_widths' => [1 => 120], 'hidden_cols' => [4],
             'validation_rules' => [['id' => 'v', 'row' => 4, 'col' => 1], ['id' => 'w', 'row' => 2, 'col' => 0]],
             'conditional_formatting_rules' => [['id' => 'c', 'row' => 7, 'col' => 2]],
             'filter_rules' => [['id' => 'f', 'col' => 3], ['id' => 'g', 'col' => 1]],
-            'scripts' => [['id' => 'keep']],
-        ]]);
+        ];
+        $this->tab->forceFill(['layout' => $layout])->save();
+        // Another sheet of the workbook keeps its own layout through the move.
+        $other = SheetTab::create(['spreadsheet_id' => $this->spreadsheet->id, 'name' => 'Other', 'sort_order' => 9]);
+        $other->forceFill(['layout' => $layout])->save();
+        $this->spreadsheet->update(['settings' => ['scripts' => [['id' => 'keep']]]]);
         $service = app(SheetStructureService::class);
 
         $service->insertRow($this->spreadsheet->id, $this->tab->id, 2);
-        $settings = $this->spreadsheet->fresh()->settings;
+        $settings = $this->tab->fresh()->layout;
         $this->assertSame([4 => 40, 7 => 50], $settings['row_heights']);
         $this->assertSame([3, 6], $settings['hidden_rows']);
         $this->assertSame([5, 3], array_column($settings['validation_rules'], 'row'));
         $this->assertSame([8], array_column($settings['conditional_formatting_rules'], 'row'));
-        $this->assertSame([['id' => 'keep']], $settings['scripts']);
+        $this->assertSame([['id' => 'keep']], $this->spreadsheet->fresh()->settings['scripts']);
 
         $service->deleteColumn($this->spreadsheet->id, $this->tab->id, 1);
-        $settings = $this->spreadsheet->fresh()->settings;
+        $settings = $this->tab->fresh()->layout;
         $this->assertSame([], $settings['col_widths']);                 // the deleted column's width is gone
         $this->assertSame([3], $settings['hidden_cols']);
         $this->assertSame(['w'], array_column($settings['validation_rules'], 'id') === ['v', 'w'] ? ['w'] : array_column($settings['validation_rules'], 'id'));
         $this->assertSame([2], array_column($settings['filter_rules'], 'col'));
         $this->assertSame(2, $this->version());
+        $this->assertSame($layout, $other->fresh()->layout);
     }
 
     public function test_a_refused_change_leaves_the_layout_settings_alone_too(): void
     {
         config(['sheet.structure_ops_enabled' => true]);
         $this->cell(0, 0, 'x');
-        $this->spreadsheet->update(['settings' => ['row_heights' => [3 => 40], 'hidden_rows' => [2]]]);
+        $this->tab->forceFill(['layout' => ['row_heights' => [3 => 40], 'hidden_rows' => [2]]])->save();
 
         try {
             (new SheetStructureService)->withBudget(SheetStructureService::WORK_BUDGET, -1.0)->insertRow($this->spreadsheet->id, $this->tab->id, 0);
         } catch (StructureChangeRefused) {
         }
 
-        $this->assertSame([3 => 40], $this->spreadsheet->fresh()->settings['row_heights']);
-        $this->assertSame([2], $this->spreadsheet->fresh()->settings['hidden_rows']);
+        $this->assertSame([3 => 40], $this->tab->fresh()->layout['row_heights']);
+        $this->assertSame([2], $this->tab->fresh()->layout['hidden_rows']);
     }
 
     public function test_the_editor_changes_only_the_key_it_means_and_keeps_what_others_stored(): void
     {
         $editor = $this->editor();
         // Somebody else stores a rule after this editor loaded.
-        $this->spreadsheet->update(['settings' => ['validation_rules' => [['id' => 'theirs', 'row' => 1, 'col' => 1]], 'hidden_cols' => [9]]]);
+        $this->tab->forceFill(['layout' => ['validation_rules' => [['id' => 'theirs', 'row' => 1, 'col' => 1]], 'hidden_cols' => [9]]])->save();
 
         $editor->set('selectedRow', 4)->call('toggleHideRowSelected');
 
-        $settings = $this->spreadsheet->fresh()->settings;
+        $settings = $this->tab->fresh()->layout;
         $this->assertSame([4], $settings['hidden_rows']);
         $this->assertSame('theirs', $settings['validation_rules'][0]['id']);
         $this->assertSame([9], $settings['hidden_cols']);
@@ -217,7 +222,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
     {
         $this->actingAs($this->user)->put(route('spreadsheets.update', $this->spreadsheet), ['name' => 'x', 'settings' => ['row_heights' => array_fill(0, 40000, 100)]])->assertSessionHasErrors('settings.row_heights');
 
-        $this->spreadsheet->update(['settings' => ['row_heights' => array_fill(0, 12000, 100)]]);
+        $this->tab->forceFill(['layout' => ['row_heights' => array_fill(0, 12000, 100)]])->save();
         $this->editor()->set('selectedRow', 0)->call('resizeRowSelected', ['row' => 99999, 'height' => 30])
             ->assertSet('structureNotice', 'The layout settings of this sheet are too large to add to.');
     }
@@ -396,6 +401,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
         $this->lockTimeoutOn('update "cells"');
         $this->lockTimeoutOn('insert into "cells"');
         $this->lockTimeoutOn('update "spreadsheets"');
+        $this->lockTimeoutOn('update "sheet_tabs"');
 
         $toolbar->set('selected_row', 0)->set('selected_col', 0)->set('bold', true)->call('applyFormatting')->assertDispatched('sheet-busy');
         $ai->set('selected_range', 'A1:A1')->call('cleanData')->assertSet('error', WriteLock::BUSY_MESSAGE);

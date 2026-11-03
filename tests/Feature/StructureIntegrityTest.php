@@ -127,11 +127,12 @@ class StructureIntegrityTest extends TestCase
         $settings = $this->spreadsheet->fresh()->settings;
         $this->assertNotEmpty($settings['macros']);
         $this->assertNotEmpty($settings['ai_workflows']);
-        $this->assertArrayNotHasKey('hidden_rows', $settings);
+        $this->assertArrayNotHasKey('hidden_rows', $this->spreadsheet->defaultSheetTab()->layout ?? []);
 
-        // After the reload it goes through.
+        // After the reload it goes through, on the sheet's own layout.
         $editor->call('toggleHideRowSelected')->assertSet('structureNotice', '');
-        $this->assertSame([0], $this->spreadsheet->fresh()->settings['hidden_rows']);
+        $this->assertSame([0], $this->spreadsheet->defaultSheetTab()->layout['hidden_rows']);
+        $this->assertArrayNotHasKey('hidden_rows', $this->spreadsheet->fresh()->settings);
     }
 
     public function test_a_request_cannot_replace_the_settings_json_or_set_scripts(): void
@@ -151,7 +152,8 @@ class StructureIntegrityTest extends TestCase
             $this->assertSame('kept', $settings['scripts'][0]['id'], "flag {$flag}");
             $this->assertSame([['id' => 'm']], $settings['macros']);
             $this->assertSame([['x']], $settings['ai_workflows']);
-            $this->assertSame([3 => 55], $settings['row_heights']);
+            $this->assertArrayNotHasKey('row_heights', $settings);
+            $this->assertSame([3 => 55], $this->spreadsheet->defaultSheetTab()->layout['row_heights']);
             $this->assertArrayNotHasKey('structure_version', $settings);
             $this->assertSame(1, $this->version());
         }

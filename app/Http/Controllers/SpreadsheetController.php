@@ -14,6 +14,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class SpreadsheetController extends Controller
@@ -22,10 +23,7 @@ class SpreadsheetController extends Controller
     /** Largest JSON size of one of those keys. */
     public const MAX_SETTING_BYTES = 100000;
 
-    public const EDITABLE_SETTINGS_KEYS = [
-        'row_heights', 'col_widths', 'hidden_rows', 'hidden_cols',
-        'validation_rules', 'conditional_formatting_rules', 'filter_rules',
-    ];
+    public const EDITABLE_SETTINGS_KEYS = SheetTab::LAYOUT_KEYS;
 
     /**
      * Display a listing of spreadsheets
@@ -120,13 +118,13 @@ class SpreadsheetController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'settings' => 'nullable|array',
+            'sheet_tab_id' => ['nullable', 'integer', Rule::exists('sheet_tabs', 'id')->where('spreadsheet_id', $spreadsheet->id)],
         ]);
 
         $spreadsheet->update(['name' => $validated['name']]);
 
-        // Only the editor's layout keys can be set here, merged into what is stored. Scripts, macros and
-        // workflows have their own panels (and scripts their own switch); replacing the whole JSON from
-        // a request would also wipe them.
+        // Only the layout keys can be set here, on one sheet (the first unless named), merged into what is
+        // stored. Scripts, macros and workflows have their own panels (and scripts their own switch).
         if (! empty($validated['settings'])) {
             $layout = Arr::only($validated['settings'], self::EDITABLE_SETTINGS_KEYS);
             foreach ($layout as $key => $value) {
@@ -135,7 +133,10 @@ class SpreadsheetController extends Controller
                 }
             }
             if ($layout !== []) {
-                Spreadsheet::updateSettings($spreadsheet->id, fn (array $settings) => array_replace($settings, $layout));
+                $tabId = $validated['sheet_tab_id'] ?? $spreadsheet->defaultSheetTab()?->id;
+                if ($tabId !== null) {
+                    SheetTab::updateLayout((int) $tabId, fn (array $stored) => array_replace($stored, $layout));
+                }
             }
         }
 

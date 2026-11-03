@@ -2,17 +2,21 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\AiPrompt;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
 class AiFormulaModal extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
     public $selected_row;
@@ -34,6 +38,13 @@ class AiFormulaModal extends Component
     public $success = false;
 
     protected $ai_service;
+
+    protected function clientWritable(): array
+    {
+        return [
+            'description',
+        ];
+    }
 
     public function mount($spreadsheet_id, $row = 0, $col = 0)
     {

@@ -2,13 +2,19 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class AiNaturalLanguageQuery extends Component
 {
+    use GuardsSheetState;
+
+    #[Locked]
     public $spreadsheet_id = null;
 
     public $query = '';
@@ -34,8 +40,19 @@ class AiNaturalLanguageQuery extends Component
 
     protected ?AiService $ai_service = null;
 
+    protected function clientWritable(): array
+    {
+        return [
+            'query',
+        ];
+    }
+
     public function mount($spreadsheet_id = null)
     {
+        if ($spreadsheet_id) {
+            Gate::authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
+        }
+
         $this->spreadsheet_id = $spreadsheet_id;
         $this->ai_service = new AiService;
 

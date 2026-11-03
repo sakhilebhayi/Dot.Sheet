@@ -3,19 +3,24 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\PivotTable;
 use App\Models\Spreadsheet;
 use App\Services\PivotTableService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class PivotTableBuilder extends Component
 {
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
+    #[Locked]
     public $sheet_tab_id;
 
     public $showModal = false;
@@ -47,12 +52,24 @@ class PivotTableBuilder extends Component
         'aggregation' => ['required', 'in:sum,count,average,min,max'],
     ];
 
+    protected function clientWritable(): array
+    {
+        return [
+            'aggregation',
+            'column_field',
+            'row_field',
+            'source_range',
+            'title',
+            'value_field',
+        ];
+    }
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->sheet_tab_id = $sheet_tab_id;
+        $this->sheet_tab_id = $this->ownTabId($sheet_tab_id);
         $this->loadPivots();
     }
 

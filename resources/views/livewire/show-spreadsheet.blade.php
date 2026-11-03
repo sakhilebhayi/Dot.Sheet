@@ -337,7 +337,7 @@
 
         <!-- Right Sidebar - Analysis Panel (AI) -->
         <aside id="analysisPanel" wire:ignore class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto hidden flex-shrink-0">
-            @livewire('ai-analysis-panel', ['spreadsheet_id' => $spreadsheet->id])
+            @livewire('ai-analysis-panel', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('ai-analysis-panel-'.$activeSheetTabId))
         </aside>
 
         <!-- Cell Properties Sidebar (default) -->

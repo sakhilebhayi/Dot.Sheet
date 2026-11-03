@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
@@ -16,9 +17,15 @@ use Livewire\WithFileUploads;
 class AiAnalysisPanel extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
     use WithFileUploads;
 
+    #[Locked]
     public $spreadsheet_id = null;
+
+    // The tab the grid is showing; the editor mounts one panel per tab.
+    #[Locked]
+    public $sheet_tab_id = null;
 
     public $selected_range = '';
 
@@ -77,13 +84,32 @@ class AiAnalysisPanel extends Component
     #[Locked]
     public int $structureVersion = 0;
 
-    public function mount($spreadsheet_id = null)
+    protected function clientWritable(): array
+    {
+        return [
+            'selected_range',
+            'workflow_action',
+            'workflow_column',
+            'workflow_name',
+            'workflow_notify_database',
+            'workflow_notify_email',
+            'workflow_operator',
+            'workflow_value',
+            'ocrImage',
+            'ocrText',
+        ];
+    }
+
+    public function mount($spreadsheet_id = null, $sheet_tab_id = null)
     {
         if ($spreadsheet_id) {
             $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
         }
 
         $this->spreadsheet_id = $spreadsheet_id;
+        $this->sheet_tab_id = $spreadsheet_id
+            ? ($this->ownTabId($sheet_tab_id) ?? Spreadsheet::find($spreadsheet_id)?->defaultSheetTab()?->id)
+            : null;
         $this->structureVersion = $spreadsheet_id ? StructureVersion::current((int) $spreadsheet_id) : 0;
         $this->ai_service = new AiService;
         $this->loadWorkflowRules();
@@ -333,6 +359,7 @@ class AiAnalysisPanel extends Component
             $busy = false;
             $written = WriteLock::guard(fn () => StructureVersion::writeIfCurrent((int) $this->spreadsheet_id, $this->structureVersion, function () use ($startRow, $endRow, $startCol, $endCol, &$updated) {
                 $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+                    ->where('sheet_tab_id', $this->sheet_tab_id)
                     ->whereBetween('row_index', [$startRow, $endRow])
                     ->whereBetween('col_index', [$startCol, $endCol])
                     ->get();
@@ -619,6 +646,7 @@ class AiAnalysisPanel extends Component
         }
 
         $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
             ->whereBetween('row_index', [$startRow, $endRow])
             ->whereBetween('col_index', [$startCol, $endCol])
             ->orderBy('row_index')

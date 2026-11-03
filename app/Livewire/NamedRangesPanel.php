@@ -3,10 +3,12 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\NamedRange;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
@@ -23,14 +25,17 @@ class NamedRangesPanel extends Component
 {
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
+    use GuardsSheetState;
 
     private const RESERVED_WORDS = [
         'SUM', 'AVERAGE', 'AVG', 'COUNT', 'MAX', 'MIN', 'ROUND', 'ABS',
         'IF', 'CONCAT', 'UPPER', 'LOWER', 'LEN', 'TRUE', 'FALSE',
     ];
 
+    #[Locked]
     public $spreadsheet_id;
 
+    #[Locked]
     public $sheet_tab_id;
 
     public $ranges = [];
@@ -41,12 +46,20 @@ class NamedRangesPanel extends Component
 
     public $error = '';
 
+    protected function clientWritable(): array
+    {
+        return [
+            'name',
+            'rangeInput',
+        ];
+    }
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->sheet_tab_id = $sheet_tab_id;
+        $this->sheet_tab_id = $this->ownTabId($sheet_tab_id);
         $this->loadRanges();
     }
 

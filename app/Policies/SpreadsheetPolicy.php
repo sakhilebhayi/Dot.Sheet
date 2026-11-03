@@ -106,7 +106,18 @@ class SpreadsheetPolicy
         }
 
         // Qualified: team_user has an id column too, and the bare `id` made this query fail for every member.
-        return $user->teams()->where('teams.id', $spreadsheet->team_id)->exists();
+        return $this->isTeamOwner($user, $spreadsheet)
+            || $user->teams()->where('teams.id', $spreadsheet->team_id)->exists();
+    }
+
+    /**
+     * Check if the user owns the sheet's team. Jetstream keeps no team_user row for a team's owner, who
+     * holds every team permission.
+     */
+    protected function isTeamOwner(User $user, Spreadsheet $spreadsheet): bool
+    {
+        return $spreadsheet->team_id !== null
+            && $user->ownedTeams()->whereKey($spreadsheet->team_id)->exists();
     }
 
     /**
@@ -121,7 +132,11 @@ class SpreadsheetPolicy
             return false;
         }
 
-        // The membership row, read directly: one query, and a team's owner (who has no row) gets nothing here.
+        if ($this->isTeamOwner($user, $spreadsheet)) {
+            return true;
+        }
+
+        // The membership row, read directly: one query. A team's owner has no row and was answered above.
         $role = Membership::query()
             ->where('team_id', $spreadsheet->team_id)
             ->where('user_id', $user->id)

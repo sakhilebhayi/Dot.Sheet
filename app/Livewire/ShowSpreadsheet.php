@@ -6,6 +6,7 @@ use App\Events\SpreadsheetCellUpdated;
 use App\Events\SpreadsheetCursorMoved;
 use App\Http\Controllers\SpreadsheetController;
 use App\Jobs\BulkPasteChunkJob;
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Cell;
 use App\Models\CellHistory;
 use App\Models\SheetTab;
@@ -33,7 +34,9 @@ use Livewire\Component;
 class ShowSpreadsheet extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
     protected ?Spreadsheet $spreadsheet = null;
@@ -42,8 +45,10 @@ class ShowSpreadsheet extends Component
     // query below is scoped to $activeSheetTabId as well as spreadsheet_id
     // -- see cellsQuery() -- so two tabs in the same spreadsheet each have
     // their own fully independent grid.
+    #[Locked]
     public $activeSheetTabId;
 
+    #[Locked]
     public $sheetTabs = [];
 
     // Grid display
@@ -126,6 +131,17 @@ class ShowSpreadsheet extends Component
     // A sentence for the person at the keyboard: stale grid reloaded, undo history cleared,
     // an insert refused.
     public string $structureNotice = '';
+
+    protected function clientWritable(): array
+    {
+        // The selection is only a position in this sheet; every handler clamps it before use.
+        return [
+            'selectedRow',
+            'selectedCol',
+            'editingCell',
+            'editingValue',
+        ];
+    }
 
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {

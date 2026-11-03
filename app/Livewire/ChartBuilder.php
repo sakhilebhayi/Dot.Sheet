@@ -3,19 +3,24 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class ChartBuilder extends Component
 {
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
+    #[Locked]
     public $sheet_tab_id;
 
     // Form state (modal)
@@ -49,12 +54,22 @@ class ChartBuilder extends Component
         'labels_range' => ['nullable', 'regex:/^[A-Z]+\d+:[A-Z]+\d+$/i'],
     ];
 
+    protected function clientWritable(): array
+    {
+        return [
+            'type',
+            'data_range',
+            'labels_range',
+            'title',
+        ];
+    }
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $this->authorize('view', Spreadsheet::findOrFail($spreadsheet_id));
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->sheet_tab_id = $sheet_tab_id;
+        $this->sheet_tab_id = $this->ownTabId($sheet_tab_id);
         $this->loadCharts();
     }
 
@@ -140,7 +155,9 @@ class ChartBuilder extends Component
      */
     public function renderChart($chartId)
     {
-        $chart = ChartConfig::findOrFail($chartId);
+        $chart = ChartConfig::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
+            ->findOrFail($chartId);
         $chartData = $this->getChartData($chart->data_range, $chart->labels_range);
 
         $this->dispatch('render-chart', [

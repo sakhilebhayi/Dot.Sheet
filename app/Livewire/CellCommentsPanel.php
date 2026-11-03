@@ -2,20 +2,25 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Comment;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Notifications\MentionedInComment;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class CellCommentsPanel extends Component
 {
     use AuthorizesRequests;
+    use GuardsSheetState;
 
+    #[Locked]
     public $spreadsheet_id;
 
+    #[Locked]
     public $sheet_tab_id;
 
     public $selectedRow = 0;
@@ -30,13 +35,21 @@ class CellCommentsPanel extends Component
 
     protected $listeners = ['cell-selected' => 'onCellSelected'];
 
+    protected function clientWritable(): array
+    {
+        return [
+            'newComment',
+            'replyDrafts',
+        ];
+    }
+
     public function mount($spreadsheet_id, $sheet_tab_id = null)
     {
         $spreadsheet = Spreadsheet::findOrFail($spreadsheet_id);
         $this->authorize('view', $spreadsheet);
 
         $this->spreadsheet_id = $spreadsheet_id;
-        $this->sheet_tab_id = $sheet_tab_id;
+        $this->sheet_tab_id = $this->ownTabId($sheet_tab_id);
         $this->loadThreads();
     }
 
@@ -91,13 +104,23 @@ class CellCommentsPanel extends Component
             return;
         }
 
+        // A reply joins a thread of this tab, and sits on that thread's cell.
+        $thread = Comment::where('spreadsheet_id', $this->spreadsheet_id)
+            ->where('sheet_tab_id', $this->sheet_tab_id)
+            ->whereNull('parent_id')
+            ->find($threadId);
+
+        if (! $thread) {
+            return;
+        }
+
         $comment = Comment::create([
             'spreadsheet_id' => $this->spreadsheet_id,
             'sheet_tab_id' => $this->sheet_tab_id,
             'user_id' => Auth::id(),
-            'parent_id' => $threadId,
-            'row_index' => $this->selectedRow,
-            'col_index' => $this->selectedCol,
+            'parent_id' => $thread->id,
+            'row_index' => $thread->row_index,
+            'col_index' => $thread->col_index,
             'content' => $draft,
             'resolved' => false,
         ]);

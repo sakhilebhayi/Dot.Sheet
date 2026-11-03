@@ -249,15 +249,15 @@
                                             wire:key="cell-{{ $row }}-{{ $col }}"
                                             @click="selectCell({{ $row }}, {{ $col }})"
                                             @contextmenu.prevent="openContextMenu($event, {{ $row }}, {{ $col }})"
-                                            @dblclick="startEditing()">
+                                            @dblclick="startEditing({{ $row }}, {{ $col }})">
                                             
                                             @if ($editingCell === "{$row}_{$col}")
                                                 <!-- Edit Mode -->
                                                 <input aria-label="Editingvalue" type="text" 
                                                     wire:model="editingValue"
                                                     wire:key="edit-input-{{ $row }}-{{ $col }}"
-                                                    @keydown.enter="saveCell()"
-                                                    @keydown.escape="cancelEdit()"
+                                                    @keydown.enter.stop="saveCell()"
+                                                    @keydown.escape.stop="cancelEdit()"
                                                     @blur="saveCell()"
                                                     autofocus
                                                     class="w-full h-full px-1 border-0 text-xs bg-white dark:bg-gray-700
@@ -436,8 +436,10 @@
                 @this.call('selectCell', row, col);
             },
             
-            startEditing() {
-                @this.call('startEditing', this.selectedRow, this.selectedCol);
+            // The cell that was double-clicked, or (Enter) the current selection as the server holds it;
+            // selectedRow/selectedCol above are only the first render's.
+            startEditing(row, col) {
+                @this.call('startEditing', row ?? @this.selectedRow, col ?? @this.selectedCol);
             },
             
             navigate(direction) {

@@ -42,7 +42,8 @@ abstract class DuskTestCase extends BaseTestCase
             $_ENV['DUSK_DRIVER_URL'] ?? env('DUSK_DRIVER_URL') ?? 'http://localhost:9515',
             DesiredCapabilities::chrome()->setCapability(
                 ChromeOptions::CAPABILITY, $options
-            )
+                // The tests read the console: a page error fails the journey that caused it.
+            )->setCapability('goog:loggingPrefs', ['browser' => 'ALL'])
         );
     }
 }

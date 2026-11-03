@@ -141,3 +141,4 @@
         <div class="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{{ $status }}</div>
     @endif
 </div>
+</div>

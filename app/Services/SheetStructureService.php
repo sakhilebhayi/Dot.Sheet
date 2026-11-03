@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
+use App\Services\Formula\Recalculator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,9 @@ class SheetStructureService
      * transaction under about two seconds there.
      */
     public const TIME_LIMIT_SECONDS = 2.0;
+
+    /** Formulas worked out inside the transaction; more are left for the next read. */
+    public const MAX_RECOMPUTED_INLINE = 100;
 
     public const WORK_BUDGET = 1800000;
 
@@ -411,9 +415,7 @@ class SheetStructureService
      * points somewhere else. A formula that only moved keeps its stored value.
      *
      * Memory stays flat: formulas are read in chunks as bare rows (no models), the recompute list holds
-     * only id, position and text, and the evaluator gets just the cells those formulas read (one pass with
-     * a cursor), not the whole tab and not through the cache (with CACHE_STORE=database every evaluate()
-     * unserialised the entire tab: 167 MB for 1,000 running totals).
+     * only id, position and text, and the engine reads just the cells each formula refers to.
      *
      * @param  list<string>  $resizedNames
      */
@@ -449,6 +451,10 @@ class SheetStructureService
                 $this->checkClock();
             });
 
+        // Formulas moved and their references changed: the dependency graph follows, every time.
+        $recalculator = app(Recalculator::class);
+        $recalculator->refreshDependencies($spreadsheetId, $sheetTabId);
+
         if ($recompute === []) {
             return;
         }
@@ -472,37 +478,18 @@ class SheetStructureService
         }
         $this->spend(count($needed) * self::COST_CELL_LOADED);
 
-        $values = [];
-        foreach (DB::table('cells')->where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $sheetTabId)
-            ->select('row_index', 'col_index', 'raw_value', 'computed_value')->cursor() as $cell) {
-            $key = $cell->row_index.'_'.$cell->col_index;
-            if (isset($needed[$key])) {
-                // Only numbers matter to the evaluator (anything else reads as 0): do not hold long text.
-                $value = $cell->computed_value ?? $cell->raw_value;
-                $values[$key] = is_numeric($value) ? $value : 0;
-            }
-        }
         $this->checkClock();
 
-        // In row order, so a formula that reads an earlier recomputed one sees its new value.
-        usort($recompute, fn ($a, $b) => [$a['row'], $a['col']] <=> [$b['row'], $b['col']]);
+        // This transaction holds the write lock and has a short clock: many formulas are worked out after
+        // it, when the sheet is next read.
+        if (count($recompute) > self::MAX_RECOMPUTED_INLINE) {
+            $recalculator->markStale($spreadsheetId, $sheetTabId);
 
-        foreach ($recompute as $formula) {
-            if (str_contains($formula['formula'], self::REF_ERROR)) {
-                $computed = self::REF_ERROR;
-            } else {
-                $result = $evaluator->evaluateAgainst($formula['formula'], $values, $namedRanges);
-                $computed = $result['error'] ? '#ERROR' : $result['value'];
-            }
-
-            DB::table('cells')->where('id', $formula['id'])->update(['computed_value' => $computed]);
-            $this->checkClock();
-
-            $key = $formula['row'].'_'.$formula['col'];
-            if (isset($needed[$key])) {
-                $values[$key] = is_numeric($computed) ? $computed : 0;
-            }
+            return;
         }
+
+        $recalculator->cellsWritten($spreadsheetId, $sheetTabId, array_map(fn (array $formula) => [$formula['row'], $formula['col']], $recompute));
+        $this->checkClock();
     }
 
     /**

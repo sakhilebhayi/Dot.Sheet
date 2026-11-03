@@ -122,8 +122,10 @@ class SheetVersions
             SheetTab::updateLayout($sheetTabId, fn () => $version->layout);
         }
 
-        // Every cell may have moved: editors that had the old grid open must reload.
+        // Every cell may have moved: editors that had the old grid open must reload, and the formulas
+        // (here and on sheets that read this one) are worked out again on the next read.
         StructureVersion::bump($spreadsheetId);
+        app(Formula\Recalculator::class)->markStale($spreadsheetId, $sheetTabId);
     }
 
     /**

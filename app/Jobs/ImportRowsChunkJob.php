@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Cell;
+use App\Services\Formula\Recalculator;
 use App\Services\SpreadsheetImportExportService;
 use App\Services\StructureVersion;
 use Illuminate\Bus\Batchable;
@@ -78,6 +79,9 @@ class ImportRowsChunkJob implements ShouldQueue
 
     protected function writeChunk(): void
     {
+        // Formulas this chunk writes, and those that read its cells, are worked out on the next read.
+        app(Recalculator::class)->markStale($this->spreadsheetId, (int) $this->sheetTabId);
+
         foreach ($this->rows as $offset => $row) {
             if (empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))) {
                 continue;

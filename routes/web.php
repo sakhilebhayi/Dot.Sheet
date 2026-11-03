@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
+use App\Http\Controllers\GridController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
@@ -67,6 +68,17 @@ Route::middleware([
     Route::resource('spreadsheets', SpreadsheetController::class);
 
     // Import / Export
+    // The browser-drawn editor and the API it works through.
+    Route::get('spreadsheets/{spreadsheet}/grid', [GridController::class, 'show'])->name('spreadsheets.grid');
+    Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware('throttle:1200,1')->group(function () {
+        Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
+        Route::get('cells', [GridController::class, 'cells'])->name('cells');
+        Route::post('cells', [GridController::class, 'edit'])->name('edit');
+        Route::post('format', [GridController::class, 'format'])->name('format');
+        Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('trace/{row}/{col}', [GridController::class, 'trace'])->whereNumber(['row', 'col'])->name('trace');
+    });
+
     Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->name('spreadsheets.import');
     Route::get('spreadsheets/{spreadsheet}/import/batches/{batchId}', [SpreadsheetController::class, 'importBatchStatus'])->name('spreadsheets.import.batch-status');
     Route::get('spreadsheets/{spreadsheet}/export/csv', [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');

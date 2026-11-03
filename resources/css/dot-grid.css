@@ -1,0 +1,151 @@
+/* The Dot Grid: see DESIGN.md. The cell sizes here are read by the grid in resources/js/grid. */
+@font-face {
+    font-family: 'Hanken Grotesk';
+    src: url('../fonts/hanken-grotesk.woff2') format('woff2');
+    font-weight: 400 700;
+    font-display: swap;
+}
+
+:root {
+    --ink: #15201b;
+    --soft: #5c6a63;
+    --thread: #2438c9;
+    --sheet: #f7f9f6;
+    --desk: #f1f4f0;
+    --raised: #e4e9e3;
+    --dot: #9faba3;
+    --faint: #d5dcd6;
+    --wash: #e4e8fb;
+    --read: #eef0fc;
+    --loss: #c62a12;
+    --on-thread: #ffffff;
+    --ease: cubic-bezier(.2, .7, .1, 1);
+
+    --row: 30px;
+    --col: 104px;
+    --label: 188px;
+    --gutter: 44px;
+    --head: 30px;
+}
+
+@media (max-width: 720px) {
+    :root { --row: 40px; --col: 92px; --label: 128px; --gutter: 26px; }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; overflow: clip; }
+body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    background: var(--desk);
+    color: var(--ink);
+    font: 400 14px/1.3 'Hanken Grotesk', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+button, input { font: inherit; color: inherit; }
+::selection { background: var(--wash); }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 2px; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: 12px; top: -48px; z-index: 20; padding: 8px 12px; background: var(--ink); color: var(--sheet); border-radius: 999px; }
+.skip:focus { top: 8px; }
+
+/* The one quiet bar */
+.bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; min-width: 0; }
+.mark { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--thread); transition: scale .3s var(--ease); }
+.mark:hover { scale: 1.25; }
+h1 { margin: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border-bottom: 1.5px solid var(--ink); }
+.line:focus-within { border-bottom-color: var(--thread); }
+#ref { flex: none; min-width: 44px; color: var(--soft); }
+#line { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; outline: none; }
+.fmt { display: flex; gap: 2px; }
+.fmt button, .tool { border: 0; background: none; cursor: pointer; transition: background .15s, translate .15s var(--ease); }
+.fmt button { width: 30px; height: 30px; border-radius: 50%; }
+.fmt button:hover, .tool:hover { background: var(--raised); translate: 0 -1px; }
+.fmt button:active, .tool:active { translate: 0 0; }
+.fmt button[aria-pressed='true'] { background: var(--raised); }
+.fmt button:disabled { color: var(--faint); cursor: default; background: none; translate: 0 0; }
+.tool { padding: 7px 12px; border-radius: 999px; white-space: nowrap; text-decoration: none; }
+.tool.quiet { color: var(--soft); }
+kbd { margin-left: 6px; font: inherit; color: var(--soft); }
+
+/* The sheet. No ruled lines: a cell is the space between four dots. */
+.sheet { position: relative; margin: 0 12px; overflow: auto; background: var(--sheet); border-radius: 14px; outline: none; overscroll-behavior: contain; scrollbar-color: var(--faint) transparent; }
+.sheet:focus-visible { box-shadow: inset 0 0 0 1px var(--faint); }
+.canvas { position: relative; }
+.head { position: sticky; top: 0; z-index: 5; height: var(--head); background: var(--sheet); }
+.head-cols { position: absolute; inset: 0; }
+.head-frozen { position: sticky; left: 0; height: 100%; background: var(--sheet); z-index: 1; }
+.body { position: relative; }
+.layer { position: absolute; left: 0; top: 0; }
+.frozen { position: sticky; left: 0; top: 0; z-index: 3; background: var(--sheet); }
+.threads { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; z-index: 4; pointer-events: none; }
+.threads path { fill: none; stroke: var(--thread); stroke-width: 1.5; stroke-linecap: round; }
+.threads path.draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .34s var(--ease) forwards; }
+.threads circle { fill: var(--thread); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+.h { position: absolute; top: 0; height: var(--head); display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer; user-select: none; }
+.h.first { justify-content: flex-start; }
+.n { position: absolute; left: 0; width: var(--gutter); display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer; user-select: none; }
+.h.on, .n.on { background: var(--thread); color: var(--on-thread); font-weight: 600; }
+
+.c { position: absolute; left: 0; top: 0; display: flex; align-items: center; padding: 0 12px; white-space: nowrap; overflow: hidden; cursor: cell; }
+.c > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.c.right { justify-content: flex-end; }
+.c.center { justify-content: center; }
+.c::before { content: ''; position: absolute; left: 0; top: 0; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--faint); }
+.c.dot::before { background: var(--dot); }
+.c:hover::before { background: var(--ink); }
+/* dots again, not rules: a dotted line carries the eye along a row of data */
+.c.rule { border-bottom: 1px dotted var(--dot); }
+.c.neg, .c.err { color: var(--loss); }
+.c.b { font-weight: 600; }
+.c.read { background: var(--read); }
+.c.read::before, .c.sel::before { background: var(--thread); }
+.c.sel { background: var(--wash); }
+.c.now { box-shadow: inset 0 0 0 1.5px var(--thread); border-radius: 3px; }
+.c.moved > span { animation: moved .7s var(--ease); }
+@keyframes moved { from { color: var(--thread); translate: 0 -3px; } to { translate: 0 0; } }
+
+.edit { position: absolute; z-index: 2; padding: 0 12px; border: 0; background: var(--sheet); box-shadow: 0 0 0 2px var(--thread); outline: none; border-radius: 3px; }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 20px; color: var(--soft); }
+.tabs { display: flex; gap: 4px; flex: none; }
+.tabs button { padding: 5px 10px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background .15s; }
+.tabs button:hover { background: var(--raised); color: var(--ink); }
+.tabs [aria-current] { background: var(--raised); color: var(--ink); font-weight: 600; }
+.note { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.stats { display: flex; gap: 18px; flex: none; }
+.stats b { margin-left: 4px; color: var(--ink); font-weight: 600; }
+
+dialog { width: min(560px, calc(100vw - 24px)); margin: 12vh auto auto; padding: 0; border: 0; border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 70px rgb(21 32 27 / .28); }
+dialog::backdrop { background: rgb(21 32 27 / .28); }
+#find { width: 100%; padding: 16px 18px; border: 0; border-bottom: 1.5px solid var(--ink); background: none; outline: none; font-size: 16px; }
+#found { max-height: 340px; margin: 0; padding: 6px; overflow: auto; list-style: none; }
+#found a, #found button { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 0; border-radius: 10px; background: none; color: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+#found a:hover, #found a:focus-visible, #found button:hover, #found button:focus-visible, #found .here { background: var(--wash); }
+#found b { font-weight: 600; white-space: nowrap; }
+#found span { color: var(--soft); text-align: right; }
+#found .none { padding: 12px; color: var(--soft); }
+
+@media (max-width: 720px) {
+    .bar { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+    .line { order: 3; flex-basis: 100%; }
+    .fmt, kbd, .tool.quiet { display: none; }
+    .n { padding-right: 6px; }
+    .tool { margin-left: auto; }
+    .sheet { margin: 0 6px; border-radius: 10px; }
+    .foot { flex-wrap: wrap; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+    .tabs button { padding: 8px 12px; }
+    .note { order: 3; flex-basis: 100%; }
+    .note:empty { display: none; }
+    .stats { flex: 1; justify-content: flex-end; gap: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before { animation: none !important; transition: none !important; }
+    .threads path.draw { stroke-dashoffset: 0; }
+}

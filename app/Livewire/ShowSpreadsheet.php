@@ -11,9 +11,9 @@ use App\Models\Cell;
 use App\Models\CellHistory;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
-use App\Models\SpreadsheetVersion;
 use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
+use App\Services\CellRules;
 use App\Services\Formula\Recalculator;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
@@ -27,7 +27,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -992,30 +991,11 @@ class ShowSpreadsheet extends Component
         $this->saveCell($text);
     }
 
-    public const AUTO_SNAPSHOT_MAX_CELLS = 20000;
+    public const AUTO_SNAPSHOT_MAX_CELLS = SheetVersions::AUTO_MAX_CELLS;
 
     protected function createAutoSnapshotIfNeeded(): void
     {
-        $latest = SpreadsheetVersion::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('sheet_tab_id', $this->activeSheetTabId)
-            ->latest()
-            ->first();
-
-        if ($latest && $latest->created_at && $latest->created_at->gt(now()->subMinutes(5))) {
-            return;
-        }
-
-        // The snapshot is one JSON column built from every cell in memory: above this size the first edit
-        // of each five-minute window ran out of memory at 128 MB (about 50,000 cells). Skip, and say so
-        // in the log; a manual snapshot is still possible.
-        $count = $this->cellsQuery()->count();
-        if ($count > self::AUTO_SNAPSHOT_MAX_CELLS) {
-            Log::notice('Auto snapshot skipped: tab too large', ['spreadsheet_id' => $this->spreadsheet_id, 'sheet_tab_id' => $this->activeSheetTabId, 'cells' => $count, 'limit' => self::AUTO_SNAPSHOT_MAX_CELLS]);
-
-            return;
-        }
-
-        app(SheetVersions::class)->snapshot((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, Auth::id(), SheetVersions::AUTO, 'Auto Snapshot');
+        app(SheetVersions::class)->autoSnapshot((int) $this->spreadsheet_id, (int) $this->activeSheetTabId, Auth::id());
     }
 
     /**
@@ -1372,50 +1352,7 @@ class ShowSpreadsheet extends Component
 
     protected function validateCellInput(int $row, int $col, string $value): ?string
     {
-        foreach ($this->validationRules as $rule) {
-            if (! is_array($rule)) {
-                continue;
-            }
-
-            if (($rule['row'] ?? null) !== $row || ($rule['col'] ?? null) !== $col) {
-                continue;
-            }
-
-            $type = (string) ($rule['type'] ?? '');
-            if ($type === 'number') {
-                if (! is_numeric($value)) {
-                    return 'Validation failed: value must be numeric.';
-                }
-
-                $min = $rule['min'] ?? null;
-                $max = $rule['max'] ?? null;
-                $numeric = (float) $value;
-                if ($min !== null && $numeric < (float) $min) {
-                    return 'Validation failed: value is below minimum.';
-                }
-                if ($max !== null && $numeric > (float) $max) {
-                    return 'Validation failed: value is above maximum.';
-                }
-            }
-
-            if ($type === 'text_length') {
-                $len = mb_strlen($value);
-                $min = (int) ($rule['min'] ?? 0);
-                $max = (int) ($rule['max'] ?? 999999);
-                if ($len < $min || $len > $max) {
-                    return 'Validation failed: text length out of range.';
-                }
-            }
-
-            if ($type === 'list') {
-                $items = array_values(array_filter(array_map('trim', explode(',', (string) ($rule['items'] ?? '')))));
-                if (! empty($items) && ! in_array($value, $items, true)) {
-                    return 'Validation failed: value not in allowed list.';
-                }
-            }
-        }
-
-        return null;
+        return CellRules::refuse($this->validationRules, $row, $col, $value);
     }
 
     protected function applyConditionalFormattingRules(int $row, int $col, mixed $displayValue, array $formatting): array

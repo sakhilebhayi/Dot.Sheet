@@ -1,5 +1,6 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
 import { fromText, toText } from './clipboard';
+import { Charts } from './charts';
 import { Copies } from './copies';
 import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
@@ -98,6 +99,19 @@ const sharing = boot.canShare ? new Sharing({
     refused,
     ask,
 }) : null;
+const charts = new Charts({
+    server,
+    canEdit: boot.canEdit,
+    tab: () => tab,
+    selection: selectionText,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(charts),
+    figure: (n) => show({ v: String(n) }).text,
+    note,
+    refused,
+    ask,
+});
 const names = new Names({
     server,
     canEdit: boot.canEdit,
@@ -153,7 +167,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names]) {
+    for (const panel of [notes, sharing, copies, names, charts]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -238,6 +252,7 @@ async function open(id) {
     if (!notes.closed) notes.load();
     if (!copies.closed) copies.load();
     if (!names.closed) names.load();
+    if (!charts.closed) charts.load();
 }
 
 function drawTabs() {
@@ -389,6 +404,7 @@ function selected() {
     placeNoted();
     notes.follow();
     names.follow();
+    charts.follow();
 }
 
 function afterMove() {
@@ -611,6 +627,7 @@ async function absorb(body, edited) {
 
     if (moved.length) grid.flash(moved);
     if (body.reload) await store.refresh();
+    charts.touched();
     if (body.marks) {
         showMarks(body.marks);
         if (!notes.closed) notes.load();
@@ -770,6 +787,7 @@ async function reopen() {
     if (!notes.closed) notes.load();
     if (!copies.closed) copies.load();
     if (!names.closed) names.load();
+    if (!charts.closed) charts.load();
 }
 
 /** The selection, cut down to where the sheet holds anything. */
@@ -2333,7 +2351,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Charts', 'Pivot tables',
+    'Pivot tables',
     'Scripts',
     'Ask AI',
 ];
@@ -2403,6 +2421,7 @@ function choices(query) {
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
+        { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },

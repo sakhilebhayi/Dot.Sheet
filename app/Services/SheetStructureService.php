@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Cell;
+use App\Models\ChartConfig;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
 use App\Services\Formula\Recalculator;
@@ -133,6 +134,7 @@ class SheetStructureService
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, 1);
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, 1);
+            $this->shiftCharts($sheetTabId, $axis, $index, 1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -151,6 +153,7 @@ class SheetStructureService
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, -1);
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, -1);
+            $this->shiftCharts($sheetTabId, $axis, $index, -1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -428,6 +431,20 @@ class SheetStructureService
         }
 
         return [$start > $index ? $start - 1 : $start, $end >= $index ? $end - 1 : $end];
+    }
+
+    /**
+     * A chart's ranges are references like any other, and follow the move the same way.
+     */
+    protected function shiftCharts(int $sheetTabId, string $axis, int $index, int $delta): void
+    {
+        ChartConfig::where('sheet_tab_id', $sheetTabId)->get()->each(function (ChartConfig $chart) use ($axis, $index, $delta) {
+            $chart->data_range = $this->rewriteReferences($chart->data_range, $axis, $index, $delta);
+            if ($chart->labels_range !== null) {
+                $chart->labels_range = $this->rewriteReferences($chart->labels_range, $axis, $index, $delta);
+            }
+            $chart->save();
+        });
     }
 
     /**

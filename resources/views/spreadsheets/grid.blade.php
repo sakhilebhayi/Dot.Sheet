@@ -191,6 +191,38 @@
         </form>
     </aside>
 
+    <aside class="dock" id="charts" aria-label="Charts" hidden>
+        <div class="dock-head">
+            <h2>Charts</h2>
+            <button class="tool" type="button" id="charts-close" aria-label="Close charts">×</button>
+        </div>
+        <div class="share-body">
+            <figure class="chart-view" id="charts-view" hidden>
+                <figcaption id="charts-heading"></figcaption>
+                <div class="chart-canvas"><canvas id="charts-canvas" role="img"></canvas></div>
+                <p class="dock-note" id="charts-said" hidden></p>
+                <div class="deeds"><button type="button" id="charts-figures" aria-expanded="false" aria-controls="charts-table">Show the figures</button></div>
+                <table class="chart-table" id="charts-table" hidden></table>
+            </figure>
+            <form class="chart-form" id="charts-form">
+                <label for="charts-title">Add a chart of the selection</label>
+                <input id="charts-title" autocomplete="off" maxlength="100" placeholder="Title">
+                <select id="charts-type" aria-label="Kind of chart">
+                    <option value="bar">Bars</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                    <option value="pie">Pie</option>
+                    <option value="doughnut">Doughnut</option>
+                    <option value="scatter">Scatter</option>
+                </select>
+                <input id="charts-range" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Which cells hold the figures">
+                <input id="charts-labels" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Which cells hold the labels, if any" placeholder="Labels, if apart">
+                <button class="button" type="submit">Add</button>
+            </form>
+            <ul class="people" id="charts-list"></ul>
+        </div>
+    </aside>
+
     <aside class="dock" id="names" aria-label="Named ranges" hidden>
         <div class="dock-head">
             <h2>Named ranges</h2>

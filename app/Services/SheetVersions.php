@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Copies of one sheet: taking them, putting one back, and keeping their number in check.
  *
- * A copy holds the sheet's cells, its layout, and where its comments were. Restoring first takes a safety copy of the sheet as it
+ * A copy holds the sheet's cells, its layout, and where its comments and charts were. Restoring first takes a safety copy of the sheet as it
  * is, so a restore can itself be undone, then changes only the cells that differ: cells that stay keep
  * their edit history, and each changed value is recorded in it. The work reads plain rows and writes in
  * chunks, so a large sheet does not hold thousands of models in memory.
@@ -61,6 +61,7 @@ class SheetVersions
             'cell_count' => count($cells),
             'layout' => SheetTab::whereKey($sheetTabId)->value('layout'),
             'comment_places' => app(SheetComments::class)->placesOf($sheetTabId),
+            'chart_ranges' => app(SheetCharts::class)->rangesOf($sheetTabId),
             'cells_snapshot' => $cells,
         ]);
 
@@ -161,6 +162,10 @@ class SheetVersions
         // A copy taken before comments were kept leaves them where they are.
         if ($version->comment_places !== null) {
             app(SheetComments::class)->restorePlaces($sheetTabId, $version->comment_places);
+        }
+
+        if ($version->chart_ranges !== null) {
+            app(SheetCharts::class)->restoreRanges($sheetTabId, $version->chart_ranges);
         }
 
         // Every cell may have moved: editors that had the old grid open must reload, and the formulas

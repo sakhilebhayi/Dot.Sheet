@@ -16,6 +16,7 @@ class SpreadsheetVersion extends Model
         'cell_count',
         'layout',
         'comment_places',
+        'chart_ranges',
         'cells_snapshot',
     ];
 
@@ -23,6 +24,7 @@ class SpreadsheetVersion extends Model
         'cells_snapshot' => 'array',
         'layout' => 'json',
         'comment_places' => 'array',
+        'chart_ranges' => 'array',
         'cell_count' => 'integer',
     ];
 

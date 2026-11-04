@@ -4,15 +4,18 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
-use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\Spreadsheet;
+use App\Services\SheetCharts;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class ChartBuilder extends Component
 {
+    /** The chart colours in DESIGN.md. */
+    private const COLOURS = ['#1F8A5F', '#8B3FA8', '#6E7A1E', '#0E8AA0', '#B5791A', '#B0498C'];
+
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
     use GuardsSheetState;
@@ -170,71 +173,19 @@ class ChartBuilder extends Component
     }
 
     /**
-     * Parse a range like "A1:C5" and return Chart.js dataset structure
+     * What a range holds, as Chart.js wants it.
      */
     protected function getChartData(string $dataRange, ?string $labelsRange): array
     {
-        [$startRef, $endRef] = explode(':', strtoupper($dataRange));
-        [$startCol, $startRow] = $this->parseRef($startRef);
-        [$endCol, $endRow] = $this->parseRef($endRef);
+        $read = app(SheetCharts::class)->read((int) $this->sheet_tab_id, $dataRange, $labelsRange);
 
-        // Fetch cells from DB for data range
-        $cells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('sheet_tab_id', $this->sheet_tab_id)
-            ->whereBetween('row_index', [$startRow, $endRow])
-            ->whereBetween('col_index', [$startCol, $endCol])
-            ->get()
-            ->groupBy('col_index');
-
-        // Build labels (row numbers or from labels_range)
-        $labels = [];
-        if ($labelsRange) {
-            [$lStart, $lEnd] = explode(':', strtoupper($labelsRange));
-            [$lCol, $lStartRow] = $this->parseRef($lStart);
-            [$lColEnd, $lEndRow] = $this->parseRef($lEnd);
-
-            $labelCells = Cell::where('spreadsheet_id', $this->spreadsheet_id)
-                ->where('sheet_tab_id', $this->sheet_tab_id)
-                ->whereBetween('row_index', [$lStartRow, $lEndRow])
-                ->where('col_index', $lCol)
-                ->orderBy('row_index')
-                ->get(['computed_value', 'raw_value'])
-                // A typed value is stored in raw_value only; computed_value is set for formulas.
-                ->map(fn (Cell $cell) => $cell->computed_value ?? $cell->raw_value)
-                ->toArray();
-
-            $labels = $labelCells;
-        } else {
-            for ($r = $startRow; $r <= $endRow; $r++) {
-                $labels[] = 'Row '.($r + 1);
-            }
-        }
-
-        // Build datasets per column
         $datasets = [];
-        $colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
-
-        foreach ($cells as $colIdx => $colCells) {
-            $colLetter = $this->colIndexToLetter($colIdx);
-            $color = $colors[($colIdx - $startCol) % count($colors)];
-            $values = [];
-
-            foreach (range($startRow, $endRow) as $row) {
-                $cell = $colCells->firstWhere('row_index', $row);
-                $value = $cell->computed_value ?? $cell?->raw_value;
-                $values[] = is_numeric($value) ? (float) $value : 0;
-            }
-
-            $datasets[] = [
-                'label' => $colLetter,
-                'data' => $values,
-                'backgroundColor' => $color.'80',
-                'borderColor' => $color,
-                'borderWidth' => 2,
-            ];
+        foreach ($read['series'] as $i => $series) {
+            $colour = self::COLOURS[$i % count(self::COLOURS)];
+            $datasets[] = ['label' => $series['name'], 'data' => $series['values'], 'backgroundColor' => $colour.'80', 'borderColor' => $colour, 'borderWidth' => 2];
         }
 
-        return ['labels' => $labels, 'datasets' => $datasets];
+        return ['labels' => $read['labels'], 'datasets' => $datasets];
     }
 
     /**
@@ -254,19 +205,5 @@ class ChartBuilder extends Component
         }
 
         return [$col - 1, ((int) $m[2]) - 1];
-    }
-
-    protected function colIndexToLetter(int $index): string
-    {
-        $letter = '';
-        while ($index >= 0) {
-            $letter = chr(65 + ($index % 26)).$letter;
-            $index = intdiv($index, 26) - 1;
-            if ($index < 0) {
-                break;
-            }
-        }
-
-        return $letter;
     }
 }

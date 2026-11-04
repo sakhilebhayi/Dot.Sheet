@@ -53,12 +53,20 @@ class SheetNames
             throw new NameRefused("A named range called \"{$name}\" already exists on this sheet.");
         }
 
-        $bounds = $this->bounds($range);
-        if ($bounds === null) {
+        $area = RangeText::parse($range);
+        if ($area === null) {
             throw new NameRefused('Range must look like A1 or A1:B10.');
         }
 
-        $named = NamedRange::create(['spreadsheet_id' => $spreadsheetId, 'sheet_tab_id' => $tabId, 'name' => $name, ...$bounds]);
+        $named = NamedRange::create([
+            'spreadsheet_id' => $spreadsheetId,
+            'sheet_tab_id' => $tabId,
+            'name' => $name,
+            'start_row' => $area['r1'],
+            'start_col' => $area['c1'],
+            'end_row' => $area['r2'],
+            'end_col' => $area['c2'],
+        ]);
         $this->changed($spreadsheetId, $tabId);
 
         return $named;
@@ -84,35 +92,6 @@ class SheetNames
         $upper = strtoupper($name);
 
         return in_array($upper, self::RESERVED_WORDS, true) || in_array($upper, array_column(FunctionCatalogue::all(), 'name'), true);
-    }
-
-    /**
-     * @return array{start_row: int, start_col: int, end_row: int, end_col: int}|null
-     */
-    private function bounds(string $range): ?array
-    {
-        if (! preg_match('/^([A-Z]{1,3})([1-9]\d*)(?::([A-Z]{1,3})([1-9]\d*))?$/', strtoupper(str_replace('$', '', trim($range))), $m)) {
-            return null;
-        }
-
-        [$firstCol, $firstRow] = [$this->column($m[1]), (int) $m[2] - 1];
-        [$lastCol, $lastRow] = isset($m[3]) ? [$this->column($m[3]), (int) $m[4] - 1] : [$firstCol, $firstRow];
-
-        if (max($firstCol, $lastCol) >= SheetStructureService::GRID_COLS || max($firstRow, $lastRow) >= SheetStructureService::GRID_ROWS) {
-            return null;
-        }
-
-        return ['start_row' => min($firstRow, $lastRow), 'start_col' => min($firstCol, $lastCol), 'end_row' => max($firstRow, $lastRow), 'end_col' => max($firstCol, $lastCol)];
-    }
-
-    private function column(string $letters): int
-    {
-        $index = 0;
-        foreach (str_split($letters) as $letter) {
-            $index = $index * 26 + (ord($letter) - 64);
-        }
-
-        return $index - 1;
     }
 
     private function changed(int $spreadsheetId, int $tabId): void

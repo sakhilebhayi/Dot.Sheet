@@ -24,13 +24,14 @@ The order is what blocks daily work first, not what is largest.
 | Version history | Panel over `SheetVersions`. Putting a copy back now says how many cells change first, and copies are named in plain words |
 | Import | Palette in the new editor. In both editors the sheet is copied first, so an import can be taken back from history. S8 still has to bring in merges, freezes, formulas and other sheets from Excel files |
 | Named ranges | Panel in the new editor, one service for both. Names now refuse every function in the catalogue, and deleting a used name says what breaks first |
+| Charts | Panel in the new editor, one service for both. An empty cell is a gap, not a nought. Labels are kept, ranges follow rows and columns, and the chart in view follows its figures. Placing charts on the sheet is S9 |
 | Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P11 | Charts, pivot tables | Panels, one PR each | Charts belong with S9 presentation |
+| P11 | Pivot tables | Panel | |
 | P12 | Scripts, AI tools | Panels | AI needs the owner's provider and cost cap |
 
 ## Needs the owner

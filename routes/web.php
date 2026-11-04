@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
+use App\Http\Controllers\GridChartController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
@@ -102,6 +103,10 @@ Route::middleware([
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('charts', [GridChartController::class, 'index'])->name('charts');
+        Route::post('charts', [GridChartController::class, 'store'])->name('charts.store');
+        Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
+        Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');
         Route::post('names', [GridNameController::class, 'store'])->name('names.store');
         Route::get('names/{namedRange}/uses', [GridNameController::class, 'uses'])->name('names.uses');

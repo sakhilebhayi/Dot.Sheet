@@ -102,6 +102,12 @@ class SpreadsheetImportExportService
             }
         }
 
+        $frozenRows = (int) ($sheetTab?->layout['frozen_rows'] ?? 0);
+        $frozenCols = (int) ($sheetTab?->layout['frozen_cols'] ?? 0);
+        if ($frozenRows > 0 || $frozenCols > 0) {
+            $sheet->freezePane(Coordinate::stringFromColumnIndex($frozenCols + 1).($frozenRows + 1));
+        }
+
         Storage::disk('local')->makeDirectory('exports');
         (new Xlsx($workbook))->save(Storage::disk('local')->path($filePath));
         $workbook->disconnectWorksheets();

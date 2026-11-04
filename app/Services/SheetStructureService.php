@@ -321,7 +321,7 @@ class SheetStructureService
             return $position === $index ? null : ($position > $index ? $position - 1 : $position);
         };
 
-        SheetTab::updateLayout($sheetTabId, function (array $settings) use ($isRow, $field, $move) {
+        SheetTab::updateLayout($sheetTabId, function (array $settings) use ($isRow, $field, $move, $index, $delta) {
             $sizesKey = $isRow ? 'row_heights' : 'col_widths';
             $hiddenKey = $isRow ? 'hidden_rows' : 'hidden_cols';
 
@@ -332,6 +332,12 @@ class SheetStructureService
                 }
             }
             $settings[$sizesKey] = $sizes;
+
+            // A row or column added or removed inside the frozen part makes that part bigger or smaller.
+            $frozenKey = $isRow ? 'frozen_rows' : 'frozen_cols';
+            if (isset($settings[$frozenKey]) && $index < (int) $settings[$frozenKey]) {
+                $settings[$frozenKey] = (int) $settings[$frozenKey] + $delta;
+            }
 
             $settings[$hiddenKey] = array_values(array_filter(array_map($move, is_array($settings[$hiddenKey] ?? null) ? $settings[$hiddenKey] : []), fn ($p) => $p !== null));
 

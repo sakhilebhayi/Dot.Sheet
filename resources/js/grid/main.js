@@ -24,6 +24,8 @@ const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
 const MIN_COL = 48;
 const MAX_COL = 420;
+const MAX_FROZEN_ROWS = 50;
+const MAX_FROZEN_COLS = 20;
 const MIN_ROW = 18;
 const MAX_ROW = 120;
 
@@ -354,6 +356,14 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.freeze) {
+        if (step.freeze.tab !== tab) await open(step.freeze.tab);
+        const answer = await saveFreeze(step.freeze.rows, step.freeze.cols, { remember: false });
+        if (!answer) return;
+        to.push({ version, freeze: { tab, ...answer.undo } });
+        return;
+    }
+
     if (step.layout) {
         if (step.layout.tab !== tab) await open(step.layout.tab);
         const answer = await saveSizes(step.layout.axis, step.layout.sizes, { remember: false });
@@ -655,6 +665,37 @@ function fitToContents(edge) {
     saveSizes(edge.axis, sizes);
 }
 
+/* Freeze */
+
+async function saveFreeze(rows, cols, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.freeze(tab, () => version, { rows, cols });
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    grid.setFreeze(rows, cols);
+    if (keep) {
+        undoSteps.push({ version, freeze: { tab, ...body.undo } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+/** Everything above and to the left of the active cell stays on screen. */
+async function freezeHere() {
+    const { r, c } = grid.active;
+    if (r > MAX_FROZEN_ROWS || c > MAX_FROZEN_COLS) {
+        note(`Freeze at most ${MAX_FROZEN_ROWS} rows and ${MAX_FROZEN_COLS} columns.`);
+        return;
+    }
+    if (await saveFreeze(r, c)) {
+        if (grid.frozenRows < r || grid.frozenCols < c) note('Only part of that fits on this screen. The rest stays frozen on a larger one.');
+        else note(r === 0 && c === 0 ? 'Nothing is frozen now.' : `Frozen above and to the left of ${cellName(r, c)}.`);
+    }
+}
+
 /* Fill */
 
 async function fillTo(area, target) {
@@ -855,11 +896,11 @@ function beginEdit(text, typing = false, inLine = false) {
     editing = { r, c, typing };
     box.value = text;
     line.value = text;
-    box.style.left = `${c === 0 ? grid.gutter : grid.gutter + grid.cols.offset(c)}px`;
-    box.style.top = `${grid.y(r)}px`;
+    box.style.left = `${grid.gutter + grid.cols.offset(c)}px`;
+    box.style.top = `${grid.rowTop(r)}px`;
     box.style.height = `${grid.rows.sizeOf(r)}px`;
     fit();
-    (c === 0 ? byId('frozen') : byId('body')).append(box);
+    grid.layerOf(r, c).append(box);
     if (!inLine) {
         box.focus({ preventScroll: true });
         box.setSelectionRange(text.length, text.length);
@@ -1200,6 +1241,8 @@ function choices(query) {
     const commands = [
         ...(boot.canEdit ? [
             { label: 'Find and replace', run: () => openFind() },
+            { label: 'Freeze above and left of this cell', run: freezeHere },
+            { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Fill down', run: fillDown },
             { label: 'Fill right', run: fillRight },
             { label: 'Undo', run: undo },

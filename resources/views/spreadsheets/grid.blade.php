@@ -55,6 +55,10 @@
                 <div class="head-frozen" id="head-frozen"></div>
             </div>
             <div class="body" id="body">
+                <div class="pinned" id="pinned">
+                    <div class="top-rows" id="top-rows"></div>
+                    <div class="corner" id="corner"></div>
+                </div>
                 <div class="layer" id="cells"></div>
                 <svg class="threads" id="threads" aria-hidden="true"></svg>
                 <div class="handle" id="handle" title="Drag to fill, or double-click to fill down" hidden></div>

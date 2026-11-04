@@ -20,6 +20,7 @@ const CELL_PADDING = 24;
 const ROUGH_CHARACTER = 5;    // narrower than most, so no text that needs room is missed
 const WIDE_CHARACTER = 9;     // wider than most, so the room found is always enough
 const MAX_OVERFLOW_COLS = 12;
+const MOST_FROZEN = 0.6;      // the share of the sheet frozen rows or columns may take up
 const SVG = 'http://www.w3.org/2000/svg';
 
 const byId = (id) => document.getElementById(id);
@@ -81,9 +82,13 @@ export class Grid {
         this.stuck = new Pool(this.frozen, 'c');
         this.columns = new Pool(byId('head-cols'), 'h');
         this.numbers = new Pool(this.frozen, 'n');
-        this.first = document.createElement('div');
-        this.first.className = 'h first';
-        this.headFrozen.append(this.first);
+        this.pinned = byId('pinned');
+        this.topRows = byId('top-rows');
+        this.corner = byId('corner');
+        this.topCells = new Pool(this.topRows, 'c');
+        this.cornerCells = new Pool(this.corner, 'c');
+        this.cornerNumbers = new Pool(this.corner, 'n');
+        this.stuckColumns = new Pool(this.headFrozen, 'h');
 
         this.layout = {};
         this.top = 0;      // how far down the sheet the window starts, in pixels
@@ -104,7 +109,7 @@ export class Grid {
             this.slide();
             this.soon();
         }, { passive: true });
-        new ResizeObserver(() => this.soon()).observe(this.sheet);
+        new ResizeObserver(() => this.measure()).observe(this.sheet);
         matchMedia('(max-width: 720px)').addEventListener('change', () => this.measure());
     }
 
@@ -129,14 +134,43 @@ export class Grid {
         this.rows = new Axis(this.size.rows, token('--row'), rowSizes);
         this.cols = new Axis(this.size.cols, token('--col'), colSizes);
 
+        this.applyFreeze();
+
         const width = this.gutter + this.cols.total;
         this.canvas.style.width = `${width}px`;
         this.head.style.width = `${width}px`;
         this.body.style.width = `${width}px`;
         this.frozen.style.width = `${this.stuckWidth}px`;
         this.headFrozen.style.width = `${this.stuckWidth}px`;
+        this.corner.style.width = `${this.stuckWidth}px`;
+        this.corner.style.height = `${this.stuckHeight}px`;
+        this.topRows.style.height = `${this.stuckHeight}px`;
         this.fit();
         this.render();
+    }
+
+    /**
+     * How much of the freeze fits. What was asked for is kept in the layout, but on a small screen the
+     * frozen part gives way, so there is always room to scroll.
+     */
+    applyFreeze() {
+        const { clientWidth, clientHeight } = this.sheet;
+        const askedRows = this.layout.frozen_rows;
+        const askedCols = this.layout.frozen_cols;
+
+        this.frozenRows = Number(askedRows ?? 0);
+        this.frozenCols = Number(askedCols ?? 1);
+        while (this.frozenRows > 0 && this.rows.offset(this.frozenRows) > (clientHeight - this.headHeight) * MOST_FROZEN) this.frozenRows--;
+        while (this.frozenCols > 0 && this.gutter + this.cols.offset(this.frozenCols) > clientWidth * MOST_FROZEN) this.frozenCols--;
+
+        this.sheet.classList.toggle('freeze-rows', this.frozenRows > 0);
+        this.sheet.classList.toggle('freeze-cols', askedCols !== undefined && this.frozenCols > 0);
+    }
+
+    setFreeze(rows, cols) {
+        this.layout = { ...this.layout, frozen_rows: rows, frozen_cols: cols };
+        this.measure();
+        if (this.lines.length) this.drawThreads(false);
     }
 
     /** Change some sizes on screen. A null size is the default again. */
@@ -160,7 +194,7 @@ export class Grid {
 
         if (py >= 0 && py < this.headHeight && px >= this.gutter) {
             const { c } = this.hit(x, y);
-            const left = c === 0 ? this.gutter : this.gutter + this.cols.offset(c) - this.sheet.scrollLeft;
+            const left = this.gutter + this.cols.offset(c) - (c < this.frozenCols ? 0 : this.sheet.scrollLeft);
             const right = left + this.cols.sizeOf(c);
             if (Math.abs(px - right) <= EDGE) return { axis: 'col', at: c };
             if (c > 0 && Math.abs(px - left) <= EDGE) return { axis: 'col', at: c - 1 };
@@ -168,7 +202,7 @@ export class Grid {
         }
         if (px >= 0 && px < this.gutter && py >= this.headHeight) {
             const { r } = this.hit(x, y);
-            const top = this.y(r) - this.sheet.scrollTop + this.headHeight;
+            const top = this.rowTop(r) - (r < this.frozenRows ? 0 : this.sheet.scrollTop) + this.headHeight;
             const bottom = top + this.rows.sizeOf(r);
             if (Math.abs(py - bottom) <= EDGE) return { axis: 'row', at: r };
             if (r > 0 && Math.abs(py - top) <= EDGE) return { axis: 'row', at: r - 1 };
@@ -215,8 +249,23 @@ export class Grid {
         return this.rows.offset(r) - this.top;
     }
 
+    /** Where a row sits in its layer: frozen rows have a band of their own, measured from the top. */
+    rowTop(r) {
+        return r < this.frozenRows ? this.rows.offset(r) : this.y(r);
+    }
+
+    /** The layer that draws a cell, for anything laid over it. */
+    layerOf(r, c) {
+        if (r < this.frozenRows) return c < this.frozenCols ? this.corner : this.topRows;
+        return c < this.frozenCols ? this.frozen : byId('body');
+    }
+
     get stuckWidth() {
-        return this.gutter + this.cols.sizeOf(0);
+        return this.gutter + this.cols.offset(this.frozenCols);
+    }
+
+    get stuckHeight() {
+        return this.rows.offset(this.frozenRows);
     }
 
     area() {
@@ -241,9 +290,9 @@ export class Grid {
         const { scrollLeft, clientHeight, clientWidth } = this.sheet;
         const scrollTop = this.sheet.scrollTop + this.top;
         return {
-            r1: Math.max(0, this.rows.at(scrollTop) - OVERSCAN_ROWS),
+            r1: Math.max(this.frozenRows, this.rows.at(scrollTop + this.stuckHeight) - OVERSCAN_ROWS),
             r2: Math.min(this.size.rows - 1, this.rows.at(scrollTop + clientHeight - this.headHeight) + OVERSCAN_ROWS),
-            c1: Math.max(1, this.cols.at(scrollLeft + this.cols.sizeOf(0)) - OVERSCAN_COLS),
+            c1: Math.max(this.frozenCols, this.cols.at(scrollLeft + this.cols.offset(this.frozenCols)) - OVERSCAN_COLS),
             c2: Math.min(this.size.cols - 1, this.cols.at(scrollLeft + clientWidth - this.gutter) + OVERSCAN_COLS),
         };
     }
@@ -251,9 +300,10 @@ export class Grid {
     render() {
         if (!this.rows) return;
         const view = this.visible();
+        if (this.frozenRows > 0) this.store.ensure(0, this.frozenRows - 1);
         this.store.ensure(view.r1, view.r2);
         this.draw(view);
-        if (this.lines.length && `${this.sheet.scrollLeft}:${this.top}` !== this.linesAt) this.drawThreads(false);
+        if (this.lines.length && this.scrolledTo() !== this.linesAt) this.drawThreads(false);
     }
 
     /** Bring everything on screen up to date with the data and the selection. */
@@ -263,62 +313,74 @@ export class Grid {
 
     draw(view) {
         const area = this.area();
-        const { rows, cols } = this;
-        this.cells.begin();
-        this.stuck.begin();
-        this.columns.begin();
-        this.numbers.begin();
+        const { rows, cols, frozenRows, frozenCols } = this;
+        const pools = [this.cells, this.stuck, this.columns, this.numbers, this.topCells, this.cornerCells, this.cornerNumbers, this.stuckColumns];
+        for (const pool of pools) pool.begin();
 
         for (let c = view.c1; c <= view.c2; c++) {
-            if (cols.sizeOf(c) === 0) continue;
-            this.paintColumn(this.columns.take(c), c, area);
+            if (cols.sizeOf(c) > 0) this.paintColumn(this.columns.take(c), c, area);
         }
-        this.paintColumn(this.first, 0, area);
+        for (let c = 0; c < frozenCols; c++) {
+            if (cols.sizeOf(c) > 0) this.paintColumn(this.stuckColumns.take(c), c, area);
+        }
+
+        for (let r = 0; r < frozenRows; r++) {
+            if (rows.sizeOf(r) === 0) continue;
+            this.paintNumber(this.cornerNumbers.take(r), r, area);
+            for (let c = 0; c < frozenCols; c++) {
+                if (cols.sizeOf(c) > 0) this.paintCell(this.cornerCells.take(`${r}:${c}`), r, c, area);
+            }
+            for (let c = view.c1; c <= view.c2; c++) {
+                if (cols.sizeOf(c) > 0) this.paintCell(this.topCells.take(`${r}:${c}`), r, c, area);
+            }
+        }
 
         for (let r = view.r1; r <= view.r2; r++) {
             if (rows.sizeOf(r) === 0) continue;
             this.paintNumber(this.numbers.take(r), r, area);
-            this.paintCell(this.stuck.take(r), r, 0, area);
+            for (let c = 0; c < frozenCols; c++) {
+                if (cols.sizeOf(c) > 0) this.paintCell(this.stuck.take(`${r}:${c}`), r, c, area);
+            }
             for (let c = view.c1; c <= view.c2; c++) {
-                if (cols.sizeOf(c) === 0) continue;
-                this.paintCell(this.cells.take(`${r}:${c}`), r, c, area);
+                if (cols.sizeOf(c) > 0) this.paintCell(this.cells.take(`${r}:${c}`), r, c, area);
             }
         }
 
-        this.cells.end();
-        this.stuck.end();
-        this.columns.end();
-        this.numbers.end();
+        for (const pool of pools) pool.end();
         this.placeHandle(area);
     }
 
     /** The fill dot sits on the selection's bottom right corner, when that corner can be seen. */
     placeHandle(area) {
         const whole = area.r2 - area.r1 + 1 === this.size.rows || area.c2 - area.c1 + 1 === this.size.cols;
-        const x = (area.c2 === 0 ? this.gutter + this.sheet.scrollLeft : this.gutter + this.cols.offset(area.c2)) + this.cols.sizeOf(area.c2);
-        const y = this.y(area.r2) + this.rows.sizeOf(area.r2);
-        this.handle.hidden = !this.editable || whole || (area.c2 > 0 && x < this.sheet.scrollLeft + this.stuckWidth);
+        const { x: cornerX, y: cornerY } = this.point(area.r2, area.c2);
+        const x = cornerX + this.cols.sizeOf(area.c2);
+        const y = cornerY + this.rows.sizeOf(area.r2);
+        const underCols = area.c2 >= this.frozenCols && x < this.sheet.scrollLeft + this.stuckWidth;
+        const underRows = area.r2 >= this.frozenRows && y < this.sheet.scrollTop + this.stuckHeight;
+        this.handle.hidden = !this.editable || whole || underCols || underRows;
         this.handle.style.transform = `translate(${x}px,${y}px)`;
     }
 
     paintColumn(el, c, area) {
         const on = c >= area.c1 && c <= area.c2;
-        const left = c === 0 ? this.gutter : this.gutter + this.cols.offset(c);
-        const sig = `${left}|${this.cols.sizeOf(c)}|${on}`;
+        const left = this.gutter + this.cols.offset(c);
+        const sig = `${left}|${this.cols.sizeOf(c)}|${on}|${c}`;
         if (el.sig === sig) return;
         el.sig = sig;
         el.classList.toggle('on', on);
+        el.classList.toggle('first', c === 0);
         el.style.cssText = `transform:translateX(${left}px);width:${this.cols.sizeOf(c)}px`;
         el.textContent = columnName(c);
     }
 
     paintNumber(el, r, area) {
         const on = r >= area.r1 && r <= area.r2;
-        const sig = `${this.y(r)}|${this.rows.sizeOf(r)}|${on}`;
+        const sig = `${this.rowTop(r)}|${this.rows.sizeOf(r)}|${on}`;
         if (el.sig === sig) return;
         el.sig = sig;
         el.classList.toggle('on', on);
-        el.style.cssText = `transform:translateY(${this.y(r)}px);height:${this.rows.sizeOf(r)}px`;
+        el.style.cssText = `transform:translateY(${this.rowTop(r)}px);height:${this.rows.sizeOf(r)}px`;
         el.firstChild.textContent = r + 1;
     }
 
@@ -344,8 +406,8 @@ export class Grid {
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;
 
-        const left = c === 0 ? this.gutter : this.gutter + this.cols.offset(c);
-        const top = this.y(r);
+        const left = this.gutter + this.cols.offset(c);
+        const top = this.rowTop(r);
         const w = this.cols.sizeOf(c);
         const h = this.rows.sizeOf(r);
         const room = align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
@@ -374,7 +436,7 @@ export class Grid {
      */
     roomBeside(r, c, width, text) {
         if (text.length * ROUGH_CHARACTER < width - CELL_PADDING) return 0;
-        if (c === 0 && this.sheet.scrollLeft > 0) return 0;
+        if (c < this.frozenCols && this.sheet.scrollLeft > 0) return 0;
         let room = 0;
         for (let next = c + 1; next < this.size.cols && next <= c + MAX_OVERFLOW_COLS; next++) {
             if (hasContent(this.store.get(r, next))) break;
@@ -402,6 +464,7 @@ export class Grid {
     reveal(r, c) {
         const { sheet, rows, cols } = this;
         const height = sheet.clientHeight - this.headHeight;
+        const stuck = this.stuckHeight;
         const top = rows.offset(r);
         const bottom = top + rows.sizeOf(r);
 
@@ -409,10 +472,12 @@ export class Grid {
         if (top < this.top || bottom > this.top + MAX_WINDOW) this.top = Math.max(0, top - MAX_WINDOW / 2);
         this.fit();
 
-        if (top < sheet.scrollTop + this.top) sheet.scrollTop = top - this.top;
-        else if (bottom > sheet.scrollTop + this.top + height) sheet.scrollTop = bottom - height - this.top;
+        if (r >= this.frozenRows) {
+            if (top < sheet.scrollTop + this.top + stuck) sheet.scrollTop = top - stuck - this.top;
+            else if (bottom > sheet.scrollTop + this.top + height) sheet.scrollTop = bottom - height - this.top;
+        }
 
-        if (c === 0) return;
+        if (c < this.frozenCols) return;
         const left = this.gutter + cols.offset(c);
         const right = left + cols.sizeOf(c);
         if (left < sheet.scrollLeft + this.stuckWidth) sheet.scrollLeft = left - this.stuckWidth;
@@ -424,10 +489,11 @@ export class Grid {
         const box = this.sheet.getBoundingClientRect();
         const px = x - box.left;
         const py = y - box.top;
-        const r = this.rows.at(py - this.headHeight + this.sheet.scrollTop + this.top);
+        const down = py - this.headHeight;
+        const r = this.rows.at(down < this.stuckHeight ? down : down + this.sheet.scrollTop + this.top);
         let c;
         if (px < this.gutter) c = -1;
-        else if (px < this.stuckWidth) c = 0;
+        else if (px < this.stuckWidth) c = this.cols.at(px - this.gutter);
         else c = this.cols.at(px + this.sheet.scrollLeft - this.gutter);
         return { r: py < this.headHeight ? -1 : r, c };
     }
@@ -460,12 +526,20 @@ export class Grid {
         this.svg.replaceChildren();
     }
 
+    /** Where a cell's corner is, in the coordinates of the sheet's body. Frozen cells move with the scroll. */
     point(r, c) {
-        return { x: c === 0 ? this.gutter + this.sheet.scrollLeft : this.gutter + this.cols.offset(c), y: this.y(r) };
+        return {
+            x: this.gutter + this.cols.offset(c) + (c < this.frozenCols ? this.sheet.scrollLeft : 0),
+            y: r < this.frozenRows ? this.rows.offset(r) + this.sheet.scrollTop : this.y(r),
+        };
+    }
+
+    scrolledTo() {
+        return `${this.sheet.scrollLeft}:${this.frozenRows > 0 ? this.sheet.scrollTop : 0}:${this.top}`;
     }
 
     drawThreads(animate) {
-        this.linesAt = `${this.sheet.scrollLeft}:${this.top}`;
+        this.linesAt = this.scrolledTo();
         const from = this.point(this.active.r, this.active.c);
         this.svg.replaceChildren();
         for (const target of this.lines) {

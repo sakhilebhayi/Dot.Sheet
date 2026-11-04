@@ -67,6 +67,8 @@ Route::middleware([
 
     // Spreadsheet routes
     Route::post('spreadsheets/from-template', [SpreadsheetController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-template');
+    Route::post('spreadsheets/from-idea', [SpreadsheetController::class, 'fromIdea'])->middleware('throttle:10,1')->name('spreadsheets.from-idea');
+    Route::post('spreadsheets/from-file', [SpreadsheetController::class, 'fromFile'])->middleware('throttle:20,1')->name('spreadsheets.from-file');
     Route::resource('spreadsheets', SpreadsheetController::class)->except('show');
     // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');

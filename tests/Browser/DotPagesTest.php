@@ -185,4 +185,25 @@ class DotPagesTest extends DuskTestCase
             $this->assertSame(0, Spreadsheet::count());
         });
     }
+
+    public function test_an_idea_finds_a_start_and_a_file_opens_as_a_workbook(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $file = tempnam(sys_get_temp_dir(), 'start').'.csv';
+        file_put_contents($file, "Truck,Litres\nT1,40\n");
+
+        $this->browse(function (Browser $browser) use ($user, $file) {
+            $this->signIn($browser, $user)->visit('/spreadsheets/create');
+            $browser->type('#idea', 'Build a stock inventory register')->press('Find a start');
+            $browser->waitForText('These are the closest templates.', 10);
+            $browser->assertInputValue('#idea', 'Build a stock inventory register');
+
+            $browser->attach('file', $file)->press('Import it');
+            $browser->waitUsing(10, 50, fn () => str_contains($browser->driver->getCurrentURL(), '/spreadsheets/') && ! str_contains($browser->driver->getCurrentURL(), 'create'));
+            $browser->waitForText('Truck');
+            $this->assertSame(1, Spreadsheet::where('owner_id', $user->id)->count());
+        });
+
+        unlink($file);
+    }
 }

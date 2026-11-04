@@ -609,6 +609,18 @@ PROMPT;
     }
 
     /**
+     * Whether a real model will answer: not the mock, not demo mode, and with its key in place.
+     */
+    public function isLive(): bool
+    {
+        if (config('ai.demo_mode', false) || ! in_array($this->provider, ['anthropic', 'openai', 'ollama'], true)) {
+            return false;
+        }
+
+        return $this->provider === 'ollama' || ! empty($this->apiKey);
+    }
+
+    /**
      * Check if AI service is available
      */
     public function isAvailable(): bool

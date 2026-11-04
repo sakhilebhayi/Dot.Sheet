@@ -9,6 +9,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
+use App\Services\IdeaStarts;
 use App\Services\ProtectionRefused;
 use App\Services\SheetPrint;
 use App\Services\SheetProtections;
@@ -87,7 +88,9 @@ class SpreadsheetController extends Controller
      */
     public function create(TemplateCatalogue $templates)
     {
-        return view('spreadsheets.create', ['groups' => $templates->grouped()]);
+        $closest = array_filter(array_map(fn (string $key) => $templates->find($key), (array) session('idea_keys', [])));
+
+        return view('spreadsheets.create', ['groups' => $templates->grouped(), 'closest' => $closest, 'ideaSaid' => session('idea_said')]);
     }
 
     /**
@@ -106,6 +109,68 @@ class SpreadsheetController extends Controller
         $name = trim((string) ($validated['name'] ?? '')) ?: $template['title'];
 
         return redirect()->route('spreadsheets.show', $builder->build($template, $name, $request->user(), $teamId));
+    }
+
+    /**
+     * Start from a sentence. With AI switched on it builds something new; otherwise, or when what comes
+     * back cannot be used, the page offers the closest templates and says so.
+     */
+    public function fromIdea(Request $request, IdeaStarts $ideas, WorkbookBuilder $builder)
+    {
+        $validated = $request->validate([
+            'idea' => 'required|string|max:500',
+            'name' => 'nullable|string|max:255',
+            'team_id' => 'nullable|integer|exists:teams,id',
+        ], ['idea.required' => 'Say what the spreadsheet is for.', 'idea.max' => 'Keep it to 500 characters.']);
+
+        $teamId = $this->teamToAddTo($validated['team_id'] ?? null);
+        $idea = trim($validated['idea']);
+
+        if ($ideas->canBuild()) {
+            $blueprint = $ideas->blueprintFor($idea);
+            if ($blueprint !== null) {
+                $name = trim((string) ($validated['name'] ?? '')) ?: Str::limit($idea, 60, '');
+
+                return redirect()->route('spreadsheets.show', $builder->build($blueprint, $name, $request->user(), $teamId))
+                    ->with('success', 'Built from your description. Check the formulas before you rely on them.');
+            }
+        }
+
+        return redirect()->route('spreadsheets.create')->withInput()->with('idea_keys', array_column($ideas->closest($idea), 'key'))
+            ->with('idea_said', $ideas->canBuild() ? 'That could not be built just now. These are the closest templates.' : 'Building from a description is not switched on yet. These are the closest templates.');
+    }
+
+    /**
+     * Start from a file: a new workbook named after it, with the file on its first sheet.
+     */
+    public function fromFile(Request $request)
+    {
+        $validated = $request->validate([
+            'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
+            'team_id' => 'nullable|integer|exists:teams,id',
+        ], [
+            'file.required' => 'Choose a file to start from.',
+            'file.mimes' => 'Import a CSV or Excel file.',
+            'file.max' => 'That file is larger than 10 MB.',
+        ]);
+
+        $file = $request->file('file');
+        $spreadsheet = Spreadsheet::create([
+            'uuid' => (string) Str::uuid(),
+            'owner_id' => $request->user()->id,
+            'team_id' => $this->teamToAddTo($validated['team_id'] ?? null),
+            'name' => Str::limit(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 255, '') ?: 'Imported spreadsheet',
+            'settings' => [],
+        ]);
+
+        $result = (new SpreadsheetImportExportService)->importFile($spreadsheet, $file, $spreadsheet->defaultSheetTab());
+        if (! ($result['success'] ?? false)) {
+            $spreadsheet->delete();
+
+            return back()->with('error', $result['error'] ?? SpreadsheetImportExportService::UNREADABLE_MESSAGE);
+        }
+
+        return redirect()->route('spreadsheets.show', $spreadsheet);
     }
 
     /** A read-only member (viewer) may belong to a team but not add sheets to it. */

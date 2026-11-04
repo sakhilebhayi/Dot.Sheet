@@ -3264,4 +3264,133 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertTrue($browser->driver->executeScript("return ['number-kind', 'do-fewer', 'do-more-places'].every(id => document.getElementById(id).disabled)"));
         });
     }
+
+    /** @return array{0: User, 1: Spreadsheet, 2: SheetTab, 3: SheetTab} */
+    private function sheetWithFigures(): array
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $other = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Cash flow', 'sort_order' => 2]);
+        app(CellWriter::class)->write($sheet->id, $other->id, [['row' => 0, 'col' => 0, 'value' => '30'], ['row' => 1, 'col' => 0, 'value' => '12']], $user->id);
+
+        return [$user, $sheet, $tab, $other];
+    }
+
+    private function clickTab(Browser $browser, string $name): void
+    {
+        $browser->script("document.querySelectorAll('#tabs [data-tab]').forEach(b => { if (b.textContent === '{$name}') b.id = 'tab-now'; else b.removeAttribute('id'); })");
+        $browser->click('#tab-now');
+    }
+
+    private function dragAcross(Browser $browser, int $fromRow, int $toRow): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const x = sheet.left + px('--gutter') + 20;
+            const y = (row) => sheet.top + px('--head') + row * px('--row') + 10;
+            document.elementFromPoint(x, y(arguments[0])).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y(arguments[0]), button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y(arguments[1]) }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y(arguments[1]) }));
+        JS, [$fromRow, $toRow]);
+    }
+
+    public function test_a_formula_picks_cells_on_another_sheet_and_lands_back_on_its_own_cell(): void
+    {
+        [$user, $sheet, $tab] = $this->sheetWithFigures();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SUM(']);
+            $browser->waitFor('.edit');
+
+            $this->clickTab($browser, 'Cash flow');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Cash flow')->waitForTextIn('#note', 'Pick cells on Cash flow');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === '30');
+            $this->assertSame('=SUM(', $browser->value('#line'));
+
+            $this->dragAcross($browser, 0, 1);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "=SUM('Cash flow'!A1:A2");
+            $browser->driver->getKeyboard()->sendKeys([')', WebDriverKeys::ENTER]);
+
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '42');
+            $browser->waitForTextIn('#ref', 'A6');
+            $this->assertSame("=SUM('Cash flow'!A1:A2)", Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula'));
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_second_pick_on_another_sheet_replaces_the_first_and_escape_leaves_nothing(): void
+    {
+        [$user, $sheet, $tab] = $this->sheetWithFigures();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=']);
+            $this->clickTab($browser, 'Cash flow');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === '30');
+
+            $this->clickCell($browser, 0, 0);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "='Cash flow'!A1");
+            $this->clickCell($browser, 1, 0);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "='Cash flow'!A2");
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitForTextIn('#ref', 'A5');
+            $browser->pause(150);
+            $this->assertNull(Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->first());
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_coming_back_to_the_formula_s_own_sheet_keeps_writing_there(): void
+    {
+        [$user, $sheet] = $this->sheetWithFigures();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=']);
+            $this->clickTab($browser, 'Cash flow');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === '30');
+            $this->clickCell($browser, 1, 0);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "='Cash flow'!A2");
+            $browser->driver->getKeyboard()->sendKeys(['+']);
+
+            $this->clickTab($browser, 'Sheet1');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1')->waitFor('.edit');
+            $browser->waitForTextIn('#ref', 'A5');
+            $this->clickCell($browser, 1, 1);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "='Cash flow'!A2+B2");
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '−388');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_tab_still_opens_its_sheet_when_nothing_is_being_written(): void
+    {
+        [$user, $sheet] = $this->sheetWithFigures();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['plain']);
+            $this->clickTab($browser, 'Cash flow');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Cash flow');
+            $browser->pause(100);
+
+            $this->clickTab($browser, 'Sheet1');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'plain');
+        });
+    }
 }

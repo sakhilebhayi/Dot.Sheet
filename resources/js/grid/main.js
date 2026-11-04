@@ -291,8 +291,8 @@ function restingNote() {
 
 /* Loading a sheet */
 
-async function open(id) {
-    closeEdit(true);
+async function open(id, stillWriting = false) {
+    if (!stillWriting) closeEdit(true);
     tab = id;
     const { ok, body } = await server.sheet(id);
     if (!ok) {
@@ -355,8 +355,16 @@ function drawTabs() {
         if (t.hidden) button.classList.add('held-back');
         if (t.locked) button.classList.add('locked');
         if (t.id === tab) button.setAttribute('aria-current', 'page');
+        // Writing a formula, a tab is somewhere to fetch a reference from. Focus stays on the formula.
+        button.addEventListener('mousedown', (e) => {
+            if (writingFormula()) e.preventDefault();
+        });
         button.addEventListener('click', () => {
             if (tabMoved) return;
+            if (writingFormula()) {
+                if (t.id !== tab) visitWhileWriting(t.id);
+                return;
+            }
             if (t.id !== tab) open(t.id);
             sheet.focus({ preventScroll: true });
         });
@@ -422,7 +430,7 @@ let tabMoved = false;
 
 /** Drag a tab along the foot with a mouse. On touch the foot scrolls, and the palette moves sheets. */
 function holdTab(e, button) {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    if (e.pointerType !== 'mouse' || e.button !== 0 || writingFormula()) return;
     const nav = byId('tabs');
     const from = e.clientX;
     let moving = false;
@@ -2153,6 +2161,7 @@ box.spellcheck = false;
 box.setAttribute('aria-label', 'Cell contents');
 let editing = null;
 let pointed = null;   // the reference in the formula that the last click on a cell put there
+let away = null;      // where a formula is being written from, while looking at another sheet
 
 function fit() {
     const width = Math.min(420, Math.max(grid.spanOf(editing.r, editing.c).width, (box.value.length + 3) * 7.5));
@@ -2174,19 +2183,28 @@ function beginEdit(text, typing = false, inLine = false) {
     placePick();
     box.value = text;
     line.value = text;
-    box.style.left = `${grid.gutter + grid.cols.offset(c)}px`;
-    box.style.top = `${grid.rowTop(r)}px`;
-    box.style.height = `${grid.spanOf(r, c).height}px`;
-    fit();
-    grid.layerOf(r, c).append(box);
+    placeBox();
     if (!inLine) {
         box.focus({ preventScroll: true });
         box.setSelectionRange(text.length, text.length);
     }
 }
 
+function placeBox() {
+    const { r, c } = editing;
+    box.style.left = `${grid.gutter + grid.cols.offset(c)}px`;
+    box.style.top = `${grid.rowTop(r)}px`;
+    box.style.height = `${grid.spanOf(r, c).height}px`;
+    fit();
+    grid.layerOf(r, c).append(box);
+}
+
 function closeEdit(save) {
     if (!editing) return;
+    if (away) {
+        comeHome(save);
+        return;
+    }
     const { r, c } = editing;
     const value = box.value;
     editing = null;
@@ -2203,6 +2221,10 @@ function closeEdit(save) {
 }
 
 function leave(save, move = null) {
+    if (away) {
+        comeHome(save, move);
+        return;
+    }
     closeEdit(save);
     sheet.focus({ preventScroll: true });
     if (move) {
@@ -2257,6 +2279,62 @@ line.readOnly = !boot.canEdit;
 
 const typingIn = () => (document.activeElement === line ? line : box);
 
+const writingFormula = () => editing !== null && box.value.startsWith('=');
+
+/** A sheet's name as a formula spells it. One that could be mistaken for something else is quoted. */
+function sheetReference(name) {
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !/^[A-Za-z]{1,3}\d+$/.test(name) ? name : `'${name.replace(/'/g, "''")}'`;
+}
+
+/** Look at another sheet to fetch a reference. The formula stays open in the bar at the top. */
+async function visitWhileWriting(id) {
+    const home = away ?? { tab, r: editing.r, c: editing.c };
+    const caret = typingIn().selectionStart;
+    line.focus({ preventScroll: true });
+    line.setSelectionRange(caret, caret);
+    box.remove();
+    pointed = null;
+    grid.reads = [];
+
+    if (id === home.tab) {
+        away = null;
+        await open(id, true);
+        grid.active = { r: home.r, c: home.c };
+        grid.extent = { r: home.r, c: home.c };
+        grid.reveal(home.r, home.c);
+        grid.paint();
+        selected();
+        placeBox();
+        box.focus({ preventScroll: true });
+        box.setSelectionRange(caret, caret);
+        note('');
+        return;
+    }
+
+    away = home;
+    await open(id, true);
+    note(`Pick cells on ${boot.tabs.find((t) => t.id === id)?.name}, then press Enter to finish.`);
+}
+
+/** Finish a formula written while looking at another sheet, back on the cell it belongs to. */
+async function comeHome(save, move = null) {
+    const home = away;
+    const value = line.value;
+    away = null;
+    editing = null;
+    pointed = null;
+    grid.reads = [];
+    await open(home.tab);
+    select(home.r, home.c);
+    if (save) await write([{ row: home.r, col: home.c, value }]);
+    note('');
+    sheet.focus({ preventScroll: true });
+    if (move) {
+        const to = grid.step(grid.active, move[0], move[1]);
+        select(to.r, to.c);
+    }
+}
+
 /** True when the text at the caret is waiting for a reference, not ending one. */
 function canPoint() {
     if (!editing || !box.value.startsWith('=')) return false;
@@ -2269,7 +2347,8 @@ function point(r1, c1, r2 = r1, c2 = c1) {
     const input = typingIn();
     const area = { r1: Math.min(r1, r2), r2: Math.max(r1, r2), c1: Math.min(c1, c2), c2: Math.max(c1, c2) };
     const many = area.r1 !== area.r2 || area.c1 !== area.c2;
-    const reference = cellName(area.r1, area.c1) + (many ? `:${cellName(area.r2, area.c2)}` : '');
+    const prefix = away ? `${sheetReference(boot.tabs.find((t) => t.id === tab)?.name ?? '')}!` : '';
+    const reference = prefix + cellName(area.r1, area.c1) + (many ? `:${cellName(area.r2, area.c2)}` : '');
 
     const start = pointed ? pointed.start : input.selectionStart;
     const end = pointed ? pointed.end : input.selectionEnd;

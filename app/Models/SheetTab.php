@@ -17,7 +17,7 @@ class SheetTab extends Model
     public const LAYOUT_KEYS = [
         'row_heights', 'col_widths', 'hidden_rows', 'hidden_cols',
         'validation_rules', 'conditional_formatting_rules', 'filter_rules',
-        'frozen_rows', 'frozen_cols',
+        'frozen_rows', 'frozen_cols', 'merges',
     ];
 
     protected $fillable = [

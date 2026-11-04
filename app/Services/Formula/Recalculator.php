@@ -4,6 +4,7 @@ namespace App\Services\Formula;
 
 use App\Models\NamedRange;
 use App\Models\SheetTab;
+use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
 use Illuminate\Support\Facades\DB;
 
@@ -559,6 +560,10 @@ class Recalculator
         }
         if ($row + $height > SheetStructureService::GRID_ROWS || $col + $width > SheetStructureService::GRID_COLS) {
             return 'The answer needs more cells than the sheet has.';
+        }
+
+        if (SheetMerges::near(SheetMerges::onTab($tab), ['r1' => $row, 'r2' => $row + $height - 1, 'c1' => $col, 'c2' => $col + $width - 1]) !== []) {
+            return FormulaEngine::EXPLANATIONS['#SPILL!'];
         }
 
         $blocked = DB::table('cells')->where('sheet_tab_id', $tab)

@@ -653,4 +653,123 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    /** The size a cell's text is drawn in, on screen. */
+    private function sizeOf(Browser $browser, string $text): ?array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const box = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.textContent === arguments[0])?.getBoundingClientRect();
+            return box ? { w: box.width, h: box.height } : null;
+        JS, [$text]);
+    }
+
+    public function test_merged_cells_read_as_one_and_undo_brings_back_what_they_cleared(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_RIGHT], [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN]);
+
+            $this->runCommand($browser, 'Merge cells');
+            $browser->waitForTextIn('#note', 'Merged A1:B2. 3 other cells cleared');
+            $this->assertSame('Sales', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->value('raw_value'));
+
+            $size = $this->sizeOf($browser, 'Sales');
+            $this->assertGreaterThan(250, $size['w']);
+            $this->assertEquals(60, $size['h']);
+            $this->assertNull($this->cell($browser, 1, 0) ?: null, 'A cell inside a merge is not drawn.');
+
+            // A click anywhere in it lands on its first cell, and typing goes there.
+            $this->clickCell($browser, 1, 1);
+            $browser->assertSeeIn('#ref', 'A1');
+            $browser->keys('#sheet', 'Title', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->value('raw_value') === 'Title');
+            $browser->assertSeeIn('#ref', 'A3');
+
+            // Arrow keys go round it.
+            $browser->keys('#sheet', WebDriverKeys::ARROW_UP);
+            $browser->assertSeeIn('#ref', 'A1');
+            $browser->keys('#sheet', WebDriverKeys::ARROW_RIGHT);
+            $browser->assertSeeIn('#ref', 'C1');
+            $browser->keys('#sheet', WebDriverKeys::ARROW_LEFT);
+            $browser->assertSeeIn('#ref', 'A1');
+
+            // Undo the typing, then the merge: everything it cleared comes back.
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->sizeOf($browser, 'Sales') !== null);
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 1) === '1 000');
+            $this->assertSame('Rent', $this->cell($browser, 1, 0));
+            $this->assertSame([], $tab->fresh()->layout['merges']);
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
+            $browser->waitUsing(10, 25, fn () => count($tab->fresh()->layout['merges'] ?? []) === 1);
+            $browser->waitUsing(10, 25, fn () => $this->sizeOf($browser, 'Sales')['h'] == 60);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_merge_across_the_frozen_column_runs_on_until_the_sheet_scrolls_under_it(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['merges' => [['r1' => 0, 'r2' => 0, 'c1' => 0, 'c2' => 2]]]])->save();
+        Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->delete();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $full = $this->sizeOf($browser, 'Sales')['w'];
+            $this->assertGreaterThan(300, $full);
+
+            $browser->script("document.getElementById('sheet').scrollLeft = 300");
+            $browser->waitUsing(10, 25, fn () => $this->sizeOf($browser, 'Sales')['w'] < $full);
+
+            $browser->script("document.getElementById('sheet').scrollLeft = 0");
+            $browser->waitUsing(10, 25, fn () => $this->sizeOf($browser, 'Sales')['w'] === $full);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_tall_merged_cell_still_shows_when_its_first_row_has_scrolled_off(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['merges' => [['r1' => 4, 'r2' => 80, 'c1' => 1, 'c2' => 1]]]])->save();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 1, 'value' => 'Tall']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->script("document.getElementById('sheet').scrollTop = 1200");
+            $browser->pause(200);
+            $this->assertEquals(77 * 30, $this->sizeOf($browser, 'Tall')['h']);
+
+            // A click on the part that shows selects it and leaves the sheet where it is.
+            $browser->driver->executeScript(<<<'JS'
+                const sheet = document.getElementById('sheet').getBoundingClientRect();
+                const sizes = getComputedStyle(document.documentElement);
+                const px = (name) => parseFloat(sizes.getPropertyValue(name));
+                const x = sheet.left + px('--gutter') + px('--label') + 20;
+                const y = sheet.top + 200;
+                document.elementFromPoint(x, y).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerType: 'mouse' }));
+                window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y }));
+            JS);
+            $browser->assertSeeIn('#ref', 'B5');
+            $this->assertEquals(1200, $browser->driver->executeScript("return document.getElementById('sheet').scrollTop"));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_cannot_merge(): void
+    {
+        [, $sheet] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Merge cells');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Merge cells');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

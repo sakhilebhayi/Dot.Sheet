@@ -16,6 +16,8 @@ class CellWriter
     /** Most cells worked out one by one in the write; past it, the whole sheet is worked out after. */
     private const MAX_WORKED_OUT_INLINE = 200;
 
+    private const COVERED_MESSAGE = 'That cell is part of a merged cell. Its contents go in the first cell.';
+
     public function __construct(private Recalculator $recalculator) {}
 
     /**
@@ -27,13 +29,21 @@ class CellWriter
         $layout = SheetTab::whereKey($sheetTabId)->value('layout');
         $rules = is_array($layout['validation_rules'] ?? null) ? $layout['validation_rules'] : [];
         $cells = $this->cellsAt($sheetTabId, $edits);
+        $merges = $edits === [] ? [] : SheetMerges::near(SheetMerges::of($layout), [
+            'r1' => min(array_column($edits, 'row')), 'r2' => max(array_column($edits, 'row')),
+            'c1' => min(array_column($edits, 'col')), 'c2' => max(array_column($edits, 'col')),
+        ]);
 
         $refused = [];
         $written = [];
         $undo = [];
         foreach ($edits as $edit) {
             ['row' => $row, 'col' => $col, 'value' => $value] = $edit;
-            $reason = $value === '' ? null : CellRules::refuse($rules, $row, $col, $value);
+            $covered = SheetMerges::covers($merges, $row, $col);
+            if ($covered) {
+                $edit['x'] = null;   // nothing shows here, so nothing is kept here
+            }
+            $reason = $value === '' ? null : ($covered ? self::COVERED_MESSAGE : CellRules::refuse($rules, $row, $col, $value));
             if ($reason !== null) {
                 $refused[] = ['row' => $row, 'col' => $col, 'message' => $reason];
 
@@ -70,8 +80,12 @@ class CellWriter
     public function format(int $spreadsheetId, int $sheetTabId, array $area, array $patch): array
     {
         $undo = [];
+        $merges = SheetMerges::near(SheetMerges::onTab($sheetTabId), $area);
         for ($row = $area['r1']; $row <= $area['r2']; $row++) {
             for ($col = $area['c1']; $col <= $area['c2']; $col++) {
+                if (SheetMerges::covers($merges, $row, $col)) {
+                    continue;
+                }
                 $cell = Cell::firstOrNew(['spreadsheet_id' => $spreadsheetId, 'sheet_tab_id' => $sheetTabId, 'row_index' => $row, 'col_index' => $col]);
                 $undo[] = $this->asFound($row, $col, $cell->exists ? $cell : null);
                 $cell->formatting = array_replace(is_array($cell->formatting) ? $cell->formatting : [], $patch);

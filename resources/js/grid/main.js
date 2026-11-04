@@ -205,7 +205,7 @@ function clamp(r, c) {
 }
 
 function select(r, c, extend = false) {
-    const to = clamp(r, c);
+    const to = grid.anchorOf(clamp(r, c));
     grid.extent = to;
     if (!extend) grid.active = to;
     grid.reveal(to.r, to.c);
@@ -213,7 +213,7 @@ function select(r, c, extend = false) {
 }
 
 function selectArea(r1, c1, r2, c2) {
-    grid.active = { r: r1, c: c1 };
+    grid.active = grid.anchorOf({ r: r1, c: c1 });
     grid.extent = { r: r2, c: c2 };
     afterMove();
 }
@@ -266,8 +266,8 @@ function failed(status, body) {
 }
 
 /** Show the edits now and send them; the server's answer then replaces what was guessed here. */
-async function write(edits, { remember: keep = true } = {}) {
-    if (!boot.canEdit || edits.length === 0) return null;
+async function write(edits, { remember: keep = true, merges } = {}) {
+    if (!boot.canEdit || (edits.length === 0 && !merges)) return null;
 
     const old = edits.map(({ row, col }) => before(row, col));
     edits.forEach((edit, i) => {
@@ -283,7 +283,7 @@ async function write(edits, { remember: keep = true } = {}) {
     selected();
 
     sending++;
-    const { ok, status, body } = await server.edit(tab, () => version, edits);
+    const { ok, status, body } = await server.edit(tab, () => version, edits, merges);
     sending--;
     edits.forEach(({ row, col }) => store.release(row, col));
 
@@ -299,6 +299,7 @@ async function write(edits, { remember: keep = true } = {}) {
         note(message);
     }
     if (keep) remember(body.undo);
+    if (body.merges) grid.setMerges(body.merges);
     await absorb(body, new Set(edits.map(({ row, col }) => `${row}:${col}`)));
     return body;
 }
@@ -376,12 +377,12 @@ async function retrace(from, to, nothing) {
     const back = [];
     let last = null;
     for (const group of step.groups) {
-        if (group.edits.length === 0) continue;
+        if (group.edits.length === 0 && !group.merges) continue;
         if (group.tab !== tab) await open(group.tab);
-        const body = await write(group.edits, { remember: false });
+        const body = await write(group.edits, { remember: false, merges: group.merges });
         if (!body) return;
         back.push(...body.undo);
-        last = group.edits;
+        last = [...group.edits, ...mergeCorners(group.merges)];
     }
     to.push({ version, groups: back });
 
@@ -391,6 +392,11 @@ async function retrace(from, to, nothing) {
         grid.reveal(Math.min(...rows), Math.min(...cols));
         selectArea(Math.min(...rows), Math.min(...cols), Math.max(...rows), Math.max(...cols));
     }
+}
+
+function mergeCorners(merges) {
+    if (!merges) return [];
+    return [...merges.add, ...merges.remove].flatMap((m) => [{ row: m.r1, col: m.c1 }, { row: m.r2, col: m.c2 }]);
 }
 
 const undo = () => retrace(undoSteps, redoSteps, 'Nothing to undo.');
@@ -410,12 +416,12 @@ async function reopen() {
 /** The selection, cut down to where the sheet holds anything. */
 function usedArea() {
     const area = grid.area();
-    return {
+    return grid.wholeMerges({
         r1: area.r1,
         c1: area.c1,
         r2: Math.max(area.r1, Math.min(area.r2, store.lastRow ?? area.r1)),
         c2: Math.max(area.c1, Math.min(area.c2, store.lastCol ?? area.c1)),
-    };
+    });
 }
 
 const cellCount = (area) => (area.r2 - area.r1 + 1) * (area.c2 - area.c1 + 1);
@@ -553,6 +559,7 @@ async function pasteCopy(copy) {
     remember(body.undo);
     told = '';
     if (copy.cut) letGo();
+    if (body.merges) grid.setMerges(body.merges);
     const changed = new Set([...body.cells.map((c) => `${c.r}:${c.c}`)]);
     await absorb(body, changed);
     store.reach(body.area.r2, body.area.c2);
@@ -561,13 +568,16 @@ async function pasteCopy(copy) {
 }
 
 function pasteRange(copy, area) {
+    // A merged cell takes a paste as one cell, not as a selection to repeat it over.
+    const merge = grid.mergeAt(area.r1, area.c1);
+    const single = merge && merge.r2 === area.r2 && merge.c2 === area.c2;
     return server.paste(tab, () => version, {
         from_tab: copy.tab,
         ...copy.area,
         row: area.r1,
         col: area.c1,
-        rows: Math.min(area.r2 - area.r1 + 1, MAX_CELLS),
-        cols: Math.min(area.c2 - area.c1 + 1, MAX_CELLS),
+        rows: single ? 1 : Math.min(area.r2 - area.r1 + 1, MAX_CELLS),
+        cols: single ? 1 : Math.min(area.c2 - area.c1 + 1, MAX_CELLS),
         cut: copy.cut,
     });
 }
@@ -648,10 +658,10 @@ function fittedSize({ axis, at }) {
     const context = document.createElement('canvas').getContext('2d');
     const family = getComputedStyle(sheet).fontFamily;
     let widest = 0;
-    for (const row of store.rows.values()) {
+    for (const [r, row] of store.rows) {
         const cell = row.get(at);
         const text = show(cell).text;
-        if (!text) continue;
+        if (!text || grid.mergeAt(r, at)) continue;
         context.font = `${cell.x?.bold ? 600 : 400} ${cell.x?.font_size ?? 14}px ${family}`;
         widest = Math.max(widest, context.measureText(text).width);
     }
@@ -696,6 +706,44 @@ async function freezeHere() {
     }
 }
 
+/* Merged cells */
+
+async function mergeCells() {
+    if (!boot.canEdit) return;
+    const area = grid.area();
+    const merge = grid.mergeAt(area.r1, area.c1);
+    if (merge && merge.r2 === area.r2 && merge.c2 === area.c2) {
+        note('These cells are already merged.');
+        return;
+    }
+    const { ok, status, body } = await server.merge(tab, () => version, area);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    await tookMerges(body);
+    const name = `${cellName(area.r1, area.c1)}:${cellName(area.r2, area.c2)}`;
+    note(body.cleared > 0 ? `Merged ${name}. ${body.cleared === 1 ? 'One other cell' : `${body.cleared} other cells`} cleared: undo brings them back.` : `Merged ${name}.`);
+}
+
+async function unmergeCells() {
+    if (!boot.canEdit) return;
+    const { ok, status, body } = await server.unmerge(tab, () => version, grid.area());
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    await tookMerges(body);
+    note('Unmerged.');
+}
+
+async function tookMerges(body) {
+    remember(body.undo);
+    grid.setMerges(body.merges);
+    await absorb(body, new Set(body.cells.map((c) => `${c.r}:${c.c}`)));
+    selectArea(body.area.r1, body.area.c1, body.area.r2, body.area.c2);
+}
+
 /* Fill */
 
 async function fillTo(area, target) {
@@ -714,6 +762,7 @@ async function fillTo(area, target) {
 
     if (body.refused[0]) note(body.refused[0].message);
     remember(body.undo);
+    if (body.merges) grid.setMerges(body.merges);
     await absorb(body, new Set(body.cells.map((c) => `${c.r}:${c.c}`)));
     store.reach(body.area.r2, body.area.c2);
     grid.fit();
@@ -882,7 +931,7 @@ let editing = null;
 let pointed = null;   // the reference in the formula that the last click on a cell put there
 
 function fit() {
-    const width = Math.min(420, Math.max(grid.cols.sizeOf(editing.c), (box.value.length + 3) * 7.5));
+    const width = Math.min(420, Math.max(grid.spanOf(editing.r, editing.c).width, (box.value.length + 3) * 7.5));
     box.style.width = `${width}px`;
 }
 
@@ -898,7 +947,7 @@ function beginEdit(text, typing = false, inLine = false) {
     line.value = text;
     box.style.left = `${grid.gutter + grid.cols.offset(c)}px`;
     box.style.top = `${grid.rowTop(r)}px`;
-    box.style.height = `${grid.rows.sizeOf(r)}px`;
+    box.style.height = `${grid.spanOf(r, c).height}px`;
     fit();
     grid.layerOf(r, c).append(box);
     if (!inLine) {
@@ -926,7 +975,10 @@ function closeEdit(save) {
 function leave(save, move = null) {
     closeEdit(save);
     sheet.focus({ preventScroll: true });
-    if (move) select(grid.active.r + move[0], grid.active.c + move[1]);
+    if (move) {
+        const to = grid.step(grid.active, move[0], move[1]);
+        select(to.r, to.c);
+    }
 }
 
 function editingKeys(e) {
@@ -1014,11 +1066,16 @@ sheet.addEventListener('keydown', (e) => {
     if (steps[e.key]) {
         const [dr, dc] = steps[e.key];
         if (command) jump(dr, dc, e.shiftKey);
-        else select(from.r + dr, from.c + dc, e.shiftKey);
+        else {
+            const to = grid.step(from, dr, dc);
+            select(to.r, to.c, e.shiftKey);
+        }
     } else if (e.key === 'Tab') {
-        select(r, c + (e.shiftKey ? -1 : 1));
+        const to = grid.step(grid.active, 0, e.shiftKey ? -1 : 1);
+        select(to.r, to.c);
     } else if (e.key === 'Enter') {
-        select(r + (e.shiftKey ? -1 : 1), c);
+        const to = grid.step(grid.active, e.shiftKey ? -1 : 1, 0);
+        select(to.r, to.c);
     } else if (e.key === 'Home') {
         select(command ? 0 : from.r, 0, e.shiftKey);
     } else if (e.key === 'End') {
@@ -1072,7 +1129,7 @@ function pick(e) {
     } else if (r < 0) {
         if (e.shiftKey) grid.extent = { r: boot.rows - 1, c };
         else {
-            grid.active = { r: 0, c };
+            grid.active = grid.anchorOf({ r: 0, c });
             grid.extent = { r: boot.rows - 1, c };
         }
         dragging = 'column';
@@ -1080,7 +1137,7 @@ function pick(e) {
     } else if (c < 0) {
         if (e.shiftKey) grid.extent = { r, c: boot.cols - 1 };
         else {
-            grid.active = { r, c: 0 };
+            grid.active = grid.anchorOf({ r, c: 0 });
             grid.extent = { r, c: boot.cols - 1 };
         }
         dragging = 'row';
@@ -1243,6 +1300,8 @@ function choices(query) {
             { label: 'Find and replace', run: () => openFind() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
+            { label: 'Merge cells', run: mergeCells },
+            { label: 'Unmerge cells', run: unmergeCells },
             { label: 'Fill down', run: fillDown },
             { label: 'Fill right', run: fillRight },
             { label: 'Undo', run: undo },

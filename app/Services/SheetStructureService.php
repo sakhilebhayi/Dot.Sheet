@@ -322,6 +322,10 @@ class SheetStructureService
         };
 
         SheetTab::updateLayout($sheetTabId, function (array $settings) use ($isRow, $field, $move, $index, $delta) {
+            if (! empty($settings['merges'])) {
+                $settings['merges'] = SheetMerges::shifted(SheetMerges::of($settings), $isRow, fn (int $start, int $end) => $this->shiftSpan($start, $end, $index, $delta));
+            }
+
             $sizesKey = $isRow ? 'row_heights' : 'col_widths';
             $hiddenKey = $isRow ? 'hidden_rows' : 'hidden_cols';
 

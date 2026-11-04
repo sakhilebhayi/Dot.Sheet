@@ -14,6 +14,12 @@ colors:
   thread-wash: "#E4E8FB"
   thread-read: "#EEF0FC"
   loss: "#C62A12"
+  chart-1: "#1F8A5F"
+  chart-2: "#8B3FA8"
+  chart-3: "#6E7A1E"
+  chart-4: "#0E8AA0"
+  chart-5: "#B5791A"
+  chart-6: "#B0498C"
   on-primary: "#F7F9F6"
   on-tertiary: "#FFFFFF"
   cell-text-slate: "#56645D"
@@ -144,6 +150,18 @@ components:
   cell-read:
     backgroundColor: "{colors.thread-read}"
     textColor: "{colors.primary}"
+  chart-series-1:
+    backgroundColor: "{colors.chart-1}"
+  chart-series-2:
+    backgroundColor: "{colors.chart-2}"
+  chart-series-3:
+    backgroundColor: "{colors.chart-3}"
+  chart-series-4:
+    backgroundColor: "{colors.chart-4}"
+  chart-series-5:
+    backgroundColor: "{colors.chart-5}"
+  chart-series-6:
+    backgroundColor: "{colors.chart-6}"
   comment-mark:
     backgroundColor: "{colors.primary}"
     size: 6px
@@ -208,6 +226,11 @@ Colour carries meaning, and each colour has one job.
 - **Thread-wash (#E4E8FB)** fills the selection. **Thread-read (#EEF0FC)** fills the cells a formula reads.
 
 Error values such as `#DIV/0!` use loss. Their explanation is the cell's tooltip.
+
+**Chart colours** are six, in this order, so that they stay apart for colour-blind readers and from each other:
+green, plum, olive, teal, amber, pink. They were chosen with a validator, not by eye: the cell colours fail its
+checks. None is blue, which is selection, and none is red, which is a loss. A colour follows its column, and a
+seventh series is never made up. Text beside a chart stays ink and slate.
 
 **Cell colours** are the person's own, kept to `cell-text-*` and `cell-fill-*`. There is no blue and no red
 among them, because a sheet that lets anyone paint a profit red has lost its signal. Every text colour
@@ -321,6 +344,15 @@ reference, as the active row number does. Pressing a reference goes to the cell.
 not to a position: it goes with its row through a sort, a cut, and rows going in or out, and undo takes it back.
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
+
+**Charts.** The palette opens them in the same place, a little wider, because a chart needs the room. A plain
+selection of a table charts properly: a first column of words labels the points, a heading row names the series,
+and a table wider than it is tall runs across, with its rows as the series. A pie of figures all below nought shows
+their sizes and says so.
+A chart never invents a figure, so an empty cell is a gap and not a nought, and what it leaves out is said under it.
+Marks are thin: bars at most 24px with a 4px rounded end, lines 2px, one axis, hairline grid, a legend only for two
+or more series. Every figure is also in a table under the chart, because a canvas cannot be read aloud. A chart
+follows its cells: figures, rows moving and rows going. Placing charts on the sheet itself is S9.
 
 **Named ranges.** The palette opens them in the same place. The form follows the selection, so naming cells is
 selecting them and typing a word. The list goes to each name's cells. Deleting a name that formulas use says how

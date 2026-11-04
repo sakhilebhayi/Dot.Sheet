@@ -9,7 +9,7 @@ class ChartConfig extends Model
 {
     protected $fillable = [
         'spreadsheet_id', 'sheet_tab_id', 'title', 'type',
-        'data_range', 'options',
+        'data_range', 'labels_range', 'options',
     ];
 
     protected $casts = ['options' => 'array'];

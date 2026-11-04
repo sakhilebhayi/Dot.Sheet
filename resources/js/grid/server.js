@@ -51,6 +51,22 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    charts(tab) {
+        return json(`${this.base}/${tab}/charts`);
+    }
+
+    chart(tab, id) {
+        return json(`${this.base}/${tab}/charts/${id}`);
+    }
+
+    addChart(tab, chart) {
+        return json(`${this.base}/${tab}/charts`, { method: 'POST', body: JSON.stringify(chart) });
+    }
+
+    removeChart(tab, id) {
+        return json(`${this.base}/${tab}/charts/${id}`, { method: 'DELETE' });
+    }
+
     names(tab) {
         return json(`${this.base}/${tab}/names`);
     }

@@ -79,6 +79,6 @@ class ChartBuilderRangeParsingTest extends TestCase
         $data = $method->invoke($chartBuilder, 'B1:B4', 'A1:A3');
 
         $this->assertSame([3.0, 5.0, 8.0, 16.0], $data['datasets'][0]['data']);
-        $this->assertSame(['Apples', 'Pears', 'Plums'], $data['labels']);
+        $this->assertSame(['Apples', 'Pears', 'Plums', ''], $data['labels'], 'a label for each point, so none slides along');
     }
 }

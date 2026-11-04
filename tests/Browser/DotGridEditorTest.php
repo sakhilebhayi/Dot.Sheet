@@ -9,6 +9,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
+use App\Services\SheetCharts;
 use App\Services\SheetComments;
 use App\Services\SheetNames;
 use App\Services\SheetVersions;
@@ -867,8 +868,8 @@ class DotGridEditorTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'charts');
-            $browser->waitForTextIn('#found', 'Charts')->assertSeeIn('#found', 'In the classic editor');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'pivot');
+            $browser->waitForTextIn('#found', 'Pivot tables')->assertSeeIn('#found', 'In the classic editor');
 
             $browser->keys('#find', WebDriverKeys::ENTER);
             $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
@@ -2273,6 +2274,195 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#names-list', 'Figures')->assertMissing('#names-form')->assertDontSeeIn('#names-list', 'Delete');
             $this->pressIn($browser, '#names-list', 'Go to');
             $browser->waitUsing(5, 25, fn () => $browser->text('#ref') === 'B2');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    /** How much of each chart colour a chart really painted. A canvas holds no text to read. */
+    private function paint(Browser $browser): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const canvas = document.getElementById('charts-canvas');
+            if (!canvas.width) return {};
+            const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+            const styles = getComputedStyle(document.documentElement);
+            const wanted = [1, 2, 3, 4, 5, 6].map((n) => styles.getPropertyValue(`--chart-${n}`).trim());
+            const parts = wanted.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+            const counts = {};
+            for (let i = 0; i < pixels.length; i += 4) {
+                if (pixels[i + 3] < 250) continue;
+                parts.forEach((rgb, n) => {
+                    if (Math.abs(pixels[i] - rgb[0]) < 6 && Math.abs(pixels[i + 1] - rgb[1]) < 6 && Math.abs(pixels[i + 2] - rgb[2]) < 6) counts[n + 1] = (counts[n + 1] ?? 0) + 1;
+                });
+            }
+            return counts;
+        JS);
+    }
+
+    private function chartTable(Browser $browser): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            return [...document.querySelectorAll('#charts-table tr')].map((row) => [...row.children].map((cell) => cell.textContent));
+        JS);
+    }
+
+    /** @return array{0: User, 1: Spreadsheet, 2: SheetTab} */
+    private function salesSheet(): array
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Month'], ['row' => 0, 'col' => 1, 'value' => 'Sales'], ['row' => 0, 'col' => 2, 'value' => 'Costs'],
+            ['row' => 1, 'col' => 0, 'value' => 'Jan'], ['row' => 1, 'col' => 1, 'value' => '100'], ['row' => 1, 'col' => 2, 'value' => '40'],
+            ['row' => 2, 'col' => 0, 'value' => 'Feb'], ['row' => 2, 'col' => 1, 'value' => '300'], ['row' => 2, 'col' => 2, 'value' => '90'],
+        ], $user->id);
+
+        return [$user, $sheet, $tab];
+    }
+
+    private function openSales(Browser $browser, User $user, Spreadsheet $sheet): void
+    {
+        $browser->driver->get('about:blank');
+        $browser->driver->manage()->getLog('browser');
+        $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}");
+        $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return [...document.querySelectorAll('.c')].some(c => c.textContent === 'Month')"));
+    }
+
+    public function test_a_chart_is_drawn_from_a_plain_selection_and_follows_its_figures(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitFor('#charts')->waitForTextIn('#charts-list', 'No charts on this sheet yet');
+            $this->assertSame('charts-title', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $this->clickCell($browser, 0, 0);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN], [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN], [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_RIGHT], [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_RIGHT]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#charts-range') === 'A1:C3');
+
+            $browser->type('#charts-title', 'Sales and costs')->keys('#charts-title', '{enter}');
+            $browser->waitForTextIn('#charts-heading', 'Sales and costs');
+            $browser->assertSeeIn('#charts-list', 'Bars, A1:C3');
+            $browser->waitUsing(10, 25, fn () => count($this->paint($browser)) === 2);
+            $this->assertEqualsCanonicalizing([1, 2], array_keys($this->paint($browser)), 'two series, in the first two colours');
+
+            $this->assertSame([['', 'Sales', 'Costs'], ['Jan', '100', '40'], ['Feb', '300', '90']], $this->chartTable($browser));
+            $browser->assertMissing('#charts-table');
+            $browser->click('#charts-figures')->waitFor('#charts-table')->assertSeeIn('#charts-figures', 'Hide the figures');
+
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 1, 'value' => '700']], $user->id);
+            $this->clickCell($browser, 2, 1);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', '555', '{enter}');
+            $browser->waitUsing(10, 25, fn () => ($this->chartTable($browser)[2][1] ?? '') === '555');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_each_kind_of_chart_paints_and_a_pie_says_what_it_left_out(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 0, 'value' => 'Mar'], ['row' => 3, 'col' => 1, 'value' => '-50']], $user->id);
+        foreach (['bar', 'line', 'area', 'scatter'] as $type) {
+            app(SheetCharts::class)->add($sheet->id, $tab->id, ucfirst($type), $type, 'A1:C4', null);
+        }
+        app(SheetCharts::class)->add($sheet->id, $tab->id, 'Pie', 'pie', 'A1:C4', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Pie');
+
+            foreach (['Bar', 'Line', 'Area', 'Scatter', 'Pie'] as $title) {
+                $browser->driver->executeScript(<<<'JS'
+                    const row = [...document.querySelectorAll('#charts-list .person')].find((r) => r.querySelector('b').textContent === arguments[0]);
+                    [...row.querySelectorAll('button')].find((b) => b.textContent === 'Show').click();
+                JS, [$title]);
+                $browser->waitForTextIn('#charts-heading', $title);
+                $browser->waitUsing(10, 25, fn () => count($this->paint($browser)) > 0);
+            }
+
+            $browser->assertSeeIn('#charts-said', 'A pie cannot show figures below nought')->assertSeeIn('#charts-said', 'A pie shows one series: Sales.');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_pie_of_money_going_out_shows_its_sizes(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+        // Mar has no figure: a blank is nothing to warn about, on a pie of sizes.
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 1, 'value' => '-100'], ['row' => 2, 'col' => 1, 'value' => '-300'], ['row' => 3, 'col' => 0, 'value' => 'Mar']], $user->id);
+        app(SheetCharts::class)->add($sheet->id, $tab->id, 'Costs', 'pie', 'A1:B4', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Costs');
+            $this->pressIn($browser, '#charts-list', 'Show');
+            $browser->waitUsing(10, 25, fn () => count($this->paint($browser)) === 2);
+            $browser->assertSeeIn('#charts-said', 'These figures are below nought, so the pie shows their sizes.')->assertDontSeeIn('#charts-said', 'left out');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_chart_with_no_figures_says_so_instead_of_drawing_nothing(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+        app(SheetCharts::class)->add($sheet->id, $tab->id, 'Words', 'bar', 'E1:E3', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Words');
+            $this->pressIn($browser, '#charts-list', 'Show');
+            $browser->waitForTextIn('#charts-said', 'There are no figures in these cells yet.');
+            $browser->assertMissing('#charts-canvas');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_deleting_a_chart_asks_and_leaves_the_figures(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+        app(SheetCharts::class)->add($sheet->id, $tab->id, 'Sales', 'bar', 'A1:B3', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Sales');
+            $this->pressIn($browser, '#charts-list', 'Show');
+            $browser->waitForTextIn('#charts-heading', 'Sales');
+
+            $this->pressIn($browser, '#charts-list', 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'The figures stay on the sheet.')->assertSeeIn('#confirm-yes', 'Delete chart');
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#charts-list', 'No charts on this sheet yet')->assertMissing('#charts-view');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_list_follows_the_sheet_in_view_and_someone_who_can_only_view_can_look(): void
+    {
+        [$user, $sheet, $tab] = $this->salesSheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(SheetCharts::class)->add($sheet->id, $tab->id, 'Sales', 'bar', 'A1:B3', null);
+        app(SheetCharts::class)->add($sheet->id, $extra->id, 'Shelves', 'bar', 'A1:A2', null);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openSales($browser, $reader, $sheet);
+            $browser->click('#do-comments')->waitFor('#notes');
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Sales')->assertMissing('#notes')->assertMissing('#charts-form')->assertDontSeeIn('#charts-list', 'Delete');
+            $this->pressIn($browser, '#charts-list', 'Show');
+            $browser->waitUsing(10, 25, fn () => count($this->paint($browser)) === 1);
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#charts-list', 'Shelves')->assertDontSeeIn('#charts-list', 'Sales')->assertMissing('#charts-view');
             $this->assertNoConsoleErrors($browser);
         });
     }

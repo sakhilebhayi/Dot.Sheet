@@ -101,6 +101,7 @@ Route::middleware([
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('before-import', [GridCopyController::class, 'beforeImport'])->name('import.before');
         Route::get('copies', [GridCopyController::class, 'index'])->name('copies');
         Route::post('copies', [GridCopyController::class, 'store'])->name('copies.store');
         Route::get('copies/{copy}/changes', [GridCopyController::class, 'changes'])->name('copies.changes');

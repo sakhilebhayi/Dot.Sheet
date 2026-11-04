@@ -50,6 +50,7 @@ const filterList = byId('filter-list');
 const pickButton = byId('pick');
 const notedHere = byId('noted-here');
 const commentBox = byId('notes-text');
+const importPicker = byId('import-file');
 const pickList = byId('picks');
 const smaller = byId('do-smaller');
 const larger = byId('do-larger');
@@ -57,6 +58,8 @@ const larger = byId('do-larger');
 const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
 const MARK_INSET = 6;
+const MAX_IMPORT = 10 * 1024 * 1024;
+const IMPORT_POLL = 1000;
 const MIN_COL = 48;
 const MAX_COL = 420;
 const MAX_FROZEN_ROWS = 50;
@@ -152,7 +155,6 @@ async function putBackCopy(copy) {
     redoSteps.length = 0;
     if (clip) letGo();
     await reopen();
-    await copies.load();
     note(`Put back ${copy.name}. The sheet as it was is the newest copy here.`);
 }
 
@@ -738,6 +740,7 @@ async function reopen() {
     drawFilters();
     select(r, c);
     if (!notes.closed) notes.load();
+    if (!copies.closed) copies.load();
 }
 
 /** The selection, cut down to where the sheet holds anything. */
@@ -2231,13 +2234,77 @@ sheet.addEventListener('dblclick', (e) => {
     if (r >= 0 && c >= 0) beginEdit(contents(store.get(r, c)));
 });
 
+/* Importing a file. It writes over the sheet from A1, so it says so first, and a large file runs in the background. */
+
+async function importInto(file) {
+    if (file.size > MAX_IMPORT) {
+        note('That file is larger than 10 MB.');
+        return;
+    }
+    const before = await server.beforeImport(tab);
+    if (!before.ok) {
+        refused(before.status, before.body);
+        return;
+    }
+    const { cells, copied } = before.body;
+    const excel = /\.xlsx?$/i.test(file.name) ? ' Only the first sheet of an Excel file comes in, and its formulas come in as text.' : '';
+    if (cells === 0 && !excel) {
+        sendImport(file);
+        return;
+    }
+    const sheetName = boot.tabs.find((t) => t.id === tab)?.name;
+    const over = cells === 0 ? '' : ` It writes over ${sheetName} from A1, and cells outside the file stay.`;
+    const safe = cells === 0 ? '' : copied ? ' The sheet as it is now is kept as a copy.' : ' This sheet is too large to copy first, so this cannot be undone.';
+    ask(`Import ${file.name}?${over}${excel}${safe}`, 'Import', () => sendImport(file), 'Leave the sheet as it is');
+}
+
+async function sendImport(file) {
+    const into = tab;
+    note(`Importing ${file.name}.`);
+    const { ok, status, body } = await server.importFile(into, file);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    if (!body.success) {
+        note(body.error || 'The import did not finish. Try again.');
+        return;
+    }
+    const stopped = body.queued ? await followImport(body.batch_id, file.name) : '';
+
+    undoSteps.length = 0;
+    redoSteps.length = 0;
+    if (clip) letGo();
+    if (tab === into) await reopen();
+    // Last: reloading the sheet clears the note.
+    note(stopped || `Imported ${body.rows.toLocaleString('en-ZA')} ${body.rows === 1 ? 'row' : 'rows'}.${body.copied ? ' The sheet as it was is in Version history.' : ''}`);
+}
+
+/** A large file runs in the background. Answers why it stopped, or nothing when all of it landed. */
+async function followImport(batch, name) {
+    for (;;) {
+        await new Promise((resolve) => { setTimeout(resolve, IMPORT_POLL); });
+        const { ok, status, body } = await server.importStatus(batch);
+        if (!ok) return status === 0 ? `Lost touch with the import of ${name}. Reload to see what landed.` : 'The import stopped. Reload to see what landed.';
+        if (body.status === 'finished') return '';
+        if (body.status !== 'running') return body.message || 'The import stopped. Reload to see what landed.';
+        note(`Importing ${name}: ${body.progress}%.`);
+    }
+}
+
+importPicker.addEventListener('change', () => {
+    const [file] = importPicker.files;
+    importPicker.value = '';
+    if (file) importInto(file);
+});
+
 /* The palette */
 
 const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Charts', 'Pivot tables', 'Named ranges', 'Import a file',
+    'Charts', 'Pivot tables', 'Named ranges',
     'Scripts',
     'Ask AI',
 ];
@@ -2254,6 +2321,7 @@ function choices(query) {
     const commands = [
         ...(boot.canEdit ? [
             { label: 'Find and replace', run: () => openFind() },
+            { label: 'Import a file', hint: 'CSV or Excel', run: () => importPicker.click() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Add a sheet', run: addSheet },

@@ -322,6 +322,11 @@ not to a position: it goes with its row through a sort, a cut, and rows going in
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
 
+**Import.** The palette picks a file. On a sheet with data it asks first and says what happens: the file writes
+from A1, cells outside it stay, and a copy of the sheet is kept, or it says when a sheet is too large for that. It
+says what an Excel file will lose before anything is written. Progress and the result are in the note at the foot,
+because importing is not a reason to stop working.
+
 **History.** The palette opens Version history in the same place, listing saved copies of the sheet in view,
 newest first. A copy someone named carries weight, and automatic ones stay soft, so the ones that matter can be
 found among many. Putting one back asks first and says how many cells change, and the sheet as it stood is kept

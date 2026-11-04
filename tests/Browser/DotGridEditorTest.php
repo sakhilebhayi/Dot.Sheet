@@ -2059,4 +2059,127 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    /** A file on disk for the browser to pick. */
+    private function fileToImport(string $name, string $contents): string
+    {
+        $path = sys_get_temp_dir().'/'.$name;
+        file_put_contents($path, $contents);
+
+        return $path;
+    }
+
+    public function test_a_file_comes_in_after_saying_what_it_writes_over_and_the_copy_is_in_history(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $path = $this->fileToImport('figures.csv', "Fresh,1\nNew,2\n");
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $path) {
+            $this->open($browser, $user, $sheet);
+
+            // The file dialog is the browser's own, so the test stops at the moment it would open.
+            $browser->driver->executeScript("document.getElementById('import-file').addEventListener('click', (e) => { e.preventDefault(); window.picking = true; }, { once: true })");
+            $this->runCommand($browser, 'Import a file');
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript('return window.picking === true'));
+
+            $browser->attach('#import-file', $path);
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Import figures.csv?')->assertSeeIn('#confirm-text', 'writes over Sheet1 from A1')
+                ->assertSeeIn('#confirm-text', 'kept as a copy')->assertDontSeeIn('#confirm-text', 'Excel')->assertSeeIn('#confirm-yes', 'Import');
+
+            $browser->click('#confirm-no')->pause(100);
+            $this->assertSame('Sales', $this->cell($browser, 0, 0), 'leaving it is the default');
+
+            $browser->attach('#import-file', $path);
+            $browser->waitFor('#confirm[open]')->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'Imported 2 rows. The sheet as it was is in Version history.');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Fresh');
+            $this->assertSame('Net', $this->cell($browser, 2, 0), 'cells outside the file stay');
+
+            $this->runCommand($browser, 'Version history');
+            $browser->waitForTextIn('#copies-list', 'Before importing figures.csv');
+            $this->pressIn($browser, '#copies-list', 'Put back');
+            $browser->waitFor('#confirm[open]')->click('#confirm-yes');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_an_empty_sheet_takes_a_file_without_asking(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        $path = $this->fileToImport('first.csv', "Sales,10\n");
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $path) {
+            $browser->driver->get('about:blank');
+            $browser->driver->manage()->getLog('browser');
+            $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}")->waitFor('.c');
+            $browser->attach('#import-file', $path);
+            $browser->waitForTextIn('#note', 'Imported 1 row.');
+            $browser->assertMissing('#confirm[open]')->assertDontSeeIn('#note', 'Version history');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_an_excel_file_says_what_it_will_lose_first(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $path = $this->fileToImport('book.xlsx', 'this is not a workbook');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $path) {
+            $this->open($browser, $user, $sheet);
+            $browser->attach('#import-file', $path);
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Only the first sheet of an Excel file comes in, and its formulas come in as text.');
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'That file could not be read.');
+            $this->assertSame('Sales', $this->cell($browser, 0, 0));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_large_file_shows_its_progress_and_says_when_it_stops(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $path = $this->fileToImport('large.csv', "a,b\n");
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $path) {
+            $this->open($browser, $user, $sheet);
+
+            // The queue is not running here, so the server's two answers are played back to the page.
+            $browser->driver->executeScript(<<<'JS'
+                const real = window.fetch;
+                let polls = 0;
+                const answer = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+                window.fetch = (url, options) => {
+                    if (String(url).endsWith('/import') && options?.method === 'POST') return Promise.resolve(answer({ success: true, queued: true, batch_id: 'b1', rows: 3000, copied: true }));
+                    if (String(url).endsWith('/import/batches/b1')) {
+                        polls++;
+                        return Promise.resolve(answer(polls === 1 ? { status: 'running', progress: 40 } : { status: 'failed', message: 'Import failed after 1200 of 3000 rows; the rows already written are kept.' }));
+                    }
+                    return real(url, options);
+                };
+            JS);
+
+            $browser->attach('#import-file', $path);
+            $browser->waitFor('#confirm[open]')->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'Importing large.csv: 40%', 5);
+            $browser->waitForTextIn('#note', 'Import failed after 1200 of 3000 rows', 5);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_cannot_import(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'import');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Import a file');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

@@ -22,6 +22,10 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class SpreadsheetImportExportService
 {
+    public const UNREADABLE_MESSAGE = 'That file could not be read. Check that it opens, then try again.';
+
+    public const NOT_FINISHED_MESSAGE = 'The import did not finish, so nothing changed. Try again.';
+
     public const MAX_ROWS_PER_CHUNK = 500;
 
     public const QUEUED_MESSAGE = 'This file is large, so it is being imported in the background. You can keep working; the sheet reloads when it is done.';
@@ -305,8 +309,8 @@ class SpreadsheetImportExportService
 
         $ext = strtolower($file->getClientOriginalExtension());
         $rows = null;
-        // Cells read from an Excel file are values (formulas are read as their result): a text
-        // cell that happens to start with "=" must stay text, not become a formula.
+        // A cell read from an Excel file stays text, so one that happens to start with "=" is not taken
+        // for a formula. So is a real formula, for now: it lands as its own text until S8 reads the type.
         $valuesAreText = false;
 
         if ($ext === 'csv') {
@@ -319,12 +323,14 @@ class SpreadsheetImportExportService
                 $rows = $this->readFirstSheet($file);
                 $valuesAreText = true;
             } catch (\Exception $e) {
-                return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
+                report($e);
+
+                return ['success' => false, 'error' => self::UNREADABLE_MESSAGE];
             }
         }
 
         if ($rows === null) {
-            return ['success' => false, 'error' => 'Unsupported file type: '.$ext];
+            return ['success' => false, 'error' => 'Import a CSV or Excel file.'];
         }
 
         $size = self::measureRows($rows);
@@ -347,7 +353,8 @@ class SpreadsheetImportExportService
      */
     protected function readFirstSheet(UploadedFile $file): array
     {
-        $reader = IOFactory::createReaderForFile($file->getRealPath());
+        // Named outright: left to guess, the library reads a broken workbook as CSV and its junk lands on the sheet.
+        $reader = IOFactory::createReaderForFile($file->getRealPath(), [IOFactory::READER_XLSX, IOFactory::READER_XLS]);
         $reader->setReadDataOnly(true);
         $workbook = $reader->load($file->getRealPath());
 
@@ -459,7 +466,9 @@ class SpreadsheetImportExportService
         try {
             return $this->insertRows($spreadsheet, $this->readFirstSheet($file), $sheetTab);
         } catch (\Exception $e) {
-            return ['success' => false, 'error' => 'Excel import failed: '.$e->getMessage()];
+            report($e);
+
+            return ['success' => false, 'error' => self::UNREADABLE_MESSAGE];
         }
     }
 
@@ -519,8 +528,9 @@ class SpreadsheetImportExportService
             ];
         } catch (\Exception $e) {
             DB::rollBack();
+            report($e);
 
-            return ['success' => false, 'error' => $e->getMessage()];
+            return ['success' => false, 'error' => WriteLock::isTimeout($e) ? WriteLock::BUSY_MESSAGE : self::NOT_FINISHED_MESSAGE];
         }
     }
 }

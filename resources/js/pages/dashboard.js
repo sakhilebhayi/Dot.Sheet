@@ -143,7 +143,6 @@ function choose(row, draw = true) {
     title.textContent = f.name;
     title.href = f.open;
     byId('stage-open').href = f.open;
-    byId('stage-grid').href = f.grid;
     byId('stage-sheets').textContent = f.sheets;
     byId('stage-errors').textContent = f.errors;
     byId('stage-owner').textContent = f.ownerName;

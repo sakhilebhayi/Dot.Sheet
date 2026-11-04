@@ -39,7 +39,7 @@ class MentionedInComment extends Notification
             ->line("{$this->actorName} mentioned you in {$this->spreadsheetName}.")
             ->line("Cell: {$cellRef}")
             ->line("Comment: \"{$this->excerpt}\"")
-            ->action('Open Spreadsheet', url('/spreadsheets/'.$this->spreadsheetId));
+            ->action('Open Spreadsheet', url('/spreadsheets/'.$this->spreadsheetId.'/classic'));
     }
 
     /**

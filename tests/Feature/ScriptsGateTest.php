@@ -115,7 +115,7 @@ class ScriptsGateTest extends TestCase
     public function test_the_page_tells_the_browser_about_scripts_only_when_they_are_on(): void
     {
         // The classic editor is the page that runs scripts.
-        $page = fn () => $this->actingAs($this->owner)->get(route('spreadsheets.show', $this->spreadsheet))->assertOk()->getContent();
+        $page = fn () => $this->actingAs($this->owner)->get(route('spreadsheets.classic', $this->spreadsheet))->assertOk()->getContent();
 
         $this->assertStringNotContainsString('sheet-scripts-enabled', $page());
 

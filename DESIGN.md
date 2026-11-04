@@ -345,6 +345,11 @@ not to a position: it goes with its row through a sort, a cut, and rows going in
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
 
+**Macros.** The palette opens them in the same place. Recording is plain: Record, type, Stop and save, and the note at
+the foot counts the edits for as long as it runs, so nobody forgets it is on. A macro is a list of cells and values,
+played by the person who presses Play, as one step that undo takes back. Scripts written in code are not here: they
+ran with the rights of whoever pressed Run, and they stay off until there is a real sandbox.
+
 **Pivot tables.** The palette opens them in the same place. The form is a sentence, sum of amount by region, and
 offers the table's own headings. The answer reads as a short sheet, and what a total means is named: Total for a sum
 or a count, Overall, Lowest or Highest for the rest, because the total of an average is not a sum. A combination with

@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Spreadsheet;
+use App\Services\SheetMacros;
 use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
@@ -210,21 +211,12 @@ class ScriptsEditor extends Component
         if (empty($actions) || ! is_array($actions)) {
             return;
         }
-        $actions = array_slice($actions, 0, 1000);
 
-        $name = trim($this->macroName) !== '' ? trim($this->macroName) : ('Macro '.now()->format('H:i:s'));
-        $this->scriptMacros = collect($this->scriptMacros)
-            ->prepend([
-                'id' => (string) str()->uuid(),
-                'name' => $name,
-                'actions' => $actions,
-                'created_at' => now()->toISOString(),
-            ])
-            ->values()
-            ->toArray();
+        $saved = WriteLock::guard(fn () => app(SheetMacros::class)->add((int) $this->spreadsheet_id, (string) $this->macroName, $actions) ?? true, fn () => false);
 
         $this->macroName = '';
-        $this->status = $this->saveToSettings() ? 'Macro saved.' : WriteLock::BUSY_MESSAGE;
+        $this->reloadMacros();
+        $this->status = $saved === true ? 'Macro saved.' : ($saved === false ? WriteLock::BUSY_MESSAGE : $saved);
     }
 
     public function playMacro(string $id): void
@@ -242,12 +234,19 @@ class ScriptsEditor extends Component
 
     public function deleteMacro(string $id): void
     {
-        $this->scriptMacros = collect($this->scriptMacros)
-            ->reject(fn ($m) => $m['id'] === $id)
-            ->values()
-            ->toArray();
+        $deleted = WriteLock::guard(function () use ($id) {
+            app(SheetMacros::class)->remove((int) $this->spreadsheet_id, $id);
 
-        $this->status = $this->saveToSettings() ? 'Macro deleted.' : WriteLock::BUSY_MESSAGE;
+            return true;
+        }, fn () => false);
+
+        $this->reloadMacros();
+        $this->status = $deleted ? 'Macro deleted.' : WriteLock::BUSY_MESSAGE;
+    }
+
+    protected function reloadMacros(): void
+    {
+        $this->scriptMacros = app(SheetMacros::class)->of(Spreadsheet::findOrFail($this->spreadsheet_id));
     }
 
     protected function loadFromSettings(): void
@@ -259,23 +258,15 @@ class ScriptsEditor extends Component
 
     protected function saveToSettings(): bool
     {
-        // Merge into the stored settings under the write lock, and leave the stored scripts alone
-        // unless scripts are on: with the flag off no action may add or change a script, whatever
-        // this component holds in memory.
+        // Under the write lock, and never with the flag off: then no action may add or change a script,
+        // whatever this component holds in memory. Macros have their own way in, SheetMacros.
         $scripts = $this->scripts;
-        $macros = $this->scriptMacros;
-        $scriptsEnabled = $this->scriptsEnabled();
 
         return WriteLock::guard(
-            function () use ($scripts, $macros, $scriptsEnabled) {
-                Spreadsheet::updateSettings((int) $this->spreadsheet_id, function (array $settings) use ($scripts, $macros, $scriptsEnabled) {
-                    if ($scriptsEnabled) {
-                        $settings['scripts'] = $scripts;
-                    }
-                    $settings['macros'] = $macros;
-
-                    return $settings;
-                });
+            function () use ($scripts) {
+                if ($this->scriptsEnabled()) {
+                    Spreadsheet::updateSettings((int) $this->spreadsheet_id, fn (array $settings) => [...$settings, 'scripts' => $scripts]);
+                }
 
                 return true;
             },

@@ -4,6 +4,7 @@ import { Charts } from './charts';
 import { Copies } from './copies';
 import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
+import { Macros } from './macros';
 import { Names } from './names';
 import { Notes } from './notes';
 import { Pivots } from './pivots';
@@ -126,6 +127,17 @@ const pivots = new Pivots({
     refused,
     ask,
 });
+const macros = boot.canEdit ? new Macros({
+    server,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(macros),
+    play: playMacro,
+    note,
+    refused,
+    ask,
+    resting: () => note(''),
+}) : null;
 const names = new Names({
     server,
     canEdit: boot.canEdit,
@@ -181,7 +193,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, charts, pivots]) {
+    for (const panel of [notes, sharing, copies, names, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -195,6 +207,19 @@ function goToName({ row, col, row2, col2 }) {
     grid.reveal(row, col);
     selectArea(row, col, row2, col2);
     sheet.focus({ preventScroll: true });
+}
+
+/** One write, so undo takes the whole macro back at once. */
+async function playMacro(edits, name) {
+    if (edits.length === 0) {
+        note(`${name} has nothing to play.`);
+        return;
+    }
+    closeEdit(true);
+    const body = await write(edits.map(({ row, col, value }) => ({ row, col, value })), { record: false });
+    if (!body) return;
+    const landed = edits.length - body.refused.length;
+    note(`Played ${name}: ${landed.toLocaleString('en-ZA')} ${landed === 1 ? 'cell' : 'cells'}${body.refused.length ? `, ${body.refused.length.toLocaleString('en-ZA')} refused by rules on them` : ''}. Undo takes it back.`);
 }
 
 async function putBackCopy(copy) {
@@ -230,6 +255,7 @@ function goToComment(r, c) {
 }
 
 function restingNote() {
+    if (macros?.recording) return macros.saying;
     const cell = store.get(grid.active.r, grid.active.c);
     if (cell?.e) return cell.e;
     if (cell?.s) return 'Part of the answer of a formula nearby. Change that formula to change this.';
@@ -584,7 +610,7 @@ function failed(status, body) {
 }
 
 /** Show the edits now and send them; the server's answer then replaces what was guessed here. */
-async function write(edits, { remember: keep = true, merges, comments } = {}) {
+async function write(edits, { remember: keep = true, merges, comments, record = keep } = {}) {
     if (!boot.canEdit || (edits.length === 0 && !merges && !comments)) return null;
 
     const old = edits.map(({ row, col }) => before(row, col));
@@ -617,6 +643,7 @@ async function write(edits, { remember: keep = true, merges, comments } = {}) {
         note(message);
     }
     if (keep) remember(body.undo);
+    if (record) macros?.heard(edits.filter(({ row, col }) => !body.refused.some((r) => r.row === row && r.col === col)));
     if (body.merges) grid.setMerges(body.merges);
     await absorb(body, new Set(edits.map(({ row, col }) => `${row}:${col}`)));
     return body;
@@ -2373,7 +2400,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Scripts',
+    ...(boot.scripts ? ['Scripts'] : []),
     'Ask AI',
 ];
 
@@ -2389,6 +2416,7 @@ function choices(query) {
     const commands = [
         ...(boot.canEdit ? [
             { label: 'Find and replace', run: () => openFind() },
+            { label: 'Macros', hint: 'Record edits and play them back', run: () => macros.toggle(true) },
             { label: 'Import a file', hint: 'CSV or Excel', run: () => importPicker.click() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
@@ -2454,6 +2482,9 @@ function choices(query) {
     if (q) {
         if (boot.canEdit && !boot.structure && ['insert rows', 'insert columns', 'delete rows', 'delete columns'].some((name) => name.includes(q))) {
             list.push({ label: 'Insert or delete rows and columns', hint: 'Not switched on yet', run: () => note('Inserting and deleting rows and columns is not available yet.') });
+        }
+        if (!boot.scripts && 'scripts'.includes(q)) {
+            list.push({ label: 'Scripts', hint: 'Not switched on', run: () => note('Scripts are turned off on this server. Macros record edits and play them back.') });
         }
         const elsewhere = IN_CLASSIC.filter((label) => label.toLowerCase().includes(q));
         list.push(...elsewhere.map((label) => ({ label, hint: 'In the classic editor', href: boot.links.classic })));

@@ -2919,20 +2919,20 @@ class DotGridEditorTest extends DuskTestCase
             $this->runCommand($browser, 'Hide this sheet');
             $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Notes']);
             $browser->waitForTextIn('#note', 'Hid Stock.');
-            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1');
             $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
             $this->assertTrue($stock->fresh()->hidden);
 
             $browser->driver->executeScript("document.getElementById('sheet').focus()");
             $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
             $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Stock', 'Notes']);
-            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1');
             $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
             $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Notes']);
 
             $this->runCommand($browser, 'Show sheet: Stock');
             $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Stock', 'Notes']);
-            $browser->assertSeeIn('#tabs [aria-current]', 'Stock');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Stock');
             $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Shelves');
             $this->assertNoConsoleErrors($browser);
         });
@@ -3001,7 +3001,7 @@ class DotGridEditorTest extends DuskTestCase
             $this->runCommand($browser, 'Duplicate this sheet');
             $browser->waitForTextIn('#note', 'Made Stock copy.');
             $this->assertSame(['Sheet1', 'Stock', 'Stock copy', 'Notes'], $this->tabNames($browser));
-            $browser->assertSeeIn('#tabs [aria-current]', 'Stock copy');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Stock copy');
             $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 0) === '8');
 
             $this->clickCell($browser, 1, 0);

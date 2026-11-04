@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Services\DashboardBuilder;
+use App\Services\DashboardRefused;
 use App\Services\DuplicateRefused;
 use App\Services\WorkbookDuplicates;
 use App\Services\WorkbookSheets;
@@ -12,6 +14,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /** Duplicate a sheet inside its workbook, or a whole workbook into one of your own. */
@@ -35,6 +38,23 @@ class GridDuplicateController extends Controller
         return $copy === null
             ? response()->json(['message' => WriteLock::BUSY_MESSAGE], 503)
             : response()->json(['tab' => $copy->id, 'tabs' => $this->sheets->listOf($spreadsheet)]);
+    }
+
+    /** A new sheet summing up this one. Nothing on this sheet changes, so protection has no say. */
+    public function dashboard(Spreadsheet $spreadsheet, SheetTab $sheetTab, DashboardBuilder $dashboards): JsonResponse
+    {
+        $this->authorize('update', $spreadsheet);
+        abort_unless($sheetTab->spreadsheet_id === $spreadsheet->id, 404);
+
+        try {
+            $tab = $this->making(fn () => $dashboards->build($spreadsheet, $sheetTab, (int) Auth::id()));
+        } catch (DashboardRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
+
+        return $tab === null
+            ? response()->json(['message' => WriteLock::BUSY_MESSAGE], 503)
+            : response()->json(['tab' => $tab->id, 'tabs' => $this->sheets->listOf($spreadsheet)]);
     }
 
     /** Anyone who can open a workbook can already download every sheet of it, so anyone can do this. */

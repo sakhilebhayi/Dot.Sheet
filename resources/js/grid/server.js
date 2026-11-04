@@ -143,6 +143,10 @@ export class Server {
         return json(`${this.base}/${tab}/pivots/${id}/records?${asked}`);
     }
 
+    dashboard(tab) {
+        return json(`${this.base}/${tab}/dashboard`, { method: 'POST' });
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

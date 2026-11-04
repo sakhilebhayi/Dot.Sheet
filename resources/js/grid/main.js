@@ -504,6 +504,17 @@ async function duplicateSheet() {
     note(`Made ${boot.tabs.find((t) => t.id === body.tab)?.name}. Comments and history stay with the original.`);
 }
 
+async function makeDashboard() {
+    const { ok, status, body } = await server.dashboard(tab);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    await open(body.tab);
+    sheet.focus({ preventScroll: true });
+    note('Made a dashboard. Its figures follow the table.');
+}
+
 async function duplicateWorkbook() {
     closeEdit(true);
     const { ok, status, body } = await server.duplicateWorkbook();
@@ -2879,6 +2890,7 @@ function choices(query) {
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Add a sheet', run: addSheet },
             ...(boot.canKeep ? [{ label: 'Protect this sheet', hint: 'Or these cells', run: () => protectionPanel.toggle(true) }] : []),
+            { label: 'Make a dashboard', hint: 'Key figures, a summary and a chart of this table', run: makeDashboard },
             { label: 'Duplicate this sheet', hint: 'Everything but its comments and history', run: duplicateSheet },
             { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
             { label: 'Delete this sheet', run: removeSheet },

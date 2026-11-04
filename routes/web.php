@@ -114,6 +114,7 @@ Route::middleware([
         Route::post('sort', [GridController::class, 'sort'])->name('sort');
         Route::post('filter', [GridController::class, 'filter'])->name('filter');
         Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
+        Route::post('dashboard', [GridDuplicateController::class, 'dashboard'])->middleware('throttle:20,1')->name('dashboard');
         Route::post('duplicate', [GridDuplicateController::class, 'sheet'])->middleware('throttle:20,1')->name('duplicate');
         Route::post('look/colour', [GridTabController::class, 'colour'])->name('look.colour');
         Route::post('look/hidden', [GridTabController::class, 'hidden'])->name('look.hidden');

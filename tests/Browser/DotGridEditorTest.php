@@ -3965,4 +3965,20 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertSame('Sales', PivotTable::where('sheet_tab_id', $tab->id)->sole()->filter_value);
         });
     }
+
+    public function test_a_dashboard_is_made_from_the_palette_and_opens_with_its_chart(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Make a dashboard');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Dashboard');
+            $browser->waitFor('.placed')->assertSeeIn('.placed', 'Expense by Department');
+            // Its columns are wider than the rest, so the figure is looked for by what it says.
+            $browser->waitForTextIn('#sheet', 'Total Expense')->waitForTextIn('#sheet', '600');
+            $browser->waitForTextIn('#note', 'Made a dashboard.');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\SpreadsheetVersion;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,12 @@ class SheetVersions
 
     /** The columns a snapshot holds for each cell. */
     private const CELL_COLUMNS = ['row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting'];
+
+    /** Whether a sheet is small enough to copy within one request. */
+    public static function canCopyWhole(int $sheetTabId): bool
+    {
+        return Cell::where('sheet_tab_id', $sheetTabId)->count() <= self::AUTO_MAX_CELLS;
+    }
 
     public function snapshot(int $spreadsheetId, int $sheetTabId, ?int $userId, string $kind, string $label): SpreadsheetVersion
     {

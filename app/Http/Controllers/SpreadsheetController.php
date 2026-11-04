@@ -9,11 +9,13 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
 use App\Services\SheetPrint;
+use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -195,12 +197,29 @@ class SpreadsheetController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
             'sheet_tab_id' => 'nullable|integer|exists:sheet_tabs,id',
+        ], [
+            'file.required' => 'Choose a file to import.',
+            'file.mimes' => 'Import a CSV or Excel file.',
+            'file.max' => 'That file is larger than 10 MB.',
         ]);
 
-        $service = new SpreadsheetImportExportService;
-        $result = $service->importFile($spreadsheet, $request->file('file'), $this->resolveSheetTab($request, $spreadsheet));
+        $tab = $this->resolveSheetTab($request, $spreadsheet);
+        $file = $request->file('file');
 
-        return response()->json($result);
+        // An import writes over what is there, and nothing else can take it back.
+        $copy = $tab !== null && SheetVersions::canCopyWhole($tab->id) && Cell::where('sheet_tab_id', $tab->id)->exists()
+            ? app(SheetVersions::class)->snapshot($spreadsheet->id, $tab->id, (int) Auth::id(), SheetVersions::SAFETY, 'Before importing '.Str::limit($file->getClientOriginalName(), 80))
+            : null;
+
+        $service = new SpreadsheetImportExportService;
+        $result = $service->importFile($spreadsheet, $file, $tab);
+
+        if (! ($result['success'] ?? false)) {
+            $copy?->delete();
+            $copy = null;
+        }
+
+        return response()->json([...$result, 'copied' => $copy !== null]);
     }
 
     /**

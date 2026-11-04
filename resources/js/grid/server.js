@@ -15,10 +15,27 @@ async function json(url, options = {}) {
     }
 }
 
+/** A file goes as a form, so the browser sets its own content type. */
+async function upload(url, form) {
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            body: form,
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const body = await response.json().catch(() => ({}));
+        return { ok: response.ok, status: response.status, body };
+    } catch {
+        return { ok: false, status: 0, body: {} };
+    }
+}
+
 export class Server {
     constructor(spreadsheetId) {
         this.base = `/spreadsheets/${spreadsheetId}/tabs`;
         this.shares = `/spreadsheets/${spreadsheetId}/sharing`;
+        this.imports = `/spreadsheets/${spreadsheetId}/import`;
         this.queue = Promise.resolve();
     }
 
@@ -32,6 +49,21 @@ export class Server {
 
     trace(tab, row, col) {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
+    }
+
+    beforeImport(tab) {
+        return json(`${this.base}/${tab}/before-import`);
+    }
+
+    importFile(tab, file) {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('sheet_tab_id', tab);
+        return upload(this.imports, form);
+    }
+
+    importStatus(batch) {
+        return json(`${this.imports}/batches/${batch}`);
     }
 
     copies(tab) {

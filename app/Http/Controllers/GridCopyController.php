@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
@@ -48,6 +49,14 @@ class GridCopyController extends Controller
         });
 
         return $busy ? response()->json(['message' => WriteLock::BUSY_MESSAGE], 503) : $this->answer($sheetTab);
+    }
+
+    /** What an import would write over, and whether a copy can be kept first. */
+    public function beforeImport(Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        return response()->json(['cells' => Cell::where('sheet_tab_id', $sheetTab->id)->count(), 'copied' => SheetVersions::canCopyWhole($sheetTab->id)]);
     }
 
     /** What putting a copy back would change, so nobody has to do it blind. */

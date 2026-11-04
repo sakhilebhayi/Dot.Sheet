@@ -258,6 +258,8 @@
         </div>
     </footer>
 
+    <input id="import-file" type="file" accept=".csv,.xlsx,.xls" aria-label="Import a file" hidden>
+
     <dialog id="confirm" aria-labelledby="confirm-text">
         <form method="dialog" class="confirm">
             <p id="confirm-text"></p>

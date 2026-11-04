@@ -163,6 +163,10 @@ export class Server {
         return json(`${this.base.replace(/\/tabs$/, '/asked')}/${id}/applied`, { method: 'POST', body: JSON.stringify({ what }) });
     }
 
+    pulse(tab, since) {
+        return json(`${this.base}/${tab}/pulse${since ? `?since=${encodeURIComponent(since)}` : ''}`);
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

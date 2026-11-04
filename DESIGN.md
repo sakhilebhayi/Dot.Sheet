@@ -348,7 +348,9 @@ a summary and a chart, all of them formulas reading the table, so it stays right
 gaps, spellings, spare spaces, numbers and dates held as text and figures far from the rest, without AI. Its fixes list
 each change before anything happens. Ask about this sheet sorts an answer into what is on the sheet, with the cells it
 came from, what the engine worked out, and what is only a reading. A proposal is shown first and changes nothing until
-someone takes it.
+someone takes it. The bar says who else has the workbook open. Others' changes arrive within about twenty seconds: that
+is not live editing and nothing on the page calls it that. A cell someone else changed while it was being typed in keeps
+their value, and the foot says so and offers to use yours.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

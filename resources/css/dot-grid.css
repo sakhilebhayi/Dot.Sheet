@@ -279,6 +279,8 @@ button.where:hover { translate: 0 -1px; }
 .assistant-field input { padding: 6px 0; border: 0; border-bottom: 1px solid var(--ink); background: none; color: var(--ink); font: inherit; font-size: 14px; }
 .assistant-field input:focus { border-bottom-color: var(--thread); outline: 0; }
 .explain-wrong { color: var(--loss); }
+.here { margin: 0; color: var(--soft); font-size: 13px; white-space: nowrap; }
+.here::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--thread); vertical-align: 1px; }
 .check-rows { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--soft); font-size: 13px; }
 .check-rows button { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .check-changes { margin: 0; padding: 0; list-style: none; font-size: 13px; }

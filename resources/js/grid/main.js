@@ -11,6 +11,7 @@ import { Assistant } from './assistant';
 import { SheetCheck } from './check';
 import { Ask } from './ask';
 import { Explain } from './explain';
+import { Together } from './together';
 import { PlacedCharts } from './placed';
 import { ImportReport } from './report';
 import { FormulaHelp } from './suggest';
@@ -149,6 +150,20 @@ const pivots = new Pivots({
     note,
     refused,
     ask,
+});
+const together = new Together({
+    server,
+    every: boot.pulseEvery,
+    tab: () => tab,
+    version: () => version,
+    busy: () => editing !== null || sending > 0,
+    refresh: async () => {
+        await store.refresh();
+        grid.paint();
+        selected();
+    },
+    reopen: () => reopen(),
+    note,
 });
 const assistant = new Assistant({
     functions: boot.functions,
@@ -960,11 +975,27 @@ async function write(edits, { remember: keep = true, merges, comments, record = 
         restore(row, col, old[i]);
         note(message);
     }
+    for (const { row, col, theirs, who } of body.conflicts ?? []) {
+        const i = edits.findIndex((e) => e.row === row && e.col === col);
+        offerMine(edits[i], theirs, who);
+    }
+    if (body.conflicts?.length) await store.refresh();
     if (keep) remember(body.undo);
     if (record) macros?.heard(edits.filter(({ row, col }) => !body.refused.some((r) => r.row === row && r.col === col)));
     if (body.merges) grid.setMerges(body.merges);
     await absorb(body, new Set(edits.map(({ row, col }) => `${row}:${col}`)));
     return body;
+}
+
+/** Someone else changed the cell while this person typed. Theirs stands until they say otherwise. */
+function offerMine({ row, col, value }, theirs, who) {
+    note(`${who ?? 'Someone'} changed ${cellName(row, col)} while you were typing, to ${theirs || 'nothing'}. Yours was not saved.`);
+    fillOffer.textContent = 'Use mine instead';
+    fillOffer.hidden = false;
+    fillOffer.onclick = () => {
+        fillOffer.hidden = true;
+        write([{ row, col, value }]);
+    };
 }
 
 function refused(status, body) {
@@ -2412,7 +2443,7 @@ function closeEdit(save) {
     }
 
     if (save && value !== contents(store.get(r, c))) {
-        write([{ row: r, col: c, value }]);
+        write([{ row: r, col: c, value, was: contents(store.get(r, c)) }]);
         if (value.startsWith('=')) offerFill(r, c);
     }
     line.value = contents(store.get(grid.active.r, grid.active.c));
@@ -3161,6 +3192,7 @@ const askedTab = boot.tabs.find((t) => t.id === Number(asked.get('tab')))?.id;
 const askedCell = GO_TO.exec(asked.get('cell') ?? '');
 if (tab !== null) {
     open(askedTab ?? tab).then(() => {
+        together.beat();
         sheet.focus({ preventScroll: true });
         if (boot.told) note(boot.told);
         if (boot.showReport && boot.importReport) importReport.toggle(true);

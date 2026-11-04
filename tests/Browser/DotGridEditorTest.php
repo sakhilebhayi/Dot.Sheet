@@ -16,6 +16,7 @@ use App\Services\SheetComments;
 use App\Services\SheetMacros;
 use App\Services\SheetNames;
 use App\Services\SheetProtections;
+use App\Services\SheetTogether;
 use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverBy;
 use Facebook\WebDriver\WebDriverKeys;
@@ -4071,6 +4072,72 @@ class DotGridEditorTest extends DuskTestCase
 
             $browser->driver->executeScript("[...document.querySelectorAll('#ask-answer button')].find(b => b.textContent === 'B3:B3').click()");
             $browser->waitForTextIn('#ref', 'B3');
+        });
+    }
+
+    private function beat(Browser $browser): void
+    {
+        $browser->driver->executeScript("document.dispatchEvent(new Event('visibilitychange'))");
+    }
+
+    public function test_what_someone_else_changed_arrives_and_who_is_here_shows(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Sipho']);
+        $sheet->sharedUsers()->attach($friend->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $friend) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->pause(300);
+            app(SheetTogether::class)->here($sheet->id, $friend);
+            sleep(1);
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 0, 'value' => 'Changed by Sipho']], $friend->id);
+
+            $this->beat($browser);
+            $browser->waitForTextIn('#here', 'Sipho also here');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Changed by Sipho');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_two_people_typing_in_one_cell_lose_nothing_silently(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Sipho']);
+        $sheet->sharedUsers()->attach($friend->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $friend) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 0);
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 0, 'value' => 'Theirs']], $friend->id);
+
+            $browser->driver->getKeyboard()->sendKeys(['Mine', WebDriverKeys::ENTER]);
+            $browser->waitForTextIn('#note', 'Sipho changed A2 while you were typing, to Theirs.');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Theirs');
+
+            $browser->waitFor('#fill-offer:not([hidden])')->click('#fill-offer');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Mine');
+            $this->assertSame('Mine', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 1)->where('col_index', 0)->value('raw_value'));
+        });
+    }
+
+    public function test_a_lost_connection_is_said_and_so_is_coming_back(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->pause(300);
+            $browser->driver->executeScript(<<<'JS'
+                window.realFetch = window.fetch;
+                window.fetch = () => Promise.reject(new TypeError('offline'));
+            JS);
+            $this->beat($browser);
+            $browser->waitForTextIn('#note', 'Not connected.');
+
+            $browser->driver->executeScript('window.fetch = window.realFetch');
+            $this->beat($browser);
+            $browser->waitForTextIn('#note', 'Connected again.');
         });
     }
 }

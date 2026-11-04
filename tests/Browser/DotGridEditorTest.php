@@ -106,6 +106,27 @@ class DotGridEditorTest extends DuskTestCase
         JS, [$row, $col]);
     }
 
+    /** A column's right edge on screen, in the header. */
+    private function columnEdge(Browser $browser, int $col): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const h = [...document.querySelectorAll('.h')].find(el => el.textContent === arguments[0]);
+            const box = h.getBoundingClientRect();
+            return { x: box.right, y: box.top + box.height / 2 };
+        JS, [chr(65 + $col)]);
+    }
+
+    private function dragColumnEdge(Browser $browser, int $col, int $by): void
+    {
+        $edge = $this->columnEdge($browser, $col);
+        $browser->driver->executeScript(<<<'JS'
+            const [x, y, by] = arguments;
+            document.elementFromPoint(x - 1, y).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x + by, clientY: y }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x + by, clientY: y }));
+        JS, [$edge['x'], $edge['y'], $by]);
+    }
+
     private function assertNoConsoleErrors(Browser $browser): void
     {
         $errors = collect($browser->driver->manage()->getLog('browser'))
@@ -496,6 +517,71 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitFor('#find-text')->type('#find-text', 'sales');
             $browser->waitForTextIn('#find-count', '1');
             $browser->assertMissing('#replace-all');
+        });
+    }
+
+    public function test_dragging_a_column_edge_resizes_it_and_undo_puts_it_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+
+            $this->dragColumnEdge($browser, 1, 60);
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['col_widths'][1] ?? null) !== null);
+
+            $width = $tab->fresh()->layout['col_widths'][1];
+            $this->assertGreaterThan(150, $width);
+            $this->assertSame((float) $width, (float) $browser->driver->executeScript("return [...document.querySelectorAll('.h')].find(el => el.textContent === 'B').getBoundingClientRect().width"));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['col_widths'][1] ?? null) === null);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_double_clicking_a_column_edge_fits_what_it_holds(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 1, 'value' => 'A rather longer heading than the others']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $edge = $this->columnEdge($browser, 1);
+
+            $browser->driver->executeScript(<<<'JS'
+                const [x, y] = arguments;
+                document.elementFromPoint(x - 1, y).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            JS, [$edge['x'], $edge['y']]);
+
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['col_widths'][1] ?? null) !== null);
+            $this->assertGreaterThan(200, $tab->fresh()->layout['col_widths'][1]);
+        });
+    }
+
+    public function test_long_text_runs_on_until_a_cell_holds_something(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $long = 'A heading long enough to need the space of several columns of this sheet';
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 5, 'col' => 1, 'value' => $long],
+            ['row' => 6, 'col' => 1, 'value' => $long],
+            ['row' => 6, 'col' => 2, 'value' => 'beside'],
+        ], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $long) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 5, 1) === $long);
+
+            $seen = $browser->driver->executeScript(<<<'JS'
+                const spans = [...document.querySelectorAll('.c')].filter(c => c.textContent === arguments[0]).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                return spans.map(c => ({ over: c.classList.contains('over'), width: c.firstChild.getBoundingClientRect().width }));
+            JS, [$long]);
+
+            $this->assertTrue($seen[0]['over']);
+            $this->assertGreaterThan(300, $seen[0]['width']);
+            $this->assertFalse($seen[1]['over']);
+            $this->assertLessThan(110, $seen[1]['width']);
         });
     }
 }

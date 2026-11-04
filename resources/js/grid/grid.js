@@ -15,6 +15,11 @@ const MAX_THREADS = 12;
 // its edge, or jump past it.
 const MAX_WINDOW = 12000000;
 const ROOM_ROWS = 1000;
+const EDGE = 4;
+const CELL_PADDING = 24;
+const ROUGH_CHARACTER = 5;    // narrower than most, so no text that needs room is missed
+const WIDE_CHARACTER = 9;     // wider than most, so the room found is always enough
+const MAX_OVERFLOW_COLS = 12;
 const SVG = 'http://www.w3.org/2000/svg';
 
 const byId = (id) => document.getElementById(id);
@@ -132,6 +137,43 @@ export class Grid {
         this.headFrozen.style.width = `${this.stuckWidth}px`;
         this.fit();
         this.render();
+    }
+
+    /** Change some sizes on screen. A null size is the default again. */
+    setSizes(axis, sizes) {
+        const key = axis === 'col' ? 'col_widths' : 'row_heights';
+        const held = { ...(this.layout[key] ?? {}) };
+        for (const [position, size] of Object.entries(sizes)) {
+            if (size === null) delete held[position];
+            else held[position] = size;
+        }
+        this.layout = { ...this.layout, [key]: held };
+        this.measure();
+        if (this.lines.length) this.drawThreads(false);
+    }
+
+    /** The column or row edge under a point in the headers, within a few pixels. */
+    edgeAt(x, y) {
+        const box = this.sheet.getBoundingClientRect();
+        const px = x - box.left;
+        const py = y - box.top;
+
+        if (py >= 0 && py < this.headHeight && px >= this.gutter) {
+            const { c } = this.hit(x, y);
+            const left = c === 0 ? this.gutter : this.gutter + this.cols.offset(c) - this.sheet.scrollLeft;
+            const right = left + this.cols.sizeOf(c);
+            if (Math.abs(px - right) <= EDGE) return { axis: 'col', at: c };
+            if (c > 0 && Math.abs(px - left) <= EDGE) return { axis: 'col', at: c - 1 };
+            return null;
+        }
+        if (px >= 0 && px < this.gutter && py >= this.headHeight) {
+            const { r } = this.hit(x, y);
+            const top = this.y(r) - this.sheet.scrollTop + this.headHeight;
+            const bottom = top + this.rows.sizeOf(r);
+            if (Math.abs(py - bottom) <= EDGE) return { axis: 'row', at: r };
+            if (r > 0 && Math.abs(py - top) <= EDGE) return { axis: 'row', at: r - 1 };
+        }
+        return null;
     }
 
     /** Size the window to what it needs to hold. */
@@ -306,7 +348,9 @@ export class Grid {
         const top = this.y(r);
         const w = this.cols.sizeOf(c);
         const h = this.rows.sizeOf(r);
-        const sig = `${names}|${left}|${top}|${w}|${h}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${x.bg_color}|${x.font_size}|${cell?.e}`;
+        const room = align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
+        if (room > 0) names += ' over';
+        const sig = `${names}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${x.bg_color}|${x.font_size}|${cell?.e}`;
         if (el.sig === sig) return;
         el.sig = sig;
 
@@ -321,6 +365,23 @@ export class Grid {
         el.style.fontSize = x.font_size ? `${Number(x.font_size)}px` : '';
         el.title = cell?.e ?? '';
         el.firstChild.textContent = shown.text;
+        el.firstChild.style.maxWidth = room > 0 ? `${w + room - CELL_PADDING}px` : '';
+    }
+
+    /**
+     * How far long text may run into the empty cells to its right. It stops at the first cell that holds
+     * anything, and the frozen column only runs on while nothing has scrolled under it.
+     */
+    roomBeside(r, c, width, text) {
+        if (text.length * ROUGH_CHARACTER < width - CELL_PADDING) return 0;
+        if (c === 0 && this.sheet.scrollLeft > 0) return 0;
+        let room = 0;
+        for (let next = c + 1; next < this.size.cols && next <= c + MAX_OVERFLOW_COLS; next++) {
+            if (hasContent(this.store.get(r, next))) break;
+            room += this.cols.sizeOf(next);
+            if (text.length * WIDE_CHARACTER < width + room - CELL_PADDING) break;
+        }
+        return room;
     }
 
     isFilling(r, c) {

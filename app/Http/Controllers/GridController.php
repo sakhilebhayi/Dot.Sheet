@@ -37,6 +37,14 @@ class GridController extends Controller
     /** Most edits one request may carry: undoing a move writes both its ends. */
     private const MAX_EDITS = RangeCopy::MAX_CELLS * 2;
 
+    /** Most columns or rows one resize may set. */
+    private const MAX_RESIZED = 200;
+
+    /** The sizes the classic editor allows, so a sheet reads the same in both. */
+    private const COLUMN_WIDTHS = [48, 420];
+
+    private const ROW_HEIGHTS = [18, 120];
+
     /** Most changed cells sent back with an answer; past it, the browser reloads what it holds. */
     private const MAX_ANSWERED = 500;
 
@@ -261,6 +269,66 @@ class GridController extends Controller
     private function searchedTabs(Spreadsheet $spreadsheet, SheetTab $sheetTab, bool $all): array
     {
         return $all ? $spreadsheet->sheetTabs()->orderBy('sort_order')->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all() : [$sheetTab->id];
+    }
+
+    /**
+     * Set column widths or row heights, shared with the classic editor. A null size goes back to the
+     * default. The answer says how to put them back.
+     */
+    public function layout(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'axis' => 'required|in:col,row',
+            'sizes' => 'required|array|min:1|max:'.self::MAX_RESIZED,
+        ]);
+
+        $column = $input['axis'] === 'col';
+        [$smallest, $largest] = $column ? self::COLUMN_WIDTHS : self::ROW_HEIGHTS;
+        foreach ($input['sizes'] as $position => $size) {
+            if (filter_var($position, FILTER_VALIDATE_INT) === false || (int) $position < 0 || (int) $position >= ($column ? SheetStructureService::GRID_COLS : SheetStructureService::GRID_ROWS)) {
+                return response()->json(['message' => 'That is not a place on the sheet.'], 422);
+            }
+            if ($size !== null && (! is_int($size) || $size < $smallest || $size > $largest)) {
+                return response()->json(['message' => "Sizes run from {$smallest} to {$largest}."], 422);
+            }
+        }
+
+        $key = $column ? 'col_widths' : 'row_heights';
+        $undo = [];
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $key, &$undo, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $input, $key, &$undo) {
+                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($input, $key, &$undo) {
+                    $sizes = is_array($layout[$key] ?? null) ? $layout[$key] : [];
+                    foreach ($input['sizes'] as $position => $size) {
+                        $undo[(int) $position] = $sizes[(int) $position] ?? null;
+                        if ($size === null) {
+                            unset($sizes[(int) $position]);
+                        } else {
+                            $sizes[(int) $position] = $size;
+                        }
+                    }
+                    $layout[$key] = $sizes;
+
+                    return $layout;
+                });
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['undo' => (object) $undo]);
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse

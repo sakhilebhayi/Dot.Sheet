@@ -22,6 +22,10 @@ const rand = byId('do-rand');
 
 const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
+const MIN_COL = 48;
+const MAX_COL = 420;
+const MIN_ROW = 18;
+const MAX_ROW = 120;
 
 const server = new Server(boot.id);
 const store = new Store(server, () => {
@@ -350,6 +354,15 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.layout) {
+        if (step.layout.tab !== tab) await open(step.layout.tab);
+        const answer = await saveSizes(step.layout.axis, step.layout.sizes, { remember: false });
+        if (!answer) return;
+        grid.setSizes(step.layout.axis, step.layout.sizes);
+        to.push({ version, layout: { ...step.layout, sizes: answer.undo } });
+        return;
+    }
+
     const back = [];
     let last = null;
     for (const group of step.groups) {
@@ -589,6 +602,57 @@ function toggleBold() {
 function toggleNumber(format) {
     const cell = store.get(grid.active.r, grid.active.c);
     applyFormat({ number_format: cell?.x?.number_format === format ? 'general' : format });
+}
+
+/* Sizes */
+
+async function saveSizes(axis, sizes, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.layout(tab, () => version, { axis, sizes });
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    if (keep) {
+        undoSteps.push({ version, layout: { tab, axis, sizes: body.undo } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+/** The columns or rows a resize applies to: all those selected whole, when the edge is one of them. */
+function resized({ axis, at }) {
+    const area = grid.area();
+    const column = axis === 'col';
+    const whole = column ? area.r2 - area.r1 + 1 === boot.rows : area.c2 - area.c1 + 1 === boot.cols;
+    const first = column ? area.c1 : area.r1;
+    const last = column ? area.c2 : area.r2;
+    if (!whole || at < first || at > last || last - first >= 200) return [at];
+    return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+}
+
+/** The widest thing held in a column, or the default for a row or an empty column. */
+function fittedSize({ axis, at }) {
+    if (axis === 'row') return null;
+    const context = document.createElement('canvas').getContext('2d');
+    const family = getComputedStyle(sheet).fontFamily;
+    let widest = 0;
+    for (const row of store.rows.values()) {
+        const cell = row.get(at);
+        const text = show(cell).text;
+        if (!text) continue;
+        context.font = `${cell.x?.bold ? 600 : 400} ${cell.x?.font_size ?? 14}px ${family}`;
+        widest = Math.max(widest, context.measureText(text).width);
+    }
+    return widest === 0 ? null : Math.min(MAX_COL, Math.max(MIN_COL, Math.ceil(widest) + 26));
+}
+
+function fitToContents(edge) {
+    closeEdit(true);
+    const sizes = Object.fromEntries(resized(edge).map((at) => [at, fittedSize({ ...edge, at })]));
+    grid.setSizes(edge.axis, sizes);
+    saveSizes(edge.axis, sizes);
 }
 
 /* Fill */
@@ -957,6 +1021,7 @@ sheet.addEventListener('keydown', (e) => {
 
 let dragging = null;
 let fillFrom = null;
+let resizing = null;
 let fillArea = null;
 
 function pick(e) {
@@ -992,6 +1057,15 @@ sheet.addEventListener('mousedown', (e) => {
 
 sheet.addEventListener('pointerdown', (e) => {
     if (e.target === sheet || e.target === box || e.button !== 0) return;
+    const edge = boot.canEdit && e.pointerType !== 'touch' ? grid.edgeAt(e.clientX, e.clientY) : null;
+    if (edge) {
+        e.preventDefault();
+        closeEdit(true);
+        dragging = 'resize';
+        const axis = edge.axis === 'col' ? grid.cols : grid.rows;
+        resizing = { ...edge, from: edge.axis === 'col' ? e.clientX : e.clientY, size: axis.sizeOf(edge.at), now: axis.sizeOf(edge.at) };
+        return;
+    }
     if (e.target === grid.handle) {
         e.preventDefault();
         closeEdit(true);
@@ -1016,7 +1090,19 @@ sheet.addEventListener('pointerdown', (e) => {
 });
 
 window.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
+    if (dragging === 'resize') {
+        const column = resizing.axis === 'col';
+        const moved = (column ? e.clientX : e.clientY) - resizing.from;
+        const size = Math.round(Math.min(column ? MAX_COL : MAX_ROW, Math.max(column ? MIN_COL : MIN_ROW, resizing.size + moved)));
+        if (size === resizing.now) return;
+        resizing.now = size;
+        grid.setSizes(resizing.axis, Object.fromEntries(resized(resizing).map((at) => [at, size])));
+        return;
+    }
+    if (!dragging) {
+        if (boot.canEdit && e.pointerType !== 'touch' && !editing) sheet.dataset.edge = grid.edgeAt(e.clientX, e.clientY)?.axis ?? '';
+        return;
+    }
     const edge = sheet.getBoundingClientRect();
     if (e.clientY > edge.bottom - 8) sheet.scrollTop += grid.rows.size;
     else if (e.clientY < edge.top + grid.headHeight + 8) sheet.scrollTop -= grid.rows.size;
@@ -1050,6 +1136,11 @@ window.addEventListener('pointermove', (e) => {
 
 window.addEventListener('pointerup', () => {
     if (!dragging) return;
+    if (dragging === 'resize') {
+        dragging = null;
+        if (resizing.now !== resizing.size) saveSizes(resizing.axis, Object.fromEntries(resized(resizing).map((at) => [at, resizing.now])));
+        return;
+    }
     if (dragging === 'fill') {
         dragging = null;
         grid.filling = null;
@@ -1080,6 +1171,11 @@ sheet.addEventListener('click', (e) => {
 
 sheet.addEventListener('dblclick', (e) => {
     if (e.target === box) return;
+    const edge = boot.canEdit ? grid.edgeAt(e.clientX, e.clientY) : null;
+    if (edge) {
+        fitToContents(edge);
+        return;
+    }
     if (e.target === grid.handle) {
         fillToEdge();
         return;

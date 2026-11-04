@@ -32,7 +32,7 @@ return [
         ],
         'anthropic' => [
             'api_key' => env('ANTHROPIC_API_KEY'),
-            'model' => env('ANTHROPIC_MODEL', 'claude-3-5-sonnet-latest'),
+            'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5-5'),
         ],
     ],
 
@@ -70,6 +70,18 @@ return [
     'temperature' => env('AI_TEMPERATURE', 0.7),
     'top_p' => env('AI_TOP_P', 0.9),
     'top_k' => env('AI_TOP_K', 40),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Monthly allowance
+    |--------------------------------------------------------------------------
+    |
+    | Tokens one business may use in a calendar month, counted across its workbooks. A person
+    | without a team counts as their own business. 0 turns the limit off.
+    |
+    */
+
+    'monthly_tokens_per_business' => (int) env('AI_MONTHLY_TOKENS_PER_BUSINESS', 500000),
 
     /*
     |--------------------------------------------------------------------------

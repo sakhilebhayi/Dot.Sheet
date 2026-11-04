@@ -867,14 +867,14 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
-    public function test_looking_for_something_still_in_the_classic_editor_finds_the_way_there(): void
+    public function test_the_classic_editor_is_a_palette_choice_and_there_is_a_way_back(): void
     {
         [$user, $sheet] = $this->sheet();
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'ask ai');
-            $browser->waitForTextIn('#found', 'Ask AI')->assertSeeIn('#found', 'In the classic editor');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'classic');
+            $browser->waitForTextIn('#found', 'Open the classic editor');
 
             $browser->keys('#find', WebDriverKeys::ENTER);
             $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
@@ -3979,6 +3979,98 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#sheet', 'Total Expense')->waitForTextIn('#sheet', '600');
             $browser->waitForTextIn('#note', 'Made a dashboard.');
             $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_check_shows_its_changes_first_and_undo_takes_them_back(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 0, 'value' => 'SALES'], ['row' => 2, 'col' => 0, 'value' => 'Sales']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Check this table');
+            $browser->waitForTextIn('#check-body', 'The same word written differently in Department');
+            $browser->assertSeeIn('#check-body', 'SALES becomes Sales');
+            $this->assertSame('SALES', $this->cell($browser, 3, 0));
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#check-body button')].find(b => b.textContent === 'Make this change').click()");
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 0) === 'Sales');
+            $browser->waitForTextIn('#check-body', 'Nothing stands out');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 0) === 'SALES');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_read_sees_a_check_without_its_fixes(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 0, 'value' => 'SALES'], ['row' => 2, 'col' => 0, 'value' => 'Sales']], $user->id);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Check this table');
+            $browser->waitForTextIn('#check-body', 'The same word written differently')->assertDontSeeIn('#check-body', 'Make this change');
+        });
+    }
+
+    public function test_asking_says_plainly_when_ai_is_off(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Ask about this sheet');
+            $browser->waitFor('#ask:not([hidden])')->type('#ask-question', 'What costs most?')->click('#ask-form button');
+            $browser->waitForTextIn('#ask-answer', 'AI is not switched on for this workbook yet.');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_an_answer_is_sorted_and_a_proposal_changes_nothing_until_it_is_taken(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->driver->executeScript(<<<'JS'
+                const real = window.fetch;
+                window.fetch = (url, options) => {
+                    const reply = (body) => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+                    if (String(url).endsWith('/ask')) {
+                        return reply({
+                            id: 7,
+                            facts: [{ text: 'Mining spent least.', cells: 'B3:B3' }],
+                            sums: [{ label: 'All of it', formula: '=SUM(B2:B4)', value: '600' }],
+                            readings: ['Sales may be running high.'],
+                            proposals: [{ kind: 'cells', why: 'As you asked.', changes: [{ row: 1, col: 2, from: '', to: 'Checked' }] }],
+                        });
+                    }
+                    if (String(url).endsWith('/applied')) { window.applied = options.body; return reply({ ok: true }); }
+                    return real(url, options);
+                };
+            JS);
+            $this->runCommand($browser, 'Ask about this sheet');
+            $browser->waitFor('#ask:not([hidden])')->type('#ask-question', 'Mark the first row')->click('#ask-form button');
+
+            $browser->waitForTextIn('#ask-answer', 'On the sheet');
+            $browser->assertSeeIn('#ask-answer', 'Mining spent least.')->assertSeeIn('#ask-answer', 'Worked out')
+                ->assertSeeIn('#ask-answer', 'All of it: 600')->assertSeeIn('#ask-answer', 'A reading, not a fact')
+                ->assertSeeIn('#ask-answer', 'Empty becomes Checked');
+            $this->assertNull(Cell::where('sheet_tab_id', $tab->id)->where('col_index', 2)->first());
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#ask-answer button')].find(b => b.textContent === 'Make this change').click()");
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('col_index', 2)->value('raw_value') === 'Checked');
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript('return window.applied') !== null);
+            $this->assertStringContainsString('Changed 1 cell', $browser->driver->executeScript('return window.applied'));
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#ask-answer button')].find(b => b.textContent === 'B3:B3').click()");
+            $browser->waitForTextIn('#ref', 'B3');
         });
     }
 }

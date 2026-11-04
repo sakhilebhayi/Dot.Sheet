@@ -16,7 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class RefuseProtectedSheet
 {
-    private const STILL_ALLOWED = ['grid.comments.*', 'grid.copies.store', 'grid.duplicate', 'grid.dashboard', 'grid.protections.*'];
+    private const STILL_ALLOWED = ['grid.comments.*', 'grid.copies.store', 'grid.duplicate', 'grid.dashboard', 'grid.ask', 'grid.protections.*'];
 
     public function __construct(private SheetProtections $protections) {}
 

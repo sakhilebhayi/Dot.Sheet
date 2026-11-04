@@ -345,6 +345,29 @@
         <div class="assistant-detail" id="report-body"></div>
     </aside>
 
+    <aside class="dock" id="ask" aria-label="Ask about this sheet" hidden>
+        <div class="dock-head">
+            <h2>Ask about this sheet</h2>
+            <button class="tool" type="button" id="ask-close" aria-label="Close">×</button>
+        </div>
+        <form class="dock-form assistant-ask" id="ask-form">
+            <label for="ask-question">A question, or something to do</label>
+            <input id="ask-question" autocomplete="off" maxlength="500" placeholder="Which month cost the most?">
+            <button class="button" type="submit">Ask</button>
+        </form>
+        <div class="assistant-detail" id="ask-answer"></div>
+        <div class="dock-note"><button class="tool quiet" type="button" id="ask-history">What has been asked here</button></div>
+        <ul class="people dock-list" id="ask-record" hidden></ul>
+    </aside>
+
+    <aside class="dock" id="check" aria-label="Check this table" hidden>
+        <div class="dock-head">
+            <h2>Check this table</h2>
+            <button class="tool" type="button" id="check-close" aria-label="Close the check">×</button>
+        </div>
+        <div class="assistant-detail" id="check-body"></div>
+    </aside>
+
     <aside class="dock" id="explain" aria-label="Explain this cell" hidden>
         <div class="dock-head">
             <h2>Explain this cell</h2>

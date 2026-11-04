@@ -344,7 +344,11 @@ missing cells. A chart can sit on the sheet itself, moved by its title and sized
 cells. A sparkline is a thin line in a cell, with a dot on the latest figure. A pivot table's headings are chips to drag
 into its sentence, and the lists do the same from a keyboard. A pivot can keep only some rows, sort largest first and
 show as a chart, and any figure opens the rows behind it. A dashboard is a new sheet that sums up a table in key figures,
-a summary and a chart, all of them formulas reading the table, so it stays right.
+a summary and a chart, all of them formulas reading the table, so it stays right. Check this table looks for repeats,
+gaps, spellings, spare spaces, numbers and dates held as text and figures far from the rest, without AI. Its fixes list
+each change before anything happens. Ask about this sheet sorts an answer into what is on the sheet, with the cells it
+came from, what the engine worked out, and what is only a reading. A proposal is shown first and changes nothing until
+someone takes it.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

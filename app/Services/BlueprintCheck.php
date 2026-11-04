@@ -163,7 +163,7 @@ class BlueprintCheck
         return is_numeric(trim($value)) ? null : mb_substr($value, 0, self::MAX_TEXT);
     }
 
-    private function fairFormula(string $formula): bool
+    public function fairFormula(string $formula): bool
     {
         if (! str_starts_with($formula, '=') || mb_strlen($formula) > self::MAX_FORMULA) {
             return false;

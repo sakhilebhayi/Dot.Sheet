@@ -8,6 +8,8 @@ import { Macros } from './macros';
 import { Names } from './names';
 import { Protection } from './protection';
 import { Assistant } from './assistant';
+import { SheetCheck } from './check';
+import { Ask } from './ask';
 import { Explain } from './explain';
 import { PlacedCharts } from './placed';
 import { ImportReport } from './report';
@@ -196,6 +198,45 @@ const importReport = new ImportReport({
     opening: () => closeOtherPanels(importReport),
     back: () => sheet.focus({ preventScroll: true }),
 });
+const sheetCheck = new SheetCheck({
+    server,
+    canEdit: () => boot.canEdit,
+    tab: () => tab,
+    resized: panelMoved,
+    opening: () => closeOtherPanels(sheetCheck),
+    back: () => sheet.focus({ preventScroll: true }),
+    goToRow: (row) => select(row, grid.active.c),
+    apply: async (changes, title) => {
+        await write(changes.map(({ row, col, to }) => ({ row, col, value: to })));
+        note(`Made ${changes.length.toLocaleString('en-ZA')} ${changes.length === 1 ? 'change' : 'changes'}: ${title}. Undo takes them back.`);
+    },
+    refused,
+});
+const askPanel = new Ask({
+    server,
+    canEdit: () => boot.canEdit,
+    tab: () => tab,
+    selection: selectionText,
+    resized: panelMoved,
+    opening: () => closeOtherPanels(askPanel),
+    back: () => sheet.focus({ preventScroll: true }),
+    goToRange: (text) => {
+        const found = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(text);
+        if (found) selectArea(Number(found[2]) - 1, columnIndex(found[1]), Number(found[4]) - 1, columnIndex(found[3]));
+    },
+    put: (formula) => {
+        const { r, c } = grid.active;
+        write([{ row: r, col: c, value: formula }]);
+    },
+    applyCells: (changes) => write(changes.map(({ row, col, to }) => ({ row, col, value: to }))),
+    applyRule: ({ col, operator, value, color }) => changeRules({ add: { target: 'column', row: grid.active.r, col, operator, value, color } }),
+    applyChart: async ({ title, type, data, labels }) => {
+        const { ok, status, body } = await server.addChart(tab, { title, type, data_range: data, labels_range: labels });
+        if (!ok) refused(status, body);
+    },
+    note,
+    refused,
+});
 const protectionPanel = new Protection({
     server,
     canKeep: boot.canKeep,
@@ -282,7 +323,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, importReport, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, sheetCheck, askPanel, importReport, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -410,6 +451,7 @@ async function open(id, stillWriting = false) {
     if (!names.closed) names.load();
     if (!protectionPanel.closed) protectionPanel.load();
     if (!explain.closed) explain.load();
+    if (!sheetCheck.closed) sheetCheck.load();
     if (!charts.closed) charts.load();
     if (!pivots.closed) pivots.load();
 }
@@ -2869,7 +2911,6 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
     ...(boot.scripts ? ['Scripts'] : []),
-    'Ask AI',
 ];
 
 function choices(query) {
@@ -2962,6 +3003,8 @@ function choices(query) {
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         { label: 'Function assistant', hint: 'Find a function and fill it in', run: () => assistant.toggle(true) },
+        { label: 'Ask about this sheet', hint: 'Questions and instructions, with AI', run: () => askPanel.toggle(true) },
+        { label: 'Check this table', hint: 'Repeats, gaps, spellings, numbers held as text', run: () => sheetCheck.toggle(true) },
         ...(boot.importReport ? [{ label: 'What came across', hint: 'The report from importing this file', run: () => importReport.toggle(true) }] : []),
         { label: 'Explain this cell', hint: 'What its formula does, or why it shows an error', run: () => explain.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },

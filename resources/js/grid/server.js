@@ -90,6 +90,20 @@ export class Server {
         return result;
     }
 
+    structure(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/structure`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    restore(tab, version, copy) {
+        const send = () => json(`${this.base}/${tab}/restore`, { method: 'POST', body: JSON.stringify({ version: version(), copy }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     merge(tab, version, area) {
         const send = () => json(`${this.base}/${tab}/merge`, { method: 'POST', body: JSON.stringify({ version: version(), ...area }) });
         const result = this.queue.then(send, send);

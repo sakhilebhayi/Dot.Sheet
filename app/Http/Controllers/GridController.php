@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cell;
+use App\Models\NamedRange;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Models\SpreadsheetVersion;
 use App\Services\CellFormat;
 use App\Services\CellWriter;
 use App\Services\Formula\FunctionCatalogue;
@@ -18,6 +20,8 @@ use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\SheetWorkflows;
+use App\Services\StaleStructure;
+use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
 use App\Services\WriteLock;
 use Illuminate\Http\JsonResponse;
@@ -49,6 +53,9 @@ class GridController extends Controller
 
     private const ROW_HEIGHTS = [18, 120];
 
+    /** Most rows or columns one request may insert or delete. */
+    private const MAX_STRUCTURE = 20;
+
     /** Most rows or columns one request may hide or show. */
     private const MAX_HIDDEN_CHANGE = 1000;
 
@@ -76,6 +83,7 @@ class GridController extends Controller
                 'id' => $spreadsheet->id,
                 'name' => $spreadsheet->name,
                 'canEdit' => Auth::user()->can('update', $spreadsheet),
+                'structure' => (bool) config('sheet.structure_ops_enabled'),
                 'version' => StructureVersion::current($spreadsheet->id),
                 'rows' => SheetStructureService::GRID_ROWS,
                 'cols' => SheetStructureService::GRID_COLS,
@@ -599,6 +607,102 @@ class GridController extends Controller
         }
 
         return response()->json(['hidden' => $list, 'undo' => $undo]);
+    }
+
+    /**
+     * Insert or delete rows or columns, all of them or none. Inserting is undone by deleting. Deleting
+     * takes a safety copy first, because references to what went cannot be worked back out, and undo
+     * restores it. The answer says which, or carries no undo when neither would be right.
+     */
+    public function structure(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetVersions $versions): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'action' => 'required|in:insert,delete',
+            'axis' => 'required|in:col,row',
+            'at' => 'required|integer|min:0',
+            'count' => 'required|integer|min:1|max:'.self::MAX_STRUCTURE,
+        ]);
+
+        ['action' => $action, 'axis' => $axis] = $input;
+        $at = (int) $input['at'];
+        $count = (int) $input['count'];
+        $version = (int) $input['version'];
+        if ($at + $count > ($axis === 'col' ? SheetStructureService::GRID_COLS : SheetStructureService::GRID_ROWS)) {
+            return response()->json(['message' => 'That is not a place on the sheet.'], 422);
+        }
+
+        $undo = $action === 'insert' ? ['structure' => ['action' => 'delete', 'axis' => $axis, 'at' => $at, 'count' => $count]] : null;
+        if ($action === 'delete' && config('sheet.structure_ops_enabled') && StructureVersion::current($spreadsheet->id) === $version && $this->copiesWhole($sheetTab)) {
+            $what = $axis === 'col' ? 'columns' : 'rows';
+            $undo = ['restore' => $versions->snapshot($spreadsheet->id, $sheetTab->id, (int) Auth::id(), SheetVersions::SAFETY, "Before deleting {$what}")->id];
+        }
+
+        // One change however many lines: the time the service allows one is shared out, so the write lock stays short.
+        $service = app(SheetStructureService::class)->withBudget(SheetStructureService::WORK_BUDGET / $count, SheetStructureService::TIME_LIMIT_SECONDS / $count);
+        $change = $axis === 'row'
+            ? ($action === 'insert' ? $service->insertRow(...) : $service->deleteRow(...))
+            : ($action === 'insert' ? $service->insertColumn(...) : $service->deleteColumn(...));
+
+        try {
+            DB::transaction(function () use ($change, $spreadsheet, $sheetTab, $at, $count, $version) {
+                for ($done = 0; $done < $count; $done++) {
+                    $change($spreadsheet->id, $sheetTab->id, $at, $version + $done);
+                }
+            });
+        } catch (StaleStructure $stale) {
+            return response()->json(['stale' => true, 'message' => $stale->getMessage()], 409);
+        } catch (StructureChangeRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
+
+        return response()->json(['version' => StructureVersion::current($spreadsheet->id), 'undo' => $undo]);
+    }
+
+    /**
+     * Whether a safety copy can stand in for undo. A very large sheet is too much to copy in a request,
+     * and a copy does not hold named ranges, so formulas using them would read the wrong rows afterwards.
+     */
+    private function copiesWhole(SheetTab $sheetTab): bool
+    {
+        return Cell::where('sheet_tab_id', $sheetTab->id)->count() <= SheetVersions::AUTO_MAX_CELLS
+            && NamedRange::where('sheet_tab_id', $sheetTab->id)->doesntExist();
+    }
+
+    /**
+     * Put back the safety copy a delete took.
+     */
+    public function restoreCopy(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetVersions $versions): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['version' => 'required|integer', 'copy' => 'required|integer']);
+
+        $copy = SpreadsheetVersion::whereKey($input['copy'])
+            ->where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab->id)
+            ->where('kind', SheetVersions::SAFETY)->first();
+        abort_if($copy === null, 404);
+
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $input, $copy, $versions, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($copy, $versions) {
+                $versions->restore($copy, (int) Auth::id());
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['version' => StructureVersion::current($spreadsheet->id)]);
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse

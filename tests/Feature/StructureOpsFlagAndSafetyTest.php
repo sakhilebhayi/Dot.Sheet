@@ -131,17 +131,15 @@ class StructureOpsFlagAndSafetyTest extends TestCase
         Livewire::actingAs($this->user)->test(SpreadsheetToolbar::class, ['spreadsheet_id' => $this->spreadsheet->id])->assertSee('+Row');
     }
 
-    public function test_sort_edit_import_export_and_tab_delete_work_with_the_switch_off(): void
+    public function test_edit_import_export_and_tab_delete_work_with_the_switch_off(): void
     {
         $this->cell(0, 0, 'b');
         $this->cell(1, 0, 'a');
         $editor = $this->editor();
 
         $editor->set('editingCell', '5_0')->call('saveCell', 'typed');
-        $editor->set('selectedCol', 0)->call('sortSelectedColumn', ['direction' => 'asc']);
 
-        $this->assertSame(['a', 'b', 'typed'], [$this->raw(0, 0), $this->raw(1, 0), $this->raw(2, 0)]);
-        $this->assertSame(1, $this->version());
+        $this->assertSame(['b', 'a', 'typed'], [$this->raw(0, 0), $this->raw(1, 0), $this->raw(5, 0)]);
     }
 
     public function test_the_environment_files_carry_the_switch_off(): void

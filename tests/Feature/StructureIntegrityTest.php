@@ -161,56 +161,6 @@ class StructureIntegrityTest extends TestCase
 
     // ---- sort ---------------------------------------------------------------------------------------
 
-    public function test_a_sort_moves_the_version_clears_undo_and_refuses_a_stale_browser(): void
-    {
-        $this->cell(0, 1, 'b');
-        $this->cell(1, 1, 'c');
-        $this->cell(2, 1, 'a');
-        $this->cell(2, 0, 'row-three-col-a');
-
-        $a = $this->editor();
-        $b = $this->editor();
-
-        $a->set('editingCell', '0_1')->call('saveCell', 'z');          // A edits (0,1) ...
-        $a->set('selectedCol', 1)->call('sortSelectedColumn', ['direction' => 'asc']);   // ... then sorts
-
-        $this->assertSame(1, $this->version());
-        $a->assertSet('undoStack', [])->assertSet('structureNotice', 'Undo history was cleared because rows or columns moved.');
-        // Sorted by column B: a, c, z. The row that moved is intact, undo cannot touch it.
-        $this->assertSame(['a', 'c', 'z'], [$this->raw(0, 1), $this->raw(1, 1), $this->raw(2, 1)]);
-        $this->assertSame('row-three-col-a', $this->raw(0, 0));
-        $a->call('undoAction');
-        $this->assertSame(['a', 'c', 'z'], [$this->raw(0, 1), $this->raw(1, 1), $this->raw(2, 1)]);
-
-        // B still shows the old order: its write is refused.
-        $b->set('editingCell', '1_1')->call('saveCell', 'B-overwrite')->assertSet('structureNotice', StructureVersion::STALE_MESSAGE);
-        $this->assertSame('c', $this->raw(1, 1));
-        $this->assertSame(0, Cell::where('row_index', '>=', 200000000)->count(), 'no row left parked at the temporary index');
-    }
-
-    public function test_a_sort_that_fails_halfway_changes_nothing(): void
-    {
-        $this->cell(0, 0, 'b');
-        $this->cell(1, 0, 'a');
-        $editor = $this->editor();
-
-        // Make the second step blow up: the whole sort is one transaction, so the first step must roll back.
-        $seen = 0;
-        DB::listen(function (QueryExecuted $query) use (&$seen) {
-            if (str_starts_with($query->sql, 'update "cells" set "row_index"') && ++$seen === 3) {
-                throw new \RuntimeException('boom');
-            }
-        });
-
-        try {
-            $editor->set('selectedCol', 0)->call('sortSelectedColumn', ['direction' => 'asc']);
-        } catch (\Throwable) {
-        }
-
-        $this->assertSame(['b', 'a'], [$this->raw(0, 0), $this->raw(1, 0)]);
-        $this->assertSame(0, $this->version());
-    }
-
     // ---- one transaction for check and write ---------------------------------------------------------
 
     public function test_the_version_check_and_the_cell_write_share_one_transaction(): void

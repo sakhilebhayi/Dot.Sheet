@@ -38,6 +38,14 @@ class DefaultEditorTest extends TestCase
             ->assertSee('New editor');
     }
 
+    public function test_the_classic_editor_sends_sorting_to_the_new_one(): void
+    {
+        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk()
+            ->assertSee('Sort in the new editor')
+            ->assertSee(route('spreadsheets.show', $this->sheet), false)
+            ->assertDontSee('Sort column');
+    }
+
     public function test_a_new_sheet_opens_in_the_new_editor(): void
     {
         $this->actingAs($this->owner)->post('/spreadsheets', ['name' => 'Fresh'])

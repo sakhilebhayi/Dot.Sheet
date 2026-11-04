@@ -325,7 +325,6 @@ class ViewerRoleTest extends TestCase
             ['addConditionalRuleSelected', [['operator' => '>', 'value' => '1', 'color' => '#ff0000']]],
             ['addFilterRule', [['column' => 'A', 'type' => 'contains', 'value' => '5']]],
             ['clearFilterRules', []],
-            ['sortSelectedColumn', [['direction' => 'desc']]],
         ];
 
         foreach ($calls as [$method, $args]) {

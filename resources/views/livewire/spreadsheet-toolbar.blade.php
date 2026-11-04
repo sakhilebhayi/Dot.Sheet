@@ -161,14 +161,10 @@
         <button wire:click="addConditionalRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add rule</button>
     </div>
 
-    <!-- Sort & Filter -->
+    <!-- Filter -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <span class="tool-label">Sort and filter</span>
-        <select aria-label="Sort direction" wire:model="sort_direction" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
-            <option value="asc">Sort Asc</option>
-            <option value="desc">Sort Desc</option>
-        </select>
-        <button wire:click="sortSelectedColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Sort column</button>
+        <a href="{{ route('spreadsheets.show', $spreadsheet_id) }}" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Sort in the new editor</a>
+        <span class="tool-label">Filter</span>
 
         <input aria-label="A" type="text" wire:model="filter_column" class="w-10 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="A">
         <select aria-label="Filter type" wire:model="filter_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">

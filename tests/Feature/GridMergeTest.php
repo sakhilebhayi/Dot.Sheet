@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -14,7 +13,6 @@ use App\Services\SpreadsheetImportExportService;
 use App\Services\StructureVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
@@ -438,17 +436,5 @@ class GridMergeTest extends TestCase
         $this->assertSame([], SheetMerges::of(['merges' => 'nonsense']));
         $this->assertSame([], SheetMerges::of(['merges' => [['r1' => 0], 'x', ['r1' => 3, 'r2' => 1, 'c1' => 0, 'c2' => 0], ['r1' => 1, 'r2' => 1, 'c1' => 1, 'c2' => 1]]]));
         $this->assertSame([], SheetMerges::of(null));
-    }
-
-    public function test_a_sheet_with_merged_cells_is_not_sorted_in_the_classic_editor(): void
-    {
-        $this->write(['0:0' => '2', '1:0' => '1']);
-        $this->ask('merge', $this->area(3, 0, 3, 1));
-
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id])
-            ->call('sortSelectedColumn', ['direction' => 'asc'])
-            ->assertSet('structureNotice', 'This sheet has merged cells, so it cannot be sorted. Unmerge them in the new editor first.');
-
-        $this->assertSame('2', $this->value(0, 0));
     }
 }

@@ -14,7 +14,6 @@ use App\Models\Spreadsheet;
 use App\Services\CellRules;
 use App\Services\Formula\Recalculator;
 use App\Services\SheetFilter;
-use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\SheetWorkflows;
@@ -1575,97 +1574,6 @@ class ShowSpreadsheet extends Component
     public function clearFilterRules(): void
     {
         $this->updateLayout(fn (array $settings) => app(SheetFilter::class)->applied($settings, (int) $this->activeSheetTabId, []));
-    }
-
-    #[On('sort-selected-column')]
-    public function sortSelectedColumn($payload): void
-    {
-        $data = is_array($payload) ? $payload : [];
-        if (array_is_list($data) && isset($data[0]) && is_array($data[0])) {
-            $data = $data[0];
-        }
-
-        $this->authorize('update', $this->spreadsheet);
-
-        if ($this->refuseWhenStructureIsStale()) {
-            return;
-        }
-
-        // Rows moving under a merged cell would put what they hold where nothing shows.
-        if (SheetMerges::onTab((int) $this->activeSheetTabId) !== []) {
-            $this->structureNotice = 'This sheet has merged cells, so it cannot be sorted. Unmerge them in the new editor first.';
-
-            return;
-        }
-
-        $direction = strtolower((string) ($data['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-        $targetCol = (int) $this->selectedCol;
-        $sorted = false;
-
-        // One transaction: the rows are parked at a high index while they swap, which nobody else may
-        // see, and the structure version goes up with it, so a stale browser or an undo entry can not
-        // land on a row that moved.
-        $written = $this->guardedWrite(function () use ($direction, $targetCol, &$sorted) {
-            $rows = $this->cellsQuery()
-                ->select('row_index')
-                ->distinct()
-                ->orderBy('row_index')
-                ->pluck('row_index')
-                ->map(fn ($r) => (int) $r)
-                ->values()
-                ->toArray();
-
-            if (count($rows) < 2) {
-                return;
-            }
-
-            $values = [];
-            foreach ($rows as $row) {
-                $cell = $this->cellsQuery()
-                    ->where('row_index', $row)
-                    ->where('col_index', $targetCol)
-                    ->first();
-                $values[$row] = $cell?->computed_value ?? $cell?->raw_value ?? '';
-            }
-
-            usort($rows, function ($a, $b) use ($values, $direction) {
-                $va = $values[$a] ?? '';
-                $vb = $values[$b] ?? '';
-                if (is_numeric($va) && is_numeric($vb)) {
-                    $cmp = (float) $va <=> (float) $vb;
-                } else {
-                    $cmp = strnatcasecmp((string) $va, (string) $vb);
-                }
-
-                return $direction === 'desc' ? -$cmp : $cmp;
-            });
-
-            $startRow = min($rows);
-            $tempOffset = 200000000;
-            foreach ($rows as $idx => $oldRow) {
-                $this->cellsQuery()
-                    ->where('row_index', $oldRow)
-                    ->update(['row_index' => $tempOffset + $idx]);
-            }
-
-            foreach ($rows as $idx => $_oldRow) {
-                $this->cellsQuery()
-                    ->where('row_index', $tempOffset + $idx)
-                    ->update(['row_index' => $startRow + $idx]);
-            }
-
-            StructureVersion::bump((int) $this->spreadsheet_id);
-            app(Recalculator::class)->markStale((int) $this->spreadsheet_id, (int) $this->activeSheetTabId);
-            $sorted = true;
-        });
-
-        if (! $written || ! $sorted) {
-            return;
-        }
-
-        $hadUndoHistory = $this->undoStack !== [] || $this->redoStack !== [];
-        $this->resyncAfterStructureChange();
-        $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
     }
 
     protected function evaluateAutomatedWorkflows(int $row, int $col, mixed $rawValue, mixed $computedValue): void

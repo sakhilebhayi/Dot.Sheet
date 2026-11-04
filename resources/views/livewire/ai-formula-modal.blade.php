@@ -8,7 +8,7 @@
             <!-- Header -->
             <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white rounded-t-lg flex justify-between items-center">
                 <div>
-                    <h2 class="text-2xl font-bold">✨ AI Formula Generator</h2>
+                    <h2 class="text-2xl font-bold">Write a formula with AI</h2>
                     <p class="text-blue-100 text-sm">Generate formulas using AI - Cell {{ $cell_reference }}</p>
                 </div>
                 <button type="button" aria-label="Close" class="text-white hover:text-blue-200"
@@ -40,7 +40,7 @@
                 <!-- AI Service Status -->
                 <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                     <p class="text-sm text-blue-800 dark:text-blue-200">
-                        💡 <strong>Tip:</strong> Be specific! Instead of "sum", try "sum all sales values in column A from rows 1 to 10"
+                        <strong>Tip:</strong> Be specific! Instead of "sum", try "sum all sales values in column A from rows 1 to 10"
                     </p>
                 </div>
 
@@ -56,7 +56,7 @@
                 <!-- Generated Formula Display -->
                 @if ($generated_formula)
                     <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3">
-                        <p class="text-green-800 dark:text-green-200 font-medium">✅ Formula Generated:</p>
+                        <p class="text-green-800 dark:text-green-200 font-medium">Formula Generated:</p>
                         <div class="bg-white dark:bg-gray-700 p-3 rounded font-mono text-sm text-gray-900 dark:text-white break-all">
                             {{ $generated_formula }}
                         </div>
@@ -111,7 +111,7 @@
                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                                 <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.343a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM15.657 14.657a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM11 17a1 1 0 110-2v1a1 1 0 01-2 0v-1a1 1 0 112 0v1zM5.343 15.657a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707zM2 10a1 1 0 011-1h1a1 1 0 110 2H3a1 1 0 01-1-1zM5.343 4.343a1 1 0 011.414-1.414l-.707-.707a1 1 0 00-1.414 1.414l.707.707z"></path>
                             </svg>
-                            Generate Formula
+                            Generate formula
                         </button>
                     @endif
                 </div>

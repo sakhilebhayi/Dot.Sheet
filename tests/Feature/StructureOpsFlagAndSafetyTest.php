@@ -123,7 +123,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
     public function test_the_menu_items_and_toolbar_buttons_are_hidden_with_the_switch_off_and_shown_with_it_on(): void
     {
         $this->editor()->assertDontSee('Insert Row')->assertDontSee('Delete Column')->assertSee('Hide/Unhide Row');
-        Livewire::actingAs($this->user)->test(SpreadsheetToolbar::class, ['spreadsheet_id' => $this->spreadsheet->id])->assertDontSee('+Row')->assertSee('Hide Row');
+        Livewire::actingAs($this->user)->test(SpreadsheetToolbar::class, ['spreadsheet_id' => $this->spreadsheet->id])->assertDontSee('+Row')->assertSee('Hide row');
 
         config(['sheet.structure_ops_enabled' => true]);
 

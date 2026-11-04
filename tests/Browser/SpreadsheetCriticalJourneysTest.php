@@ -152,7 +152,11 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->openLivewire('/spreadsheets/'.$sheet->id)
+                ->openLivewire('/spreadsheets/'.$sheet->id);
+
+            // A panel opened by hand stays open through the redraw that saving a cell causes.
+            $browser->script("[...document.querySelectorAll('.panel summary')].find(s => s.textContent === 'Sharing').click()");
+            $browser->assertSee('Invite by Email')
                 ->click($this->cell(1, 1))->settle()
                 ->type('#formulaInput', '99')
                 ->click('button[onclick="saveCurrentCell()"]')->settle()
@@ -175,15 +179,15 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
             $browser->loginAs($sheet->owner)
                 ->openLivewire('/spreadsheets/'.$sheet->id)
                 ->assertSeeIn($this->cell(0, 0), 'original')
-                ->click('button[title="Version History"]')->settle()
+                ->click('[popovertarget="editorTools"]')->click('button[title="Version History"]')->settle()
                 ->type('input[aria-label="Snapshot label"]', 'Before the change')
-                ->press('Create Snapshot')->settle()
+                ->press('Create snapshot')->settle()
                 ->assertSee('Before the change')
                 ->click('button[wire\\:click="closeModal"]')->settle()
                 ->doubleClick($this->cell(0, 0))->settle()
                 ->keys($this->cell(0, 0).' input', ...['{end}', ...array_fill(0, 8, '{backspace}'), 'changed', '{enter}'])->settle()
                 ->assertSeeIn($this->cell(0, 0), 'changed')
-                ->click('button[title="Version History"]')->settle()
+                ->click('[popovertarget="editorTools"]')->click('button[title="Version History"]')->settle()
                 ->press('Restore')->settle()
                 ->waitForTextIn($this->cell(0, 0), 'original');
 

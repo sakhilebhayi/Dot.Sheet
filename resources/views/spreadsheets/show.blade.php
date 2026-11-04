@@ -1,5 +1,5 @@
 <x-app-layout>
-    <div class="h-screen bg-gray-50 dark:bg-gray-900">
-        @livewire('show-spreadsheet', ['spreadsheet_id' => $spreadsheet->id])
-    </div>
+    <x-slot:title>{{ $spreadsheet->name }}: Dot.Sheets</x-slot:title>
+
+    @livewire('show-spreadsheet', ['spreadsheet_id' => $spreadsheet->id])
 </x-app-layout>

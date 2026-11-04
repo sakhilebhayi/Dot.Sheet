@@ -21,15 +21,8 @@
 
 .bar .grow { flex: 1; }
 .bar .line { flex: 0 1 280px; }
-.bar .line input { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; outline: none; }
-input::placeholder { color: var(--soft); opacity: 1; }
 .who { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 
-.button { display: inline-flex; align-items: center; min-height: 34px; padding: 7px 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--sheet); font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; transition: translate .2s var(--ease), background .15s; }
-.button:hover { translate: 0 -2px; }
-.button:active { translate: 0 0; }
-.button.quiet { background: none; color: var(--ink); font-weight: 500; }
-.button.quiet:hover { background: var(--raised); }
 .part .button.quiet { box-shadow: inset 0 0 0 1px var(--dot); }
 .button.ruin { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
 .button.ruin:hover { background: var(--ink); color: var(--sheet); }
@@ -173,12 +166,6 @@ input::placeholder { color: var(--soft); opacity: 1; }
 .first h2 { margin: 0 0 8px; font-size: clamp(28px, 2.6vw, 40px); font-weight: 600; line-height: 1.05; letter-spacing: -.025em; }
 .first p { margin: 0 0 18px; }
 
-.account { inset: 54px 20px auto auto; margin: 0; width: 240px; padding: 8px; border: 0; border-radius: 14px; background: var(--sheet); color: var(--ink); box-shadow: 0 24px 70px rgb(21 32 27 / .28); }
-.account p { margin: 0; padding: 8px 10px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; }
-.account h2 { margin: 6px 0 0; padding: 4px 10px; color: var(--soft); font-size: 12px; font-weight: 500; }
-.account a, .account button { width: 100%; display: block; padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-.account a:hover, .account button:hover { background: var(--wash); }
-.account [aria-current] { font-weight: 600; }
 
 #confirm { padding: 20px; width: min(440px, calc(100vw - 24px)); }
 #found .group { padding: 10px 12px 2px; color: var(--soft); font-size: 12px; font-weight: 500; }

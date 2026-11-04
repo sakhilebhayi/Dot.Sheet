@@ -181,8 +181,8 @@ class ViewerRoleTest extends TestCase
         $this->actingAs($this->members['viewer']);
 
         $page = $this->get(route('spreadsheets.show', $this->sheet))->assertOk();
-        $page->assertSee('Export CSV');
-        $page->assertDontSee('Import CSV', false);
+        $page->assertSee('Download as CSV');
+        $page->assertDontSee('Import a file', false);
 
         $this->get(route('spreadsheets.export.csv', $this->sheet))->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $this->get(route('spreadsheets.export.excel', $this->sheet))->assertOk();
@@ -196,9 +196,9 @@ class ViewerRoleTest extends TestCase
         $editorHtml = $this->actingAs($this->members['editor'])->get(route('spreadsheets.show', $this->sheet))->getContent();
 
         $this->assertStringNotContainsString('title="Add sheet"', $viewerHtml);
-        $this->assertStringNotContainsString('title="Import CSV"', $viewerHtml);
+        $this->assertStringNotContainsString('Import a file', $viewerHtml);
         $this->assertStringContainsString('title="Add sheet"', $editorHtml);
-        $this->assertStringContainsString('title="Import CSV"', $editorHtml);
+        $this->assertStringContainsString('Import a file', $editorHtml);
     }
 
     public function test_a_viewer_sees_cells_comments_charts_and_versions_but_cannot_start_editing(): void

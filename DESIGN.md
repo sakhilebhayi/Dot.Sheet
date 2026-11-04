@@ -252,6 +252,21 @@ solid ink. Red stays with negative figures and errors.
 340ms when the selection changes. Nothing moves at rest, on purpose: this is a tool people look at for
 hours, and the rule in the Overview outranks any wish for the page to keep breathing.
 
+## The classic editor
+
+The classic editor stays until the new one has its features, so it follows the same rules from the
+same tokens. One bar holds the name, the cell and its contents, and Save; everything occasional is in
+the Tools menu. Formatting sits in one row, with the rest behind More tools. Panels fold in a column on
+the right, each opened when wanted, and stay open while the sheet redraws.
+
+Its panels are written in Tailwind utilities, so `resources/css/tailwind-dot-palette.css` maps that
+palette onto these tokens rather than editing every class: neutrals are paper and ink, pale blues are
+selection, a button of any hue is ink, and red is errors and negatives. There is no dark theme, so the
+views' `dark:` classes do nothing. New work uses tokens, not more utilities.
+
+Figures read the same in both editors and on share links: `App\Support\FigureText` matches
+`resources/js/grid/format.js`. Change one and change the other.
+
 ## Do's and Don'ts
 
 - Do keep red for losses and errors. If something else needs attention, it is not red.

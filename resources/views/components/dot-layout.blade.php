@@ -34,7 +34,7 @@
         @livewireStyles
     @endif
 </head>
-<body class="pages">
+<body class="shell pages">
     <a class="skip" href="#sheet">Skip to the page</a>
 
     <header class="bar">

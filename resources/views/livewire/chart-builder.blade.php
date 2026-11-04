@@ -8,18 +8,18 @@
                             border border-purple-200 dark:border-purple-700 rounded-full text-xs">
                     <button wire:click="renderChart({{ $chart['id'] }})"
                             class="text-purple-800 dark:text-purple-200 hover:underline font-medium">
-                        📊 {{ $chart['title'] }}
+                        {{ $chart['title'] }}
                     </button>
                     @if ($canEdit)
                         <button wire:click="deleteChart({{ $chart['id'] }})"
-                                class="text-purple-400 hover:text-red-500 ml-1">✕</button>
+                                class="text-purple-400 hover:text-red-500 ml-1">×</button>
                     @endif
                 </div>
             @endforeach
         </div>
     @endif
 
-    <!-- Insert Chart Button -->
+    <!-- Insert chart Button -->
     @if ($canEdit)
     <button wire:click="openModal"
             class="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700
@@ -28,7 +28,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
         </svg>
-        Insert Chart
+        Insert chart
     </button>
     @endif
 
@@ -37,14 +37,14 @@
         <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4">
                 <div class="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 text-white rounded-t-xl flex justify-between">
-                    <h2 class="text-xl font-bold">📊 Insert Chart</h2>
-                    <button wire:click="closeModal" class="hover:text-purple-200">✕</button>
+                    <h2 class="text-xl font-bold">Insert chart</h2>
+                    <button wire:click="closeModal" class="hover:text-purple-200">×</button>
                 </div>
 
                 <div class="p-6 space-y-4">
-                    <!-- Chart Title -->
+                    <!-- Chart title -->
                     <div>
-                        <label for="livewire-chart-builder-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart Title</label>
+                        <label for="livewire-chart-builder-title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart title</label>
                         <input id="livewire-chart-builder-title" type="text" wire:model="title" placeholder="My Chart"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
@@ -52,9 +52,9 @@
                         @error('title') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    <!-- Chart Type -->
+                    <!-- Chart type -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart Type</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Chart type</label>
                         <div class="grid grid-cols-3 gap-2">
                             @foreach ($chartTypes as $value => $label)
                                 <button wire:click="$set('type', '{{ $value }}')"
@@ -69,10 +69,10 @@
                         @error('type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    <!-- Data Range -->
+                    <!-- Data range -->
                     <div>
                         <label for="livewire-chart-builder-data-range" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Data Range <span class="text-gray-400 font-normal">(e.g. B1:D10)</span>
+                            Data range <span class="text-gray-400 font-normal">(e.g. B1:D10)</span>
                         </label>
                         <input id="livewire-chart-builder-data-range" type="text" wire:model="data_range" placeholder="B1:D10"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
@@ -81,10 +81,10 @@
                         @error('data_range') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    <!-- Labels Range (optional) -->
+                    <!-- Labels range (optional) -->
                     <div>
                         <label for="livewire-chart-builder-labels-range" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Labels Range <span class="text-gray-400 font-normal">(optional, e.g. A1:A10)</span>
+                            Labels range <span class="text-gray-400 font-normal">(optional, e.g. A1:A10)</span>
                         </label>
                         <input id="livewire-chart-builder-labels-range" type="text" wire:model="labels_range" placeholder="A1:A10"
                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
@@ -102,7 +102,7 @@
                     </button>
                     <button wire:click="saveChart"
                             class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium">
-                        Insert Chart
+                        Insert chart
                     </button>
                 </div>
             </div>
@@ -117,7 +117,7 @@
             <div class="flex justify-between items-center mb-4">
                 <h3 id="chartTitle" class="text-xl font-bold text-gray-900 dark:text-white"></h3>
                 <button onclick="document.getElementById('chartContainer').classList.add('hidden')"
-                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">×</button>
             </div>
             <div class="relative" style="height:400px">
                 <canvas id="mainChartCanvas"></canvas>

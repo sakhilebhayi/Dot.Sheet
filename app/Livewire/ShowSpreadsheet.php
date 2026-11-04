@@ -64,9 +64,9 @@ class ShowSpreadsheet extends Component
 
     public $totalCols = SheetStructureService::GRID_COLS;             // Total columns (A-CV)
 
-    public $rowHeight = 28;              // px
+    public $rowHeight = 30;              // px
 
-    public $colWidth = 96;               // px
+    public $colWidth = 104;               // px
 
     // Lazy-loading / prefetch tuning
     public $prefetchRows = 40;

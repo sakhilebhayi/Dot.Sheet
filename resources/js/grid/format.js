@@ -40,7 +40,7 @@ export function show(cell) {
     else if (format === 'date') return { text: date(n), number: true, negative: false, error: false };
     else if (format === 'number') text = grouped(abs, 2);
     // Amounts group their thousands; a year stays as typed.
-    else if (Number.isInteger(abs)) text = abs >= 1000 && abs < 1e15 && !(abs >= 1900 && abs < 2100) ? grouped(abs, null) : String(abs);
+    else if (Number.isInteger(abs)) text = abs >= 1000 && abs < 1e15 && !(n > 0 && abs >= 1900 && abs < 2100) ? grouped(abs, null) : String(abs);
     else text = grouped(Number(abs.toPrecision(9)), null);
 
     return { text: sign + text, number: true, negative: n < 0, error: false };

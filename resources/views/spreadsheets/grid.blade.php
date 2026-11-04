@@ -7,7 +7,7 @@
     <title>{{ $spreadsheet->name }}: Dot.Sheets</title>
     @vite(['resources/css/dot-grid.css', 'resources/js/grid/main.js'])
 </head>
-<body>
+<body class="shell">
     <a class="skip" href="#sheet">Skip to the sheet</a>
 
     <header class="bar">

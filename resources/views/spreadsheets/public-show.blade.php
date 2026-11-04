@@ -29,7 +29,8 @@
                             <tr>
                                 <td class="bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">{{ $rowIndex + 1 }}</td>
                                 @foreach($row as $value)
-                                    <td class="border border-gray-200 dark:border-gray-600 px-2 py-1 text-sm text-gray-800 dark:text-gray-200 whitespace-nowrap">{{ $value }}</td>
+                                    @php($shown = \App\Support\FigureText::shown($value))
+                                    <td @class(['border border-gray-200 px-2 py-1 text-sm text-gray-800 whitespace-nowrap', 'text-right' => $shown['figure'], 'text-red-600' => $shown['loss']])>{{ $shown['text'] }}</td>
                                 @endforeach
                             </tr>
                         @endforeach

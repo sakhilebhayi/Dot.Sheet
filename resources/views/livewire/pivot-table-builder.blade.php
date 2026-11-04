@@ -7,11 +7,11 @@
                             border border-indigo-200 dark:border-indigo-700 rounded-full text-xs">
                     <button wire:click="openPivot({{ $pivot['id'] }})"
                             class="text-indigo-800 dark:text-indigo-200 hover:underline font-medium">
-                        🧮 {{ $pivot['title'] }}
+                        {{ $pivot['title'] }}
                     </button>
                     @if ($canEdit)
                         <button wire:click="deletePivot({{ $pivot['id'] }})"
-                                class="text-indigo-400 hover:text-red-500 ml-1">✕</button>
+                                class="text-indigo-400 hover:text-red-500 ml-1">×</button>
                     @endif
                 </div>
             @endforeach
@@ -26,7 +26,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M4 6h16M4 10h16M4 14h7m-7 4h7m5-4v6m0-6l-3 3m3-3l3 3"/>
         </svg>
-        New Pivot Table
+        New pivot table
     </button>
     @endif
 
@@ -35,8 +35,8 @@
         <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4">
                 <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-4 text-white rounded-t-xl flex justify-between">
-                    <h2 class="text-xl font-bold">🧮 New Pivot Table</h2>
-                    <button wire:click="closeModal" class="hover:text-indigo-200">✕</button>
+                    <h2 class="text-xl font-bold">New pivot table</h2>
+                    <button wire:click="closeModal" class="hover:text-indigo-200">×</button>
                 </div>
 
                 <div class="p-6 space-y-4">
@@ -125,8 +125,8 @@
              wire:click.self="closePivot">
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-3xl mx-4 max-h-[80vh] overflow-auto">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">🧮 Pivot Table</h3>
-                    <button wire:click="closePivot" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">Pivot Table</h3>
+                    <button wire:click="closePivot" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">×</button>
                 </div>
 
                 @if (empty($result['rowLabels']))

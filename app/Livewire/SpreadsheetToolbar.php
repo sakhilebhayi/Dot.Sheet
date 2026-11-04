@@ -33,7 +33,7 @@ class SpreadsheetToolbar extends Component
 
     public $strike = false;
 
-    public $font_size = 12;
+    public $font_size = 14;
 
     public $font_color = '#000000';
 
@@ -49,9 +49,9 @@ class SpreadsheetToolbar extends Component
     public $formatPainterActive = false;
 
     // Row/column sizing controls
-    public $row_height_input = 28;
+    public $row_height_input = 30;
 
-    public $col_width_input = 96;
+    public $col_width_input = 104;
 
     // Validation controls
     public $validation_type = 'number';
@@ -227,13 +227,13 @@ class SpreadsheetToolbar extends Component
             $this->italic = $fmt['italic'] ?? false;
             $this->underline = $fmt['underline'] ?? false;
             $this->strike = $fmt['strike'] ?? false;
-            $this->font_size = $fmt['font_size'] ?? 12;
+            $this->font_size = $fmt['font_size'] ?? 14;
             $this->font_color = $fmt['font_color'] ?? '#000000';
             $this->bg_color = $fmt['bg_color'] ?? '#ffffff';
             $this->align = $fmt['align'] ?? 'left';
             $this->number_format = $fmt['number_format'] ?? 'general';
-            $this->row_height_input = 28;
-            $this->col_width_input = 96;
+            $this->row_height_input = 30;
+            $this->col_width_input = 104;
         } else {
             $this->resetFormatting();
         }
@@ -481,7 +481,7 @@ class SpreadsheetToolbar extends Component
         $this->italic = false;
         $this->underline = false;
         $this->strike = false;
-        $this->font_size = 12;
+        $this->font_size = 14;
         $this->font_color = '#000000';
         $this->bg_color = '#ffffff';
         $this->align = 'left';

@@ -118,7 +118,7 @@ Known limits (older than this code, not changed by it):
 
 - **No cascade recalculation.** Only formulas whose own range or named range changed are recomputed. A formula that depends on another formula's result is not recalculated when that result changes.
 - **References stay inside the tab and are relative.** A formula cannot refer to another tab, and `$A$1` style absolute references are not understood by the evaluator, so they are not treated specially when rows move.
-- Pivot sources keep their old coordinates after an insert or delete. Comments, chart ranges and validation and conditional-format rules follow.
+- Comments, chart ranges, pivot sources and validation and conditional-format rules all follow an insert or delete.
 
 ## Sheets imported before the 0-based import fix
 

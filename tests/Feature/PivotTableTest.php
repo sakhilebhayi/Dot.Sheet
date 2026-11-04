@@ -192,7 +192,7 @@ class PivotTableTest extends TestCase
         $result = app(PivotTableService::class)->compute($pivot);
 
         $this->assertEmpty($result['rowLabels']);
-        $this->assertSame(0.0, $result['grandTotal']);
+        $this->assertNull($result['grandTotal'], 'nothing there is empty, not nought');
     }
 
     public function test_owner_can_create_and_open_a_pivot_table_via_the_panel(): void

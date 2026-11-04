@@ -9,6 +9,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
+use App\Services\PivotTableService;
 use App\Services\SheetCharts;
 use App\Services\SheetComments;
 use App\Services\SheetNames;
@@ -868,8 +869,8 @@ class DotGridEditorTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'pivot');
-            $browser->waitForTextIn('#found', 'Pivot tables')->assertSeeIn('#found', 'In the classic editor');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'scripts');
+            $browser->waitForTextIn('#found', 'Scripts')->assertSeeIn('#found', 'In the classic editor');
 
             $browser->keys('#find', WebDriverKeys::ENTER);
             $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
@@ -2463,6 +2464,191 @@ class DotGridEditorTest extends DuskTestCase
 
             $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
             $browser->waitForTextIn('#charts-list', 'Shelves')->assertDontSeeIn('#charts-list', 'Sales')->assertMissing('#charts-view');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    private function pivotTable(Browser $browser): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            return [...document.querySelectorAll('#pivots-table tr')].map((row) => [...row.children].map((cell) => cell.textContent));
+        JS);
+    }
+
+    /** @return array{0: User, 1: Spreadsheet, 2: SheetTab} */
+    private function regionsSheet(): array
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Month'], ['row' => 0, 'col' => 1, 'value' => 'Region'], ['row' => 0, 'col' => 2, 'value' => 'Amount'],
+            ['row' => 1, 'col' => 0, 'value' => 'Jan'], ['row' => 1, 'col' => 1, 'value' => 'East'], ['row' => 1, 'col' => 2, 'value' => '10'],
+            ['row' => 2, 'col' => 0, 'value' => 'Feb'], ['row' => 2, 'col' => 1, 'value' => 'East'], ['row' => 2, 'col' => 2, 'value' => '30'],
+            ['row' => 3, 'col' => 0, 'value' => 'Jan'], ['row' => 3, 'col' => 1, 'value' => 'West'], ['row' => 3, 'col' => 2, 'value' => '100'],
+        ], $user->id);
+
+        return [$user, $sheet, $tab];
+    }
+
+    public function test_a_pivot_is_written_as_a_sentence_from_the_tables_own_headings(): void
+    {
+        [$user, $sheet] = $this->regionsSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitFor('#pivots')->waitForTextIn('#pivots-list', 'No pivot tables on this sheet yet');
+            $browser->assertDisabled('#pivots-form button');
+            $browser->waitFor('#pivots-hint')->assertDisabled('#pivots-form button');
+
+            $browser->driver->executeScript(<<<'JS'
+                const box = document.getElementById('pivots-range');
+                box.value = 'A1:C4';
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+            JS);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#pivots-value') === 'C');
+            $browser->assertMissing('#pivots-hint');
+            $this->assertSame('A', $browser->value('#pivots-row'), 'words to group by');
+            $this->assertSame(['Month', 'Region', 'Amount'], $browser->driver->executeScript("return [...document.querySelectorAll('#pivots-value option')].map(o => o.textContent)"));
+
+            $browser->select('#pivots-row', 'B')->press('Add');
+            $browser->waitForTextIn('#pivots-heading', 'Sum of Amount by Region');
+            $browser->waitUsing(5, 25, fn () => count($this->pivotTable($browser)) === 4);
+            $this->assertSame([['Region', 'Sum of Amount'], ['East', '40'], ['West', '100'], ['Total', '140']], $this->pivotTable($browser));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_form_groups_by_words_and_adds_up_figures_wherever_they_sit(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Amount'], ['row' => 0, 'col' => 1, 'value' => 'Region'],
+            ['row' => 1, 'col' => 0, 'value' => '10'], ['row' => 1, 'col' => 1, 'value' => 'East'],
+        ], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $browser->driver->get('about:blank');
+            $browser->driver->manage()->getLog('browser');
+            $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}")->waitFor('.c');
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitFor('#pivots');
+            $browser->driver->executeScript(<<<'JS'
+                const box = document.getElementById('pivots-range');
+                box.value = 'A1:B2';
+                box.dispatchEvent(new Event('input', { bubbles: true }));
+            JS);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#pivots-row') === 'B');
+            $this->assertSame('A', $browser->value('#pivots-value'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_an_average_names_its_total_and_empties_stay_empty(): void
+    {
+        [$user, $sheet, $tab] = $this->regionsSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'Average by region', 'A1:C4', 'B', 'A', 'C', 'average');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'Average by region');
+            $this->pressIn($browser, '#pivots-list', 'Show');
+            $browser->waitUsing(5, 25, fn () => count($this->pivotTable($browser)) === 4);
+            $this->assertSame([
+                ['Region', 'Feb', 'Jan', 'Overall'],
+                ['East', '30', '10', '20'],
+                ['West', '', '100', '100'],
+                ['Overall', '30', '55', '46.67'],
+            ], $this->pivotTable($browser));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_pivot_follows_its_figures_and_says_what_it_left_out(): void
+    {
+        [$user, $sheet, $tab] = $this->regionsSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'Sales', 'A1:C5', 'B', null, 'C', 'sum');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'Sales');
+            $this->pressIn($browser, '#pivots-list', 'Show');
+            $browser->waitUsing(5, 25, fn () => ($this->pivotTable($browser)[3][1] ?? '') === '140');
+
+            $this->clickCell($browser, 3, 2);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            // A total in the years is still a total: it groups its thousands.
+            $browser->keys('#sheet', '1900', '{enter}');
+            $browser->waitUsing(10, 25, fn () => ($this->pivotTable($browser)[3][1] ?? '') === '1 940');
+
+            $this->clickCell($browser, 4, 1);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'East', '{enter}');
+            $this->clickCell($browser, 4, 2);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'n/a', '{enter}');
+            $browser->waitForTextIn('#pivots-said', '1 cell holds words, so it is left out.', 5);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_table_with_nothing_under_its_headings_says_so(): void
+    {
+        [$user, $sheet, $tab] = $this->regionsSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'Empty', 'E1:F3', 'E', null, 'F', 'sum');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'Empty');
+            $this->pressIn($browser, '#pivots-list', 'Show');
+            $browser->waitForTextIn('#pivots-said', 'There is nothing under the headings yet.')->assertMissing('#pivots-table');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_deleting_a_pivot_asks_and_the_list_follows_the_sheet_in_view(): void
+    {
+        [$user, $sheet, $tab] = $this->regionsSheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'Sales', 'A1:C4', 'B', null, 'C', 'sum');
+        app(PivotTableService::class)->add($sheet->id, $extra->id, 'Shelves', 'A1:C4', 'B', null, 'C', 'sum');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openSales($browser, $user, $sheet);
+            $browser->click('#do-comments')->waitFor('#notes');
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'Sales')->assertMissing('#notes');
+            $this->pressIn($browser, '#pivots-list', 'Show');
+            $browser->waitForTextIn('#pivots-heading', 'Sales');
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#pivots-list', 'Shelves')->assertDontSeeIn('#pivots-list', 'Sales')->assertMissing('#pivots-view');
+
+            $this->pressIn($browser, '#pivots-list', 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'The figures stay on the sheet.')->assertSeeIn('#confirm-yes', 'Delete pivot table');
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#pivots-list', 'No pivot tables on this sheet yet');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_can_read_a_pivot_and_nothing_more(): void
+    {
+        [$user, $sheet, $tab] = $this->regionsSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'Sales', 'A1:C4', 'B', null, 'C', 'sum');
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openSales($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'Sales')->assertMissing('#pivots-form')->assertDontSeeIn('#pivots-list', 'Delete');
+            $this->pressIn($browser, '#pivots-list', 'Show');
+            $browser->waitUsing(5, 25, fn () => count($this->pivotTable($browser)) === 4);
             $this->assertNoConsoleErrors($browser);
         });
     }

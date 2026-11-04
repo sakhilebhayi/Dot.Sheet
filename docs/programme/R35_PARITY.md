@@ -16,7 +16,7 @@ The order is what blocks daily work first, not what is largest.
 | Hide and show rows and columns | First parity item |
 | Insert and delete rows and columns | Built, and off until the host switch below is set |
 | Add, rename and delete sheets | Rename now rewrites formulas in both editors. Delete asks first and cannot be undone |
-| Sort and filter | Sort keeps headings out and formulas right, with undo. Filters reapply on request. The classic editor's sort is unchanged and does neither |
+| Sort and filter | Sort keeps headings out and formulas right, with undo. Filters reapply on request. The classic editor no longer sorts: it could leave formulas reading the wrong rows |
 | Validation | Rules cover a range in both editors, with pick lists and removal. Removal and ranges are new |
 | Conditional formatting | Rules are drawn, added and removed. Removal is new: the classic editor can only add |
 | Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
@@ -44,6 +44,6 @@ to `null`, so this needs the broadcast decision from R35_AUDIT.md section 10 fir
 
 ## Known gaps this list does not close
 
-- The classic editor shows merged cells unmerged, and only its sort refuses a merged sheet.
+- The classic editor shows merged cells unmerged, and does not stop values being typed into a hidden part of one.
 - A formula that changes because of another cell does not set off a workflow rule, in either editor.
 - A change of more than 200 cells checks no workflow rules, so one paste cannot send hundreds of emails.

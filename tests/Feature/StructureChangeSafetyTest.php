@@ -143,7 +143,6 @@ class StructureChangeSafetyTest extends TestCase
             'formula bar' => fn (Testable $e) => $e->set('selectedRow', 0)->set('selectedCol', 0)->call('saveFromFormulaBar', 'X'),
             'paste cell' => fn (Testable $e) => $e->call('pasteIntoSelectedCell', 'X'),
             'paste block' => fn (Testable $e) => $e->call('bulkPasteFromText', "X\tY\nZ\tW"),
-            'sort' => fn (Testable $e) => $e->call('sortSelectedColumn', ['direction' => 'desc']),
             'script set' => fn (Testable $e) => $e->call('applyScriptActions', ['actions' => [['type' => 'set', 'cell' => 'A1', 'value' => 'X']]]),
             'script clear' => fn (Testable $e) => $e->call('applyScriptActions', ['actions' => [['type' => 'clear', 'cell' => 'A1']]]),
             'insert row' => fn (Testable $e) => $e->call('insertRowSelected'),

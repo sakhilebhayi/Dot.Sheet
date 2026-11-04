@@ -817,7 +817,7 @@
 
         tour.addStep({
             title: 'Formatting Toolbar',
-            text: 'Apply format painter, validation, filters, and sorting from this toolbar.',
+            text: 'Apply format painter, validation and filters from this toolbar.',
              attachTo: { element: '#formatToolbar', on: 'bottom' },
             buttons: [
                 { text: 'Back', action: tour.back },

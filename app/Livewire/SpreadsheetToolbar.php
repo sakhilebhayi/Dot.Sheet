@@ -71,9 +71,6 @@ class SpreadsheetToolbar extends Component
 
     public $conditional_color = '#FEE2E2';
 
-    // Sort/filter controls
-    public $sort_direction = 'asc';
-
     public $filter_column = 'A';
 
     public $filter_type = 'contains';
@@ -125,7 +122,6 @@ class SpreadsheetToolbar extends Component
             'filter_value2',
             'font_color',
             'row_height_input',
-            'sort_direction',
             'validation_items',
             'validation_max',
             'validation_min',
@@ -451,11 +447,6 @@ class SpreadsheetToolbar extends Component
             'value' => $this->conditional_value,
             'color' => $this->sanitizeColor($this->conditional_color),
         ]);
-    }
-
-    public function sortSelectedColumn(): void
-    {
-        $this->dispatch('sort-selected-column', ['direction' => $this->sort_direction]);
     }
 
     public function addFilterRule(): void

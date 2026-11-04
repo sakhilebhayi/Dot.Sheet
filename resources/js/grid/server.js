@@ -37,6 +37,7 @@ export class Server {
         this.shares = `/spreadsheets/${spreadsheetId}/sharing`;
         this.imports = `/spreadsheets/${spreadsheetId}/import`;
         this.macrosAt = `/spreadsheets/${spreadsheetId}/macros`;
+        this.approvalAt = `/spreadsheets/${spreadsheetId}/approval`;
         this.queue = Promise.resolve();
     }
 
@@ -244,6 +245,22 @@ export class Server {
 
     setShareLink(enabled, expiresAt) {
         return json(`${this.shares}/link`, { method: 'POST', body: JSON.stringify({ enabled, expires_at: expiresAt }) });
+    }
+
+    setSharePlace(teamId) {
+        return json(`${this.shares}/place`, { method: 'POST', body: JSON.stringify({ team_id: teamId }) });
+    }
+
+    setShareTemplate(on) {
+        return json(`${this.shares}/template`, { method: 'POST', body: JSON.stringify({ on }) });
+    }
+
+    approval() {
+        return json(this.approvalAt);
+    }
+
+    approvalStep(step, body) {
+        return json(`${this.approvalAt}/${step}`, { method: 'POST', body: JSON.stringify(body) });
     }
 
     newShareLink() {

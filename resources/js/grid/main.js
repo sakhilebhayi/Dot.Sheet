@@ -7,6 +7,7 @@ import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
 import { Protection } from './protection';
+import { Approval } from './approval';
 import { Assistant } from './assistant';
 import { SheetCheck } from './check';
 import { Ask } from './ask';
@@ -268,6 +269,22 @@ const protectionPanel = new Protection({
     note,
     refused,
 });
+const approval = new Approval({
+    server,
+    canKeep: boot.canKeep,
+    get canEdit() {
+        return canEditWorkbook;
+    },
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(approval),
+    changed: async () => {
+        const { ok, body } = await server.protections(tab);
+        if (ok) showProtection(body.state);
+    },
+    note,
+    refused,
+});
 const macros = boot.canEdit ? new Macros({
     server,
     back: () => sheet.focus({ preventScroll: true }),
@@ -314,7 +331,7 @@ const grid = new Grid(store, { rows: boot.rows, cols: boot.cols, editable: boot.
 
 // Whether this person can edit here depends on the sheet: a protected one is read only for them.
 const canEditWorkbook = boot.canEdit;
-let protection = { locked: false, ranges: [] };
+let protection = { locked: false, sealed: false, ranges: [] };
 
 let version = boot.version;
 let tab = firstShowing();
@@ -338,7 +355,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, sheetCheck, askPanel, importReport, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, approval, assistant, explain, sheetCheck, askPanel, importReport, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -428,7 +445,7 @@ function restingNote() {
     if (cell?.e) return cell.e;
     if (cell?.s) return 'Part of the answer of a formula nearby. Change that formula to change this.';
     if (clip) return 'Copied. Paste where you want it, or press Escape to let go of it.';
-    if (canEditWorkbook && !boot.canEdit) return 'This sheet is protected. Ask the workbook\'s owner to change it.';
+    if (canEditWorkbook && !boot.canEdit) return protection.sealed ? 'This workbook is approved. Reopen it to change it.' : 'This sheet is protected. Ask the workbook\'s owner to change it.';
     return boot.canEdit ? '' : 'You can read this sheet. Ask its owner for edit access to change it.';
 }
 
@@ -465,6 +482,7 @@ async function open(id, stillWriting = false) {
     if (!copies.closed) copies.load();
     if (!names.closed) names.load();
     if (!protectionPanel.closed) protectionPanel.load();
+    if (!approval.closed) approval.load();
     if (!explain.closed) explain.load();
     if (!sheetCheck.closed) sheetCheck.load();
     if (!charts.closed) charts.load();
@@ -473,11 +491,11 @@ async function open(id, stillWriting = false) {
 
 function showProtection(state) {
     protection = state;
-    boot.canEdit = canEditWorkbook && (boot.canKeep || !state.locked);
+    boot.canEdit = canEditWorkbook && !state.sealed && (boot.canKeep || !state.locked);
     grid.editable = boot.canEdit;
     grid.setHeld(state.ranges);
     const here = boot.tabs.find((t) => t.id === tab);
-    if (here) here.locked = state.locked;
+    if (here) here.locked = state.locked || state.sealed;
     drawTabs();
     selected();
 }
@@ -3030,6 +3048,7 @@ function choices(query) {
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
+        { label: 'Approval', hint: 'Ask for this workbook to be approved, or decide', run: () => approval.toggle(true) },
         { label: 'Protected cells', hint: 'What only the owner and admins can change', run: () => protectionPanel.toggle(true) },
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },

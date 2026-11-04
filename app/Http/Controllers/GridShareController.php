@@ -107,6 +107,33 @@ class GridShareController extends Controller
         });
     }
 
+    /** Whose it is: the owner's alone, or a team's. */
+    public function place(Request $request, Spreadsheet $spreadsheet): JsonResponse
+    {
+        $this->authorize('manageSharing', $spreadsheet);
+
+        $team = $request->validate(['team_id' => 'present|nullable|integer'])['team_id'];
+
+        return $this->changing($spreadsheet, function () use ($spreadsheet, $request, $team) {
+            $this->sharing->setPlace($spreadsheet, $request->user(), $team === null ? null : (int) $team);
+
+            return $team === null ? 'This is private now.' : 'This belongs to the team now.';
+        });
+    }
+
+    public function template(Request $request, Spreadsheet $spreadsheet): JsonResponse
+    {
+        $this->authorize('manageSharing', $spreadsheet);
+
+        $on = (bool) $request->validate(['on' => 'required|boolean'])['on'];
+
+        return $this->changing($spreadsheet, function () use ($spreadsheet, $on) {
+            $this->sharing->setTemplate($spreadsheet, $on);
+
+            return $on ? 'Your team can start from this now.' : 'This is no longer offered as a template.';
+        });
+    }
+
     public function newLink(Spreadsheet $spreadsheet): JsonResponse
     {
         $this->authorize('manageSharing', $spreadsheet);

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
+use App\Models\Team;
 use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -21,6 +22,12 @@ class SheetSharing
 
     public const SELF_MESSAGE = 'You cannot change your own access. Ask the owner.';
 
+    public const PLACE_OWNER_MESSAGE = 'Only the owner can move a workbook.';
+
+    public const PLACE_TEAM_MESSAGE = 'You cannot add a workbook to that team.';
+
+    public const TEMPLATE_TEAM_MESSAGE = 'Move this to a team first. A template is offered to a team.';
+
     /**
      * Everything the panel shows. The links in it are only for people who may manage sharing.
      *
@@ -34,6 +41,13 @@ class SheetSharing
         return [
             'owner' => ['name' => $owner?->name, 'email' => $owner?->email, 'you' => $spreadsheet->owner_id === $viewerId],
             'team' => $members > 0 ? ['name' => $spreadsheet->team->name, 'members' => $members] : null,
+            'place' => [
+                'team_id' => $spreadsheet->team_id,
+                'name' => $spreadsheet->team?->name,
+                'can_move' => $spreadsheet->owner_id === $viewerId,
+                'teams' => $this->teamsFor($viewerId),
+            ],
+            'template' => (bool) $spreadsheet->is_template,
             'people' => $spreadsheet->sharedUsers()->orderBy('users.name')->get(['users.id', 'users.name', 'users.email'])
                 ->map(fn (User $user) => [
                     'id' => $user->id,
@@ -115,6 +129,53 @@ class SheetSharing
      * Turning the link off keeps its address, so turning it on again brings back the same link. Only a new
      * link retires the old one.
      */
+    /**
+     * Give a workbook to a team, or take it back. Anyone in the team then reaches it by their role there.
+     *
+     * @throws ShareRefused
+     */
+    public function setPlace(Spreadsheet $spreadsheet, User $user, ?int $teamId): void
+    {
+        if ($spreadsheet->owner_id !== $user->id) {
+            throw new ShareRefused(self::PLACE_OWNER_MESSAGE);
+        }
+
+        if ($teamId !== null && ! in_array($teamId, array_column($this->teamsFor($user->id), 'id'), true)) {
+            throw new ShareRefused(self::PLACE_TEAM_MESSAGE);
+        }
+
+        $spreadsheet->update(['team_id' => $teamId, 'is_template' => $teamId !== null && $spreadsheet->is_template]);
+    }
+
+    /**
+     * @throws ShareRefused
+     */
+    public function setTemplate(Spreadsheet $spreadsheet, bool $on): void
+    {
+        if ($on && $spreadsheet->team_id === null) {
+            throw new ShareRefused(self::TEMPLATE_TEAM_MESSAGE);
+        }
+
+        $spreadsheet->update(['is_template' => $on]);
+    }
+
+    /**
+     * The teams this person may place a workbook in.
+     *
+     * @return list<array{id: int, name: string}>
+     */
+    private function teamsFor(int $viewerId): array
+    {
+        $viewer = User::find($viewerId);
+        if ($viewer === null) {
+            return [];
+        }
+
+        $teams = $viewer->allTeams()->filter(fn (Team $team) => $viewer->can('createSpreadsheet', $team));
+
+        return $teams->map(fn (Team $team) => ['id' => (int) $team->id, 'name' => (string) $team->name])->values()->all();
+    }
+
     public function setLink(Spreadsheet $spreadsheet, bool $enabled, ?CarbonInterface $expiresAt): void
     {
         if ($enabled && ! $spreadsheet->public_token) {

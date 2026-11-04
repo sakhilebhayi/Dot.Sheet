@@ -423,6 +423,24 @@
         <ul class="people dock-list" id="copies-list"></ul>
     </aside>
 
+    <aside class="dock" id="approval" aria-label="Approval" hidden>
+        <div class="dock-head">
+            <h2>Approval</h2>
+            <button class="tool" type="button" id="approval-close" aria-label="Close approval">×</button>
+        </div>
+        <div class="share-body">
+            <div id="approval-body">
+                <p class="dock-note" id="approval-said"></p>
+                <textarea id="approval-note" rows="2" maxlength="500" aria-label="A note to go with it" placeholder="A note, if it needs one"></textarea>
+                <div class="approval-deeds" id="approval-deeds"></div>
+            </div>
+            <div id="approval-past" hidden>
+                <h3>What has happened</h3>
+                <ul class="people" id="approval-list"></ul>
+            </div>
+        </div>
+    </aside>
+
     @if ($boot['canShare'])
         <aside class="dock" id="sharing" aria-label="Share" hidden>
             <div class="dock-head">
@@ -450,6 +468,11 @@
                     <h3>Waiting to accept</h3>
                     <ul class="people" id="share-waiting"></ul>
                 </div>
+
+                <h3>Where it lives</h3>
+                <p class="dock-note" id="share-place-said"></p>
+                <select id="share-place" aria-label="Who it belongs to" hidden></select>
+                <label class="tick" id="share-template-row" hidden><input type="checkbox" id="share-template">Offer it to the team as a template. Everyone in the team can start a new workbook from what is in it.</label>
 
                 <h3>Link for anyone</h3>
                 <label class="tick"><input type="checkbox" id="share-link-on">Anyone with the link can read the first sheet, without signing in</label>

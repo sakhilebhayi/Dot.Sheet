@@ -41,6 +41,8 @@ class SpreadsheetController extends Controller
 
     public const EDITABLE_SETTINGS_KEYS = SheetTab::LAYOUT_KEYS;
 
+    private const TEAM_TEMPLATES_LISTED = 30;
+
     /**
      * Display a listing of spreadsheets
      */
@@ -95,7 +97,9 @@ class SpreadsheetController extends Controller
     {
         $closest = array_filter(array_map(fn (string $key) => $templates->find($key), (array) session('idea_keys', [])));
 
-        return view('spreadsheets.create', ['groups' => $templates->grouped(), 'closest' => $closest, 'ideaSaid' => session('idea_said')]);
+        $ours = Spreadsheet::where('is_template', true)->whereIn('team_id', auth()->user()->allTeams()->pluck('id'))->with('team:id,name')->orderBy('name')->limit(self::TEAM_TEMPLATES_LISTED)->get(['id', 'name', 'team_id']);
+
+        return view('spreadsheets.create', ['ours' => $ours, 'groups' => $templates->grouped(), 'closest' => $closest, 'ideaSaid' => session('idea_said')]);
     }
 
     /**

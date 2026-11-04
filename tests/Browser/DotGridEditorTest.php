@@ -4121,6 +4121,85 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
+    public function test_a_workbook_is_asked_for_approved_sealed_and_reopened(): void
+    {
+        [$owner, $sheet] = $this->sheet();
+        $editor = User::factory()->withPersonalTeam()->create(['name' => 'Asker']);
+        $admin = User::factory()->withPersonalTeam()->create(['name' => 'Decider']);
+        $sheet->sharedUsers()->attach($editor->id, ['permission' => 'edit']);
+        $sheet->sharedUsers()->attach($admin->id, ['permission' => 'admin']);
+
+        $this->browse(function (Browser $browser) use ($editor, $admin, $sheet) {
+            $this->open($browser, $editor, $sheet);
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'has not been through approval');
+            $browser->type('#approval-note', 'For the board');
+            $this->pressIn($browser, '#approval', 'Ask for approval');
+            $browser->waitForTextIn('#note', 'Asked for approval.');
+            $browser->waitForTextIn('#approval-list', 'For the board');
+            $browser->assertDontSeeIn('#approval-body', 'Approve');
+
+            $this->open($browser, $admin, $sheet);
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Waiting for a decision.');
+            $this->pressIn($browser, '#approval', 'Approve');
+            $browser->waitForTextIn('#note', 'Approved. The workbook is sealed');
+            $browser->waitForTextIn('#approval-body', 'Nobody can change it until it is reopened.');
+
+            $browser->click('#approval-close');
+            $this->clickCell($browser, 2, 2);
+            $browser->driver->getKeyboard()->sendKeys('x');
+            $browser->waitForTextIn('#note', 'This workbook is approved. Reopen it to change it.');
+
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Nobody can change it');
+            $this->pressIn($browser, '#approval', 'Reopen');
+            $browser->waitForTextIn('#note', 'Reopened.');
+            $browser->click('#approval-close');
+            $this->clickCell($browser, 2, 2);
+            $browser->driver->getKeyboard()->sendKeys(['y', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 2) === 'y');
+
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Reopened.');
+            $this->pressIn($browser, '#approval', 'Ask for approval');
+            $browser->waitForTextIn('#approval-body', 'Waiting for a decision.');
+            $browser->assertDontSeeIn('#approval-body', 'Approve');
+            $this->pressIn($browser, '#approval', 'Take it back');
+            $browser->waitForTextIn('#approval-body', 'Taken back.');
+        });
+    }
+
+    public function test_a_workbook_goes_to_a_team_and_a_teammate_starts_from_it_as_a_template(): void
+    {
+        [$owner, $sheet] = $this->sheet();
+        $team = $owner->currentTeam;
+        $sheet->update(['team_id' => null]);
+        $mate = User::factory()->withPersonalTeam()->create();
+        $team->users()->attach($mate, ['role' => 'editor']);
+
+        $this->browse(function (Browser $browser) use ($owner, $mate, $sheet, $team) {
+            $this->open($browser, $owner, $sheet);
+            $browser->pause(300);
+            $browser->click('#do-share');
+            $browser->waitForTextIn('#share-place-said', 'Private.');
+            $browser->assertMissing('#share-template-row:not([hidden])');
+            $browser->select('#share-place', (string) $team->id);
+            $browser->waitForTextIn('#share-place-said', "In {$team->name}.");
+            $browser->waitForTextIn('#note', 'This belongs to the team now.');
+            $browser->waitFor('#share-template-row:not([hidden])')->check('#share-template');
+            $browser->waitForTextIn('#note', 'Your team can start from this now.');
+            $this->assertTrue((bool) $sheet->fresh()->is_template);
+
+            $browser->loginAs($mate)->visit('/spreadsheets/create');
+            $browser->waitForText("Start from your team's templates");
+            $browser->pause(500);
+            $browser->press((string) $sheet->name);
+            $browser->waitUsing(10, 50, fn () => Spreadsheet::where('owner_id', $mate->id)->exists());
+            $this->assertSame($sheet->name, Spreadsheet::where('owner_id', $mate->id)->value('name'));
+        });
+    }
+
     public function test_a_lost_connection_is_said_and_so_is_coming_back(): void
     {
         [$user, $sheet] = $this->expenseSheet();

@@ -30,6 +30,10 @@ export class Sharing {
         this.people = byId('share-people');
         this.waiting = byId('share-waiting');
         this.waitingBlock = byId('share-waiting-block');
+        this.placeSaid = byId('share-place-said');
+        this.place = byId('share-place');
+        this.templateRow = byId('share-template-row');
+        this.template = byId('share-template');
         this.linkOn = byId('share-link-on');
         this.linkRest = byId('share-link-rest');
         this.linkUrl = byId('share-link-url');
@@ -42,6 +46,8 @@ export class Sharing {
             e.preventDefault();
             this.share();
         });
+        this.place.addEventListener('change', () => this.movePlace());
+        this.template.addEventListener('change', () => this.change(() => this.editor.server.setShareTemplate(this.template.checked)));
         this.linkOn.addEventListener('change', () => this.saveLink());
         this.linkExpiry.addEventListener('change', () => this.saveLink());
         byId('share-link-copy').addEventListener('click', () => this.copy(this.linkUrl.value));
@@ -102,6 +108,17 @@ export class Sharing {
         if (sent) this.email.value = '';
     }
 
+    movePlace() {
+        const value = this.place.value;
+        const move = () => this.change(() => this.editor.server.setSharePlace(value === '' ? null : Number(value)));
+        if (value !== '') {
+            move();
+            return;
+        }
+        this.editor.ask('Make this private? The team loses access, unless someone was shared with by name.', 'Make it private', move);
+        this.load();
+    }
+
     saveLink() {
         const at = this.linkExpiry.value;
         this.change(() => this.editor.server.setShareLink(this.linkOn.checked, at ? new Date(at).toISOString() : null));
@@ -117,7 +134,7 @@ export class Sharing {
     }
 
     draw(state) {
-        const { owner, team, people, waiting, link } = state;
+        const { owner, team, people, waiting, link, place, template } = state;
 
         const rows = [this.person(owner.name, owner.email, owner.you, make('span', 'can', 'Owner'))];
         if (team) rows.push(this.person(`Everyone in ${team.name}`, `${team.members === 1 ? '1 person' : `${team.members} people`}, by their role in the team`, false, make('span', 'can', 'Team')));
@@ -127,11 +144,32 @@ export class Sharing {
         this.waitingBlock.hidden = waiting.length === 0;
         this.waiting.replaceChildren(...waiting.map((invite) => this.invited(invite)));
 
+        this.drawPlace(place);
+        this.templateRow.hidden = place.team_id === null;
+        this.template.checked = template;
+
         this.linkOn.checked = link.enabled;
         this.linkRest.hidden = !link.enabled;
         this.linkUrl.value = link.url ?? '';
         this.linkExpiry.value = onTheirClock(link.expires_at);
         this.linkState.hidden = !link.enabled || link.active;
+    }
+
+    drawPlace(place) {
+        const inTeam = place.team_id !== null;
+        const words = inTeam ? `In ${place.name}. Team admins and editors can edit, and viewers can read.` : 'Private. Only the people named above can reach it.';
+        const canMove = place.can_move && (place.teams.length > 0 || inTeam);
+        this.placeSaid.textContent = words;
+        this.place.hidden = !canMove;
+        if (!canMove) return;
+
+        const option = (value, text) => {
+            const item = make('option', '', text);
+            item.value = value;
+            return item;
+        };
+        this.place.replaceChildren(option('', 'Private'), ...place.teams.map((choice) => option(String(choice.id), choice.name)));
+        this.place.value = inTeam ? String(place.team_id) : '';
     }
 
     person(name, detail, you, right) {

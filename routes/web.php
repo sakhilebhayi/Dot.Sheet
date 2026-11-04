@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
+use App\Http\Controllers\GridApprovalController;
 use App\Http\Controllers\GridAskController;
 use App\Http\Controllers\GridChartController;
 use App\Http\Controllers\GridCommentController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
 use App\Http\Middleware\RefuseProtectedSheet;
+use App\Http\Middleware\RefuseSealedWorkbook;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Session\Middleware\StartSession;
@@ -71,7 +73,8 @@ Route::middleware([
     Route::post('spreadsheets/from-template', [SpreadsheetController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-template');
     Route::post('spreadsheets/from-idea', [SpreadsheetController::class, 'fromIdea'])->middleware('throttle:10,1')->name('spreadsheets.from-idea');
     Route::post('spreadsheets/from-file', [SpreadsheetController::class, 'fromFile'])->middleware('throttle:20,1')->name('spreadsheets.from-file');
-    Route::resource('spreadsheets', SpreadsheetController::class)->except('show');
+    Route::post('spreadsheets/from-team-template', [GridDuplicateController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-team-template');
+    Route::resource('spreadsheets', SpreadsheetController::class)->except('show')->middlewareFor('update', RefuseSealedWorkbook::class);
     // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
     Route::get('spreadsheets/{spreadsheet}/asked', [GridAskController::class, 'record'])->name('grid.asked');
@@ -83,9 +86,16 @@ Route::middleware([
     // Import / Export
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
-    Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->name('grid.add');
-    Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->name('grid.tabs.order');
-    Route::prefix('spreadsheets/{spreadsheet}/macros')->name('grid.macros.')->middleware('throttle:120,1')->group(function () {
+    Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->middleware(RefuseSealedWorkbook::class)->name('grid.add');
+    Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->middleware(RefuseSealedWorkbook::class)->name('grid.tabs.order');
+    Route::prefix('spreadsheets/{spreadsheet}/approval')->name('grid.approval.')->middleware('throttle:120,1')->group(function () {
+        Route::get('/', [GridApprovalController::class, 'index'])->name('index');
+        Route::post('ask', [GridApprovalController::class, 'ask'])->name('ask');
+        Route::post('decide', [GridApprovalController::class, 'decide'])->name('decide');
+        Route::post('reopen', [GridApprovalController::class, 'reopen'])->name('reopen');
+        Route::post('withdraw', [GridApprovalController::class, 'withdraw'])->name('withdraw');
+    });
+    Route::prefix('spreadsheets/{spreadsheet}/macros')->name('grid.macros.')->middleware(['throttle:120,1', RefuseSealedWorkbook::class])->group(function () {
         Route::get('/', [GridMacroController::class, 'index'])->name('index');
         Route::post('/', [GridMacroController::class, 'store'])->name('store');
         Route::delete('{macro}', [GridMacroController::class, 'destroy'])->name('destroy');
@@ -98,6 +108,8 @@ Route::middleware([
         Route::delete('invitations/{invitation}', [GridShareController::class, 'cancel'])->name('cancel');
         Route::post('link', [GridShareController::class, 'link'])->name('link');
         Route::post('link/new', [GridShareController::class, 'newLink'])->name('link.new');
+        Route::post('place', [GridShareController::class, 'place'])->name('place');
+        Route::post('template', [GridShareController::class, 'template'])->name('template');
     });
     Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware(['throttle:1200,1', RefuseProtectedSheet::class])->group(function () {
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
@@ -163,7 +175,7 @@ Route::middleware([
         Route::get('trace/{row}/{col}', [GridController::class, 'trace'])->whereNumber(['row', 'col'])->name('trace');
     });
 
-    Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->name('spreadsheets.import');
+    Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->middleware(RefuseSealedWorkbook::class)->name('spreadsheets.import');
     Route::get('spreadsheets/{spreadsheet}/import/batches/{batchId}', [SpreadsheetController::class, 'importBatchStatus'])->name('spreadsheets.import.batch-status');
     Route::get('spreadsheets/{spreadsheet}/export/workbook/{format}', [SpreadsheetController::class, 'exportWorkbook'])->whereIn('format', ['xlsx', 'ods'])->middleware('throttle:20,1')->name('spreadsheets.export.workbook');
     Route::get('spreadsheets/{spreadsheet}/export/pdf', [SpreadsheetController::class, 'exportPdf'])->middleware('throttle:20,1')->name('spreadsheets.export.pdf');

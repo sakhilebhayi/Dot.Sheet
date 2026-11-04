@@ -1328,4 +1328,156 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    /** Press a place that sits inside the sheet, the way a mouse does. */
+    private function pressOn(Browser $browser, string $selector): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const box = document.querySelector(arguments[0]).getBoundingClientRect();
+            const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+            const target = document.elementFromPoint(at.clientX, at.clientY);
+            target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', ...at }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, ...at }));
+            document.querySelector(arguments[0]).click();
+        JS, [$selector]);
+    }
+
+    public function test_a_list_is_set_over_a_selection_and_chosen_from(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $at = fn (int $row, int $col) => Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', $col)->first();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $at) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 2);
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN]);
+
+            $this->runCommand($browser, 'Allowed values');
+            $browser->waitFor('#allowedbar:not([hidden])');
+            $browser->assertSeeIn('#allow-where', 'Let C5:C6 hold');
+            $browser->assertSeeIn('#allowed-list', 'Any value can go anywhere');
+
+            $browser->select('#allow-type', 'list');
+            $browser->keys('#allow-items', 'Paid, Unpaid, Late', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#allowed-list', 'C5:C6, one of Paid, Unpaid, Late');
+            $this->assertSame(5, $tab->fresh()->layout['validation_rules'][0]['row2']);
+
+            // The chevron is on the cells the rule covers and nowhere else.
+            $this->clickCell($browser, 5, 2);
+            $browser->waitFor('#pick:not([hidden])');
+            foreach ([[6, 2], [5, 3], [5, 1]] as [$row, $col]) {
+                $this->clickCell($browser, 5, 2);
+                $browser->waitFor('#pick:not([hidden])');
+                $this->clickCell($browser, $row, $col);
+                $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript("return document.getElementById('pick').hidden"));
+            }
+
+            // Choosing writes the value.
+            $this->clickCell($browser, 5, 2);
+            $browser->waitFor('#pick:not([hidden])');
+            $this->pressOn($browser, '#pick');
+            $browser->waitFor('#picks:not([hidden])');
+            $browser->assertSeeIn('#picks', 'Unpaid');
+            $this->assertSame('Paid', $browser->driver->executeScript('return document.activeElement.textContent'));
+            $browser->driver->executeScript("[...document.querySelectorAll('#picks button')].find(b => b.textContent === 'Late').click()");
+            $browser->waitUsing(10, 25, fn () => $at(5, 2)?->raw_value === 'Late');
+            $browser->assertMissing('#picks:not([hidden])');
+            $browser->assertSeeIn('#ref', 'C6');
+
+            // The keyboard opens it, moves through it and chooses.
+            // Sent to the page, as a keyboard does: aiming at an element makes the driver focus it again.
+            $press = fn (string ...$keys) => $browser->driver->getKeyboard()->sendKeys($keys);
+            $press(WebDriverKeys::ALT, WebDriverKeys::ARROW_DOWN);
+            $press(WebDriverKeys::NULL);
+            $browser->waitFor('#picks:not([hidden])');
+            $this->assertSame('Late', $browser->driver->executeScript('return document.activeElement.textContent'));
+            $press(WebDriverKeys::ARROW_DOWN);
+            $this->assertSame('Paid', $browser->driver->executeScript('return document.activeElement.textContent'));
+            $press(WebDriverKeys::ESCAPE);
+            $browser->assertMissing('#picks:not([hidden])');
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'));
+
+            // Anything else is refused, and says what would do.
+            $browser->keys('#sheet', 'Maybe', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#note', 'Choose from the list: Paid, Unpaid, Late');
+            $this->assertSame('Late', $at(5, 2)?->raw_value);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_chevron_goes_while_a_cell_is_edited_and_a_list_opens_upward_near_the_foot(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['validation_rules' => [['id' => 'a', 'row' => 8, 'col' => 1, 'type' => 'list', 'items' => 'One, Two, Three, Four, Five, Six']]]])->save();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $browser->resize(1280, 640);
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 8, 1);
+            $browser->waitFor('#pick:not([hidden])');
+
+            $browser->keys('#sheet', WebDriverKeys::F2);
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript("return document.getElementById('pick').hidden"));
+            $browser->keys('.edit', WebDriverKeys::ESCAPE);
+            $browser->waitFor('#pick:not([hidden])');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ALT, WebDriverKeys::ARROW_DOWN]);
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::NULL]);
+            $browser->waitFor('#picks:not([hidden])');
+            $inside = $browser->driver->executeScript(<<<'JS'
+                const list = document.getElementById('picks').getBoundingClientRect();
+                const sheet = document.getElementById('sheet').getBoundingClientRect();
+                return list.bottom <= sheet.bottom && list.top >= sheet.top;
+            JS);
+            $this->assertTrue((bool) $inside, 'The whole list shows.');
+            $browser->resize(1280, 800);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_number_range_is_set_and_a_rule_can_be_removed_and_put_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 1);
+            $this->runCommand($browser, 'validation');
+            $browser->waitFor('#allowedbar:not([hidden])');
+            $browser->assertSeeIn('#allow-where', 'Let this cell hold');
+
+            $browser->keys('#allow-min', '1');
+            $browser->keys('#allow-max', '5', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#allowed-list', 'B5, numbers from 1 to 5');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', '9', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#note', 'That is too high: the most allowed here is 5');
+
+            $browser->click('#allowed-list .rule button');
+            $browser->waitForTextIn('#allowed-list', 'Any value can go anywhere');
+            $this->assertSame([], $tab->fresh()->layout['validation_rules']);
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitForTextIn('#allowed-list', 'B5, numbers from 1 to 5');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_gets_no_chevron(): void
+    {
+        [, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['validation_rules' => [['id' => 'a', 'row' => 0, 'col' => 0, 'type' => 'list', 'items' => 'One']]]])->save();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $browser->pause(100)->assertMissing('#pick:not([hidden])');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

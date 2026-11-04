@@ -49,9 +49,33 @@
         <div class="set" role="group" aria-labelledby="fill-label"><span id="fill-label">Fill</span><span class="swatches" id="fill-swatches"></span></div>
         <button class="tool quiet" type="button" id="do-clear">Clear formatting</button>
         <button class="tool quiet" type="button" id="do-rules">Colour rules</button>
+        <button class="tool quiet" type="button" id="do-allowed">Allowed values</button>
         <span class="grow"></span>
         <button class="tool" type="button" id="format-close" aria-label="Close formatting">×</button>
     </div>
+
+    <form class="rulebar" id="allowedbar" aria-label="Allowed values" hidden>
+        <div class="rule-line">
+            <span id="allow-where">Let this cell hold</span>
+            <select id="allow-type" aria-label="What may go here">
+                <option value="number">numbers</option>
+                <option value="text_length">text</option>
+                <option value="list">only these</option>
+            </select>
+            <span class="allow-range" id="allow-range">
+                <span>from</span>
+                <input id="allow-min" aria-label="The lowest" autocomplete="off" inputmode="decimal">
+                <span>to</span>
+                <input id="allow-max" aria-label="The highest" autocomplete="off" inputmode="decimal">
+                <span id="allow-unit" hidden>characters</span>
+            </span>
+            <input class="allow-items" id="allow-items" aria-label="What is allowed, separated by commas" placeholder="Paid, Unpaid, Late" autocomplete="off" hidden>
+            <button class="tool" type="submit">Add rule</button>
+            <span class="grow"></span>
+            <button class="tool" type="button" id="allow-close" aria-label="Close allowed values">×</button>
+        </div>
+        <ul class="rule-list" id="allowed-list"></ul>
+    </form>
 
     <form class="rulebar" id="rulebar" aria-label="Colour rules" hidden>
         <div class="rule-line">
@@ -114,6 +138,8 @@
                 <svg class="threads" id="threads" aria-hidden="true"></svg>
                 <div class="handle" id="handle" title="Drag to fill, or double-click to fill down" hidden></div>
                 <div class="frozen" id="frozen"></div>
+                <button class="pick" id="pick" type="button" aria-label="Choose from the list" aria-expanded="false" aria-controls="picks" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.5 8 10.5 12 6.5"/></svg></button>
+                <ul class="picks" id="picks" role="listbox" aria-label="Choices" hidden></ul>
             </div>
         </div>
     </main>

@@ -78,6 +78,7 @@ Route::middleware([
         Route::post('freeze', [GridController::class, 'freeze'])->name('freeze');
         Route::post('hidden', [GridController::class, 'hidden'])->name('hidden');
         Route::post('rules', [GridController::class, 'rules'])->name('rules');
+        Route::post('allowed', [GridController::class, 'allowed'])->name('allowed');
         Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
         Route::get('removal', [GridController::class, 'removalCost'])->name('removal');
         Route::post('remove', [GridController::class, 'removeSheet'])->name('remove');

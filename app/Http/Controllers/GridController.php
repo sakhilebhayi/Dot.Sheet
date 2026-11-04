@@ -8,6 +8,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Services\CellFormat;
+use App\Services\CellRules;
 use App\Services\CellWriter;
 use App\Services\Formula\FunctionCatalogue;
 use App\Services\Formula\Recalculator;
@@ -56,6 +57,9 @@ class GridController extends Controller
 
     /** Most colour rules one sheet may hold. */
     private const MAX_RULES = 200;
+
+    /** Most rules about what cells may hold on one sheet. */
+    private const MAX_ALLOWED = 500;
 
     /** Most rows or columns one request may insert or delete. */
     private const MAX_STRUCTURE = 20;
@@ -677,29 +681,97 @@ class GridController extends Controller
             return response()->json(['message' => 'More and less compare numbers: give it a number.'], 422);
         }
 
+        $rule = $add === null ? null : ['id' => $add['id'] ?? (string) str()->uuid(), 'target' => $add['target'], 'row' => (int) $add['row'], 'col' => (int) $add['col'], 'operator' => $add['operator'], 'value' => (string) ($add['value'] ?? ''), 'color' => $add['color']];
+
+        return $this->changeRules($spreadsheet, $sheetTab, (int) $input['version'], 'conditional_formatting_rules', $rule, $input['remove'] ?? null, self::MAX_RULES, 'A sheet holds at most '.self::MAX_RULES.' colour rules.');
+    }
+
+    /**
+     * Add a rule about what cells may hold or take one off, shared with the classic editor, which can only
+     * add them, one cell at a time. Values already in the cells are left alone.
+     */
+    public function allowed(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $lastRow = SheetStructureService::GRID_ROWS - 1;
+        $lastCol = SheetStructureService::GRID_COLS - 1;
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'add' => 'required_without:remove|array',
+            'add.id' => 'sometimes|string|max:64',
+            'add.row' => "required_with:add|integer|min:0|max:{$lastRow}",
+            'add.col' => "required_with:add|integer|min:0|max:{$lastCol}",
+            'add.row2' => "sometimes|integer|gte:add.row|max:{$lastRow}",
+            'add.col2' => "sometimes|integer|gte:add.col|max:{$lastCol}",
+            'add.type' => 'required_with:add|in:number,text_length,list',
+            'add.min' => 'sometimes|nullable|numeric',
+            'add.max' => 'sometimes|nullable|numeric',
+            'add.items' => 'sometimes|nullable|string|max:1000',
+            'remove' => 'required_without:add|string|max:64',
+        ]);
+
+        $add = $input['add'] ?? null;
+        $rule = null;
+        if ($add !== null) {
+            $min = $add['min'] ?? null;
+            $max = $add['max'] ?? null;
+            if ($min !== null && $max !== null && (float) $min > (float) $max) {
+                return response()->json(['message' => 'The lowest cannot be above the highest.'], 422);
+            }
+            if ($add['type'] === 'text_length' && (($min === null && $max === null) || (float) $min < 0)) {
+                return response()->json(['message' => 'Give a shortest or a longest length.'], 422);
+            }
+
+            $rule = array_filter([
+                'id' => $add['id'] ?? (string) str()->uuid(),
+                'row' => (int) $add['row'],
+                'col' => (int) $add['col'],
+                'row2' => isset($add['row2']) ? (int) $add['row2'] : null,
+                'col2' => isset($add['col2']) ? (int) $add['col2'] : null,
+                'type' => $add['type'],
+                'min' => $add['type'] === 'list' ? null : $min,
+                'max' => $add['type'] === 'list' ? null : $max,
+                'items' => $add['type'] === 'list' ? implode(', ', CellRules::items(['items' => $add['items'] ?? ''])) : null,
+            ], fn ($value) => $value !== null);
+
+            if ($add['type'] === 'list' && ($rule['items'] ?? '') === '') {
+                return response()->json(['message' => 'List what is allowed, separated by commas.'], 422);
+            }
+        }
+
+        return $this->changeRules($spreadsheet, $sheetTab, (int) $input['version'], 'validation_rules', $rule, $input['remove'] ?? null, self::MAX_ALLOWED, 'A sheet holds at most '.self::MAX_ALLOWED.' rules about what cells may hold.');
+    }
+
+    /**
+     * Add a rule to a list in a sheet's layout or take one off. The answer says how to undo it.
+     *
+     * @param  array<string, mixed>|null  $rule
+     */
+    private function changeRules(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, string $key, ?array $rule, ?string $remove, int $most, string $tooMany): JsonResponse
+    {
         $list = [];
         $undo = null;
         $full = false;
         $written = false;
         $busy = false;
-        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $add, &$list, &$undo, &$full, &$written) {
-            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $input, $add, &$list, &$undo, &$full) {
-                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($input, $add, &$list, &$undo, &$full) {
-                    $rules = is_array($layout['conditional_formatting_rules'] ?? null) ? array_values($layout['conditional_formatting_rules']) : [];
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $version, $key, $rule, $remove, $most, &$list, &$undo, &$full, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, $version, function () use ($sheetTab, $key, $rule, $remove, $most, &$list, &$undo, &$full) {
+                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($key, $rule, $remove, $most, &$list, &$undo, &$full) {
+                    $rules = is_array($layout[$key] ?? null) ? array_values($layout[$key]) : [];
 
-                    if ($add !== null) {
-                        if (count($rules) >= self::MAX_RULES) {
+                    if ($rule !== null) {
+                        if (count($rules) >= $most) {
                             $full = true;
 
                             return $layout;
                         }
-                        $rule = ['id' => $add['id'] ?? (string) str()->uuid(), 'target' => $add['target'], 'row' => (int) $add['row'], 'col' => (int) $add['col'], 'operator' => $add['operator'], 'value' => (string) ($add['value'] ?? ''), 'color' => $add['color']];
                         $rules[] = $rule;
                         $undo = ['remove' => $rule['id']];
                     } else {
-                        foreach ($rules as $i => $rule) {
-                            if (is_array($rule) && ($rule['id'] ?? null) === $input['remove']) {
-                                $undo = ['add' => $rule];
+                        foreach ($rules as $i => $held) {
+                            if (is_array($held) && ($held['id'] ?? null) === $remove) {
+                                $undo = ['add' => $held];
                                 array_splice($rules, $i, 1);
                                 break;
                             }
@@ -707,7 +779,7 @@ class GridController extends Controller
                     }
 
                     $list = $rules;
-                    $layout['conditional_formatting_rules'] = $rules;
+                    $layout[$key] = $rules;
 
                     return $layout;
                 });
@@ -723,7 +795,7 @@ class GridController extends Controller
             return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
         }
         if ($full) {
-            return response()->json(['message' => 'A sheet holds at most '.self::MAX_RULES.' colour rules.'], 422);
+            return response()->json(['message' => $tooMany], 422);
         }
 
         return response()->json(['rules' => $list, 'undo' => $undo]);

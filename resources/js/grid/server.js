@@ -115,6 +115,13 @@ export class Server {
         return result;
     }
 
+    allowed(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/allowed`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     rules(tab, version, request) {
         const send = () => json(`${this.base}/${tab}/rules`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
         const result = this.queue.then(send, send);

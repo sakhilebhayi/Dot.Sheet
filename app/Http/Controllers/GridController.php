@@ -17,6 +17,7 @@ use App\Services\SheetMerges;
 use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
+use App\Services\SheetWorkflows;
 use App\Services\StructureVersion;
 use App\Services\WriteLock;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +33,7 @@ use Illuminate\View\View;
  */
 class GridController extends Controller
 {
-    public function __construct(private Recalculator $recalculator) {}
+    public function __construct(private Recalculator $recalculator, private SheetWorkflows $workflows) {}
 
     /** Most rows one window of cells may ask for. */
     private const MAX_WINDOW_ROWS = 1000;
@@ -82,7 +83,7 @@ class GridController extends Controller
                 'functions' => array_map(fn (array $f) => ['name' => $f['name'], 'summary' => $f['summary'], 'syntax' => $f['syntax']], FunctionCatalogue::all()),
                 'links' => [
                     'dashboard' => route('dashboard'),
-                    'classic' => route('spreadsheets.show', $spreadsheet),
+                    'classic' => route('spreadsheets.classic', $spreadsheet),
                     'csv' => route('spreadsheets.export.csv', $spreadsheet),
                     'excel' => route('spreadsheets.export.excel', $spreadsheet),
                 ],
@@ -731,6 +732,12 @@ class GridController extends Controller
             if ($result['stale']) {
                 $this->recalculator->ensureBuilt($spreadsheet->id, $tab);
             }
+        }
+
+        foreach ($plans as $tab => $edits) {
+            $refused = array_map(fn (array $r) => $r['row'].':'.$r['col'], $results[$tab]['refused']);
+            $written = array_values(array_filter($edits, fn (array $e) => ! in_array($e['row'].':'.$e['col'], $refused, true)));
+            $this->workflows->cellsWritten($spreadsheet, $tab, $written, (int) Auth::id());
         }
 
         // What changed on this sheet: the edited cells and every formula worked out because of them.

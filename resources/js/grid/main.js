@@ -1352,6 +1352,13 @@ sheet.addEventListener('dblclick', (e) => {
 
 const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
+// Not here yet: looking for one of these finds the way to it.
+const IN_CLASSIC = [
+    'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
+    'Scripts', 'Sort', 'Filter', 'Insert or delete rows and columns', 'Add, rename or delete a sheet',
+    'Text and fill colours', 'Validation rules', 'Conditional formatting', 'Ask AI',
+];
+
 function choices(query) {
     const q = query.trim().toLowerCase();
     const list = [];
@@ -1387,6 +1394,10 @@ function choices(query) {
         { label: 'All spreadsheets', href: boot.links.dashboard },
     ];
     list.push(...commands.filter((c) => c.label.toLowerCase().includes(q)));
+    if (q) {
+        const elsewhere = IN_CLASSIC.filter((label) => label.toLowerCase().includes(q));
+        list.push(...elsewhere.map((label) => ({ label, hint: 'In the classic editor', href: boot.links.classic })));
+    }
 
     if (boot.canEdit) {
         const functions = boot.functions.filter((f) => f.name.toLowerCase().includes(q) || f.summary.toLowerCase().includes(q));

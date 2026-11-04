@@ -67,7 +67,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
                 ->type('#name', 'Dusk Flow Sheet')
                 ->assertInputValue('#name', 'Dusk Flow Sheet')
                 ->keys('#name', '{enter}')
-                ->waitFor('#gridContainer', 15)
+                ->waitFor('#sheet', 15)
                 ->assertPathBeginsWith('/spreadsheets/');
 
             $this->assertNoConsoleErrors($browser);
@@ -83,7 +83,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->openLivewire('/spreadsheets/'.$sheet->id)
+                ->openLivewire('/spreadsheets/'.$sheet->id.'/classic')
                 // Selecting cells is a round trip each time: it must leave the page working.
                 ->click($this->cell(3, 2))->settle()
                 ->assertPresent($this->cell(3, 2).'.ring-2')
@@ -115,7 +115,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
                     ->keys($this->cell($row, $col).' input', $text, '{enter}')->settle();
             };
 
-            $browser->loginAs($sheet->owner)->openLivewire('/spreadsheets/'.$sheet->id);
+            $browser->loginAs($sheet->owner)->openLivewire('/spreadsheets/'.$sheet->id.'/classic');
 
             $enter(0, 0, '4');
             $enter(0, 1, '=A1*10');
@@ -152,7 +152,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->openLivewire('/spreadsheets/'.$sheet->id);
+                ->openLivewire('/spreadsheets/'.$sheet->id.'/classic');
 
             // A panel opened by hand stays open through the redraw that saving a cell causes.
             $browser->script("[...document.querySelectorAll('.panel summary')].find(s => s.textContent === 'Sharing').click()");
@@ -177,7 +177,7 @@ class SpreadsheetCriticalJourneysTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($sheet) {
             $browser->loginAs($sheet->owner)
-                ->openLivewire('/spreadsheets/'.$sheet->id)
+                ->openLivewire('/spreadsheets/'.$sheet->id.'/classic')
                 ->assertSeeIn($this->cell(0, 0), 'original')
                 ->click('[popovertarget="editorTools"]')->click('button[title="Version History"]')->settle()
                 ->type('input[aria-label="Snapshot label"]', 'Before the change')

@@ -74,9 +74,9 @@ class GridApiTest extends TestCase
 
     public function test_the_page_opens_for_people_who_can_see_the_sheet_and_nobody_else(): void
     {
-        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/grid")->assertOk()->assertSee('id="boot"', false);
+        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}")->assertOk()->assertSee('id="boot"', false);
 
-        $this->actingAs(User::factory()->withPersonalTeam()->create())->get("/spreadsheets/{$this->sheet->id}/grid")->assertForbidden();
+        $this->actingAs(User::factory()->withPersonalTeam()->create())->get("/spreadsheets/{$this->sheet->id}")->assertForbidden();
     }
 
     public function test_a_stranger_reaches_none_of_it(): void

@@ -288,8 +288,9 @@ hours, and the rule in the Overview outranks any wish for the page to keep breat
 
 ## The classic editor
 
-The classic editor stays until the new one has its features, so it follows the same rules from the
-same tokens. One bar holds the name, the cell and its contents, and Save; everything occasional is in
+A sheet's address opens the new editor. The classic editor stays beside it at `/classic` until the new
+one has its features, and looking for one of those in the palette finds the way there. It follows the
+same rules from the same tokens. One bar holds the name, the cell and its contents, and Save; everything occasional is in
 the Tools menu. Formatting sits in one row, with the rest behind More tools. Panels fold in a column on
 the right, each opened when wanted, and stay open while the sheet redraws.
 

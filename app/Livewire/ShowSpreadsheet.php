@@ -11,13 +11,12 @@ use App\Models\Cell;
 use App\Models\CellHistory;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
-use App\Models\WorkflowExecutionLog;
-use App\Notifications\WorkflowRuleTriggered;
 use App\Services\CellRules;
 use App\Services\Formula\Recalculator;
 use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
+use App\Services\SheetWorkflows;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
@@ -1768,154 +1767,14 @@ class ShowSpreadsheet extends Component
 
     protected function evaluateAutomatedWorkflows(int $row, int $col, mixed $rawValue, mixed $computedValue): void
     {
-        $settings = $this->spreadsheet->settings ?? [];
-        $rules = $settings['ai_workflows'] ?? [];
-        if (! is_array($rules) || empty($rules)) {
+        $marked = app(SheetWorkflows::class)->cellChanged($this->spreadsheet, (int) $this->activeSheetTabId, $row, $col, $computedValue ?? $rawValue, Auth::id());
+        if (! $marked) {
             return;
         }
 
-        $columnLetter = self::colIndexToLetter($col);
-        $value = $computedValue ?? $rawValue;
-
-        foreach ($rules as $rule) {
-            if (! is_array($rule) || ! ($rule['enabled'] ?? true)) {
-                continue;
-            }
-
-            $ruleColumn = strtoupper((string) ($rule['column'] ?? ''));
-            if ($ruleColumn !== $columnLetter) {
-                continue;
-            }
-
-            $operator = (string) ($rule['operator'] ?? '==');
-            $expected = $rule['value'] ?? null;
-            if (! $this->compareWorkflowCondition($value, $operator, $expected)) {
-                continue;
-            }
-
-            $ruleId = (string) ($rule['id'] ?? md5(json_encode($rule)));
-            $dedupeKey = "workflow:{$this->spreadsheet_id}:{$this->activeSheetTabId}:{$ruleId}:{$row}:{$col}:".md5((string) $value);
-            if (Cache::has($dedupeKey)) {
-                continue;
-            }
-            Cache::put($dedupeKey, true, 300);
-
-            $channels = $this->resolveWorkflowNotificationChannels($rule);
-            $this->dispatchWorkflowNotification($rule, $row, $col, $value, $channels);
-
-            $status = 'triggered';
-
-            $action = (string) ($rule['action'] ?? 'email_owner');
-            if ($action === 'highlight_cell') {
-                $this->highlightCellForWorkflow($row, $col);
-                $status = 'highlighted';
-            } elseif ($action === 'email_owner') {
-                $status = 'notified';
-            }
-
-            $this->logWorkflowExecution($rule, $row, $col, $value, $channels, $status);
-        }
-    }
-
-    protected function compareWorkflowCondition(mixed $actual, string $operator, mixed $expected): bool
-    {
-        $lhs = is_numeric($actual) ? (float) $actual : (string) $actual;
-        $rhs = is_numeric($expected) ? (float) $expected : (string) $expected;
-
-        return match ($operator) {
-            '<' => $lhs < $rhs,
-            '<=' => $lhs <= $rhs,
-            '>' => $lhs > $rhs,
-            '>=' => $lhs >= $rhs,
-            '!=' => $lhs != $rhs,
-            default => $lhs == $rhs,
-        };
-    }
-
-    protected function resolveWorkflowNotificationChannels(array $rule): array
-    {
-        $channels = $rule['notify_channels'] ?? ['email'];
-        if (! is_array($channels)) {
-            return ['email'];
-        }
-
-        $allowed = ['email', 'database'];
-        $filtered = array_values(array_intersect($channels, $allowed));
-
-        if (empty($filtered)) {
-            return ['email'];
-        }
-
-        return $filtered;
-    }
-
-    protected function dispatchWorkflowNotification(array $rule, int $row, int $col, mixed $value, array $channels): void
-    {
-        $owner = $this->spreadsheet->owner;
-        if (! $owner) {
-            return;
-        }
-
-        $cellRef = self::colIndexToLetter($col).($row + 1);
-        $owner->notify(new WorkflowRuleTriggered(
-            spreadsheetId: (int) $this->spreadsheet_id,
-            spreadsheetName: (string) $this->spreadsheet->name,
-            ruleName: (string) ($rule['name'] ?? 'Workflow Rule'),
-            cellReference: $cellRef,
-            actualValue: $value,
-            channels: $channels,
-        ));
-    }
-
-    protected function logWorkflowExecution(array $rule, int $row, int $col, mixed $value, array $channels, string $status): void
-    {
-        WorkflowExecutionLog::create([
-            'spreadsheet_id' => $this->spreadsheet_id,
-            'triggered_by_user_id' => Auth::id(),
-            'rule_id' => (string) ($rule['id'] ?? md5(json_encode($rule))),
-            'rule_name' => (string) ($rule['name'] ?? 'Workflow Rule'),
-            'rule_action' => (string) ($rule['action'] ?? ''),
-            'rule_operator' => (string) ($rule['operator'] ?? ''),
-            'rule_expected_value' => (string) ($rule['value'] ?? ''),
-            'row_index' => $row,
-            'col_index' => $col,
-            'cell_reference' => self::colIndexToLetter($col).($row + 1),
-            'actual_value' => is_scalar($value) || $value === null ? (string) $value : json_encode($value),
-            'notification_channels' => $channels,
-            'status' => $status,
-        ]);
-    }
-
-    protected function highlightCellForWorkflow(int $row, int $col): void
-    {
-        $cell = $this->cellsQuery()
-            ->where('row_index', $row)
-            ->where('col_index', $col)
-            ->first();
-
-        if (! $cell) {
-            return;
-        }
-
-        $formatting = $cell->formatting ?? [];
-        $formatting['backgroundColor'] = '#FEF08A';
-        $cell->formatting = $formatting;
-        $cell->save();
-
-        if (! isset($this->cellData[$row])) {
-            $this->cellData[$row] = [];
-        }
-
-        if (! isset($this->cellData[$row][$col])) {
-            $this->cellData[$row][$col] = [
-                'id' => $cell->id,
-                'raw_value' => $cell->raw_value,
-                'computed_value' => $cell->computed_value,
-                'formula' => $cell->formula,
-                'formatting' => $formatting,
-            ];
-        } else {
-            $this->cellData[$row][$col]['formatting'] = $formatting;
+        $cell = $this->cellsQuery()->where('row_index', $row)->where('col_index', $col)->first();
+        if ($cell !== null && isset($this->cellData[$row][$col])) {
+            $this->cellData[$row][$col]['formatting'] = $cell->formatting ?? [];
         }
     }
 

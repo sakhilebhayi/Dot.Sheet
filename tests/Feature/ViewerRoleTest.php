@@ -180,7 +180,7 @@ class ViewerRoleTest extends TestCase
     {
         $this->actingAs($this->members['viewer']);
 
-        $page = $this->get(route('spreadsheets.show', $this->sheet))->assertOk();
+        $page = $this->get(route('spreadsheets.classic', $this->sheet))->assertOk();
         $page->assertSee('Download as CSV');
         $page->assertDontSee('Import a file', false);
 
@@ -192,8 +192,8 @@ class ViewerRoleTest extends TestCase
 
     public function test_the_editor_page_hides_write_controls_from_a_viewer_but_not_from_an_editor(): void
     {
-        $viewerHtml = $this->actingAs($this->members['viewer'])->get(route('spreadsheets.show', $this->sheet))->getContent();
-        $editorHtml = $this->actingAs($this->members['editor'])->get(route('spreadsheets.show', $this->sheet))->getContent();
+        $viewerHtml = $this->actingAs($this->members['viewer'])->get(route('spreadsheets.classic', $this->sheet))->getContent();
+        $editorHtml = $this->actingAs($this->members['editor'])->get(route('spreadsheets.classic', $this->sheet))->getContent();
 
         $this->assertStringNotContainsString('title="Add sheet"', $viewerHtml);
         $this->assertStringNotContainsString('Import a file', $viewerHtml);

@@ -17,7 +17,7 @@
         </label>
         <button class="button" type="button" onclick="saveCurrentCell()">Save</button>
         <button class="tool" type="button" popovertarget="editorTools">Tools</button>
-        <a class="tool" href="{{ route('spreadsheets.grid', $spreadsheet) }}">New editor</a>
+        <a class="tool" href="{{ route('spreadsheets.show', $spreadsheet) }}">New editor</a>
         <div class="account" id="editorTools" popover wire:ignore.self>
             <h2>File</h2>
             @if ($canEdit)

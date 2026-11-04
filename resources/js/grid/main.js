@@ -39,6 +39,11 @@ const allowMin = byId('allow-min');
 const allowMax = byId('allow-max');
 const allowItems = byId('allow-items');
 const allowedList = byId('allowed-list');
+const filterbar = byId('filterbar');
+const filterKind = byId('filter-kind');
+const filterValue = byId('filter-value');
+const filterValue2 = byId('filter-value2');
+const filterList = byId('filter-list');
 const pickButton = byId('pick');
 const pickList = byId('picks');
 const smaller = byId('do-smaller');
@@ -106,6 +111,7 @@ async function open(id) {
     grid.setLayout(body.layout);
     drawRules();
     drawAllowed();
+    drawFilters();
     drawTabs();
     selected();
     markFound();
@@ -255,6 +261,7 @@ function selected() {
 function afterMove() {
     told = '';
     if (!allowedbar.hidden) showAllowedWhere();
+    if (!filterbar.hidden) showFilterWhere();
     selected();
     grid.paint();
     grid.clearThreads();
@@ -539,6 +546,14 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.filter) {
+        if (step.filter.tab !== tab) await open(step.filter.tab);
+        const answer = await setFilters(step.filter.rules, { remember: false });
+        if (!answer) return;
+        to.push({ version, filter: { tab, rules: answer.undo.rules } });
+        return;
+    }
+
     if (step.allowed) {
         if (step.allowed.tab !== tab) await open(step.allowed.tab);
         const answer = await changeAllowed(step.allowed.request, { remember: false });
@@ -612,6 +627,7 @@ async function reopen() {
     grid.setLayout(body.layout);
     drawRules();
     drawAllowed();
+    drawFilters();
     select(r, c);
 }
 
@@ -997,6 +1013,130 @@ rulebar.addEventListener('keydown', (e) => {
 });
 byId('rule-close').addEventListener('click', () => toggleRulebar(false));
 byId('do-rules').addEventListener('click', () => toggleRulebar());
+
+/* Sorting */
+
+async function sortRows(descending) {
+    if (!boot.canEdit) return;
+    closeEdit(true);
+    const area = grid.area();
+    const key = grid.active.c;
+    const { ok, status, body } = await server.sort(tab, () => version, { ...area, key, descending });
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    if (body.cells.length === 0 && !body.reload) {
+        note('Already in that order.');
+        return;
+    }
+    remember(body.undo);
+    await absorb(body, new Set(body.cells.map((c) => `${c.r}:${c.c}`)));
+    selectArea(body.area.r1, body.area.c1, body.area.r2, body.area.c2);
+    const kept = body.header === null ? '' : `, keeping row ${body.header + 1} as a heading`;
+    note(`Sorted rows ${body.area.r1 + 1} to ${body.area.r2 + 1} by column ${columnName(key)}${kept}. Undo puts them back.`);
+}
+
+/* Filters */
+
+const filterRules = () => (grid.layout.filter_rules ?? []).filter((rule) => rule && typeof rule === 'object');
+
+function filterWords(rule) {
+    const column = `Column ${columnName(Number(rule.col))}`;
+    if (rule.type === 'contains') return `${column}, containing ${rule.value ?? ''}`;
+    if (rule.type === 'number_between') return `${column}, between ${rule.value} and ${rule.value2}`;
+    if (rule.type === 'date_range') return `${column}, dates ${rule.value} to ${rule.value2}`;
+    if (rule.type === 'color') return `${column}, coloured ${rule.color}`;
+    return `${column}, ${OPERATOR_WORDS[rule.operator] ?? rule.operator} ${rule.value ?? ''}`;
+}
+
+function drawFilters() {
+    if (filterbar.hidden) return;
+    const rules = filterRules();
+    if (rules.length === 0) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Every row is showing.';
+        filterList.replaceChildren(empty);
+        return;
+    }
+    filterList.replaceChildren(...rules.map((rule) => {
+        const item = document.createElement('li');
+        item.className = 'rule';
+        const words = document.createElement('span');
+        words.textContent = filterWords(rule);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `Remove filter: ${words.textContent}`);
+        remove.addEventListener('click', () => setFilters(rules.filter((other) => other !== rule)));
+        item.append(words, remove);
+        return item;
+    }));
+}
+
+async function setFilters(rules, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.filter(tab, () => version, rules);
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    grid.layout = { ...grid.layout, filter_rules: body.rules };
+    grid.setHidden('row', body.hidden);
+    drawFilters();
+    select(grid.active.r, grid.active.c);
+    if (keep) {
+        undoSteps.push({ version, filter: { tab, rules: body.undo.rules } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+function showFilterWhere() {
+    byId('filter-where').textContent = `Show rows where column ${columnName(grid.active.c)} is`;
+}
+
+function showFilterKind() {
+    byId('filter-and').hidden = filterKind.value !== 'between';
+}
+
+function toggleFilterbar(show = filterbar.hidden) {
+    filterbar.hidden = !show;
+    grid.soon();
+    if (show) {
+        showFilterWhere();
+        showFilterKind();
+        drawFilters();
+        filterValue.focus();
+    } else {
+        sheet.focus({ preventScroll: true });
+    }
+}
+
+filterKind.addEventListener('change', showFilterKind);
+filterbar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const kind = filterKind.value;
+    const col = grid.active.c;
+    const rule = kind === 'contains' ? { col, type: 'contains', value: filterValue.value }
+        : kind === 'between' ? { col, type: 'number_between', value: filterValue.value, value2: filterValue2.value }
+            : { col, type: 'condition', operator: kind, value: filterValue.value };
+    const body = await setFilters([...filterRules(), rule]);
+    if (body) {
+        filterValue.value = '';
+        filterValue2.value = '';
+        filterValue.focus();
+        note(`${body.hidden.length.toLocaleString('en-ZA')} ${body.hidden.length === 1 ? 'row' : 'rows'} hidden.`);
+    }
+});
+filterbar.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleFilterbar(false);
+});
+byId('filter-close').addEventListener('click', () => toggleFilterbar(false));
+byId('filter-clear').addEventListener('click', () => setFilters([]));
+byId('filter-reapply').addEventListener('click', () => setFilters(filterRules(), { remember: false }));
+byId('do-filter').addEventListener('click', () => toggleFilterbar());
 
 /* Allowed values */
 
@@ -1974,7 +2114,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
-    'Scripts', 'Sort', 'Filter',
+    'Scripts',
     'Ask AI',
 ];
 
@@ -2014,6 +2154,11 @@ function choices(query) {
             { label: 'Undo', run: undo },
             { label: 'Redo', run: redo },
             { label: 'Format cells', run: () => toggleFormatbar(true) },
+            { label: 'Sort A to Z', run: () => sortRows(false) },
+            { label: 'Sort Z to A', run: () => sortRows(true) },
+            { label: 'Filter rows', run: () => toggleFilterbar(true) },
+            { label: 'Reapply filters', run: () => setFilters(filterRules(), { remember: false }) },
+            { label: 'Clear filters', run: () => setFilters([]) },
             { label: 'Colour rules (conditional formatting)', run: () => toggleRulebar(true) },
             { label: 'Allowed values (validation)', run: () => toggleAllowedbar(true) },
             { label: 'Bold', run: toggleBold },

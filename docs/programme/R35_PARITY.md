@@ -16,6 +16,7 @@ The order is what blocks daily work first, not what is largest.
 | Hide and show rows and columns | First parity item |
 | Insert and delete rows and columns | Built, and off until the host switch below is set |
 | Add, rename and delete sheets | Rename now rewrites formulas in both editors. Delete asks first and cannot be undone |
+| Sort and filter | Sort keeps headings out and formulas right, with undo. Filters reapply on request. The classic editor's sort is unchanged and does neither |
 | Validation | Rules cover a range in both editors, with pick lists and removal. Removal and ranges are new |
 | Conditional formatting | Rules are drawn, added and removed. Removal is new: the classic editor can only add |
 | Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
@@ -24,7 +25,6 @@ The order is what blocks daily work first, not what is largest.
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P6 | Sort and filter | Sort over the server, re-check filters when values change | Sort must refuse or handle merges. Filtered rows stay hidden today but are not re-checked |
 | P7 | Comments | Panel in the new editor, marks on cells | Then mention emails can open the new editor |
 | P8 | Sharing | Panel in the new editor | |
 | P9 | Version history | Panel over `SheetVersions` | |

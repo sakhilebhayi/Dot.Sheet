@@ -16,11 +16,14 @@ use App\Services\HideRefused;
 use App\Services\MergeRefused;
 use App\Services\RangeCopy;
 use App\Services\RangeFill;
+use App\Services\RangeSort;
+use App\Services\SheetFilter;
 use App\Services\SheetMerges;
 use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\SheetWorkflows;
+use App\Services\SortRefused;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
@@ -60,6 +63,9 @@ class GridController extends Controller
 
     /** Most rules about what cells may hold on one sheet. */
     private const MAX_ALLOWED = 500;
+
+    /** Most filters one sheet may hold. */
+    private const MAX_FILTERS = 50;
 
     /** Most rows or columns one request may insert or delete. */
     private const MAX_STRUCTURE = 20;
@@ -656,6 +662,120 @@ class GridController extends Controller
     }
 
     /**
+     * Sort rows by one column. One cell, or a whole row or column, sorts the block of data around it; a
+     * larger selection sorts exactly that. Rows move as edits, so formulas follow them and undo works.
+     */
+    public function sort(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer, RangeSort $sorter): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['version' => 'required|integer', ...$this->areaRules(), 'key' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1), 'descending' => 'required|boolean']);
+        $area = $this->areas([$input])[0];
+        $key = (int) $input['key'];
+        $layout = is_array($sheetTab->layout) ? $sheetTab->layout : [];
+        $whole = $area['r2'] - $area['r1'] + 1 === SheetStructureService::GRID_ROWS || $area['c2'] - $area['c1'] + 1 === SheetStructureService::GRID_COLS;
+
+        $header = null;
+        if (SheetMerges::count($area) === 1 || $whole) {
+            $block = $sorter->block($sheetTab->id, $area['r1'], $key, (int) ($layout['frozen_rows'] ?? 0));
+            if ($block === null) {
+                return response()->json(['message' => 'There is nothing to sort here.'], 422);
+            }
+            ['area' => $area, 'header' => $header] = $block;
+        }
+
+        if ($area['r1'] >= $area['r2']) {
+            return response()->json(['message' => 'Select two or more rows to sort.'], 422);
+        }
+        if (SheetMerges::count($area) > RangeCopy::MAX_CELLS) {
+            return response()->json(['message' => 'Sort fewer cells at a time: '.number_format(RangeCopy::MAX_CELLS).' at most.'], 422);
+        }
+        if ($key < $area['c1'] || $key > $area['c2']) {
+            return response()->json(['message' => 'Sort by a column inside the selection.'], 422);
+        }
+        if (SheetMerges::near(SheetMerges::of($layout), $area) !== []) {
+            return response()->json(['message' => 'These rows have merged cells. Unmerge them to sort.'], 422);
+        }
+        if (! empty($layout['filter_rules'])) {
+            return response()->json(['message' => 'Clear the filter to sort: rows it hides would be left out of place.'], 422);
+        }
+        $hidden = is_array($layout['hidden_rows'] ?? null) ? array_map('intval', $layout['hidden_rows']) : [];
+        if (array_filter($hidden, fn (int $row) => $row >= $area['r1'] && $row <= $area['r2']) !== []) {
+            return response()->json(['message' => 'Some of these rows are hidden. Show them to sort.'], 422);
+        }
+
+        $this->recalculator->ensureBuilt($spreadsheet->id, $sheetTab->id);
+        $rules = is_array($layout['validation_rules'] ?? null) ? $layout['validation_rules'] : [];
+
+        return $this->commit(
+            $spreadsheet,
+            $sheetTab,
+            (int) $input['version'],
+            fn () => [$sheetTab->id => $sorter->plan($sheetTab->id, $area, $key, (bool) $input['descending'], $rules)],
+            $writer,
+            ['area' => $area, 'header' => $header],
+            watch: false,
+        );
+    }
+
+    /**
+     * Set a sheet's filters, whole. Sending the same list applies them again to the sheet as it now is.
+     */
+    public function filter(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetFilter $filters): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'rules' => 'present|array|max:'.self::MAX_FILTERS,
+            'rules.*.id' => 'sometimes|string|max:64',
+            'rules.*.col' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
+            'rules.*.type' => 'required|in:'.implode(',', SheetFilter::TYPES),
+            'rules.*.operator' => 'sometimes|nullable|in:>,>=,<,<=,==,!=,contains',
+            'rules.*.value' => 'sometimes|nullable|string|max:255',
+            'rules.*.value2' => 'sometimes|nullable|string|max:255',
+            'rules.*.color' => ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+
+        $rules = [];
+        foreach ($input['rules'] as $rule) {
+            $between = $rule['type'] === 'number_between';
+            $ordered = $rule['type'] === 'condition' && in_array($rule['operator'] ?? '==', ['>', '>=', '<', '<='], true);
+            if (($between || $ordered) && (! is_numeric($rule['value'] ?? null) || ($between && ! is_numeric($rule['value2'] ?? null)))) {
+                return response()->json(['message' => 'More, less and between compare numbers: give it a number.'], 422);
+            }
+            $rules[] = ['id' => $rule['id'] ?? (string) str()->uuid(), 'col' => (int) $rule['col'], 'type' => $rule['type'], 'operator' => $rule['operator'] ?? null, 'value' => $rule['value'] ?? null, 'value2' => $rule['value2'] ?? null, 'color' => $rule['color'] ?? null];
+        }
+
+        $undo = [];
+        $hidden = [];
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $rules, $filters, &$undo, &$hidden, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $rules, $filters, &$undo, &$hidden) {
+                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($sheetTab, $rules, $filters, &$undo, &$hidden) {
+                    $undo = is_array($layout['filter_rules'] ?? null) ? array_values($layout['filter_rules']) : [];
+                    $layout = $filters->applied($layout, $sheetTab->id, $rules);
+                    $hidden = $layout['hidden_rows'];
+
+                    return $layout;
+                });
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['rules' => $rules, 'hidden' => $hidden, 'undo' => ['rules' => $undo]]);
+    }
+
+    /**
      * Add a colour rule to a sheet or take one off, shared with the classic editor, which can only add
      * them. A rule put back by undo keeps its id. The answer says how to undo this.
      */
@@ -1062,7 +1182,7 @@ class GridController extends Controller
      * @param  array<string, mixed>|callable(): array<string, mixed>  $extra  more for the answer
      * @param  array<int, array{add?: list<array{r1: int, r2: int, c1: int, c2: int}>, remove?: list<array{r1: int, r2: int, c1: int, c2: int}>}>  $merges  sheet id => merged cells to change, ahead of the edits
      */
-    private function commit(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, callable $plan, CellWriter $writer, array|callable $extra = [], array $merges = []): JsonResponse
+    private function commit(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, callable $plan, CellWriter $writer, array|callable $extra = [], array $merges = [], bool $watch = true): JsonResponse
     {
         $results = [];
         $plans = [];
@@ -1084,7 +1204,7 @@ class GridController extends Controller
             }, function () use (&$busy) {
                 $busy = true;
             });
-        } catch (MergeRefused $refused) {
+        } catch (MergeRefused|SortRefused $refused) {
             return response()->json(['message' => $refused->getMessage()], 422);
         }
 
@@ -1101,7 +1221,8 @@ class GridController extends Controller
             }
         }
 
-        foreach ($plans as $tab => $edits) {
+        // Values that only changed places are no news: a rule should not fire because rows were sorted.
+        foreach ($watch ? $plans : [] as $tab => $edits) {
             $refused = array_map(fn (array $r) => $r['row'].':'.$r['col'], $results[$tab]['refused']);
             $written = array_values(array_filter($edits, fn (array $e) => ! in_array($e['row'].':'.$e['col'], $refused, true)));
             $this->workflows->cellsWritten($spreadsheet, $tab, $written, (int) Auth::id());

@@ -299,6 +299,11 @@ colour lies where a fill would, and the last rule that applies wins, the same in
 only the items in a list. A rule covers the selection and leaves values already there alone. A cell with a
 list shows a small chevron while it is active, and Alt and the down arrow open it from the keyboard.
 
+**Sort and filter.** Sort works on the block of data around the cell, or on the selection, and the note says
+which rows moved and which stayed as a heading. A sort that cannot be done cleanly says why and changes
+nothing. Filters are set from the same sentence bar. They apply when they change or on Reapply, never as
+values change, so a row does not vanish while it is being typed in. Rows hidden by hand stay hidden.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

@@ -115,6 +115,20 @@ export class Server {
         return result;
     }
 
+    sort(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/sort`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    filter(tab, version, rules) {
+        const send = () => json(`${this.base}/${tab}/filter`, { method: 'POST', body: JSON.stringify({ version: version(), rules }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     allowed(tab, version, request) {
         const send = () => json(`${this.base}/${tab}/allowed`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
         const result = this.queue.then(send, send);

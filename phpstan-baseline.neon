@@ -67,12 +67,6 @@ parameters:
 			path: app/Livewire/CellCommentsPanel.php
 
 		-
-			message: '#^Match arm comparison between ''\<\='' and ''\<\='' is always true\.$#'
-			identifier: match.alwaysTrue
-			count: 1
-			path: app/Livewire/ShowSpreadsheet.php
-
-		-
 			message: '#^Match expression does not handle remaining value\: mixed$#'
 			identifier: match.unhandled
 			count: 1
@@ -81,13 +75,13 @@ parameters:
 		-
 			message: '#^Using nullsafe property access "\?\-\>computed_value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
-			count: 2
+			count: 1
 			path: app/Livewire/ShowSpreadsheet.php
 
 		-
 			message: '#^Using nullsafe property access "\?\-\>raw_value" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
-			count: 2
+			count: 1
 			path: app/Livewire/ShowSpreadsheet.php
 
 		-

@@ -50,9 +50,37 @@
         <button class="tool quiet" type="button" id="do-clear">Clear formatting</button>
         <button class="tool quiet" type="button" id="do-rules">Colour rules</button>
         <button class="tool quiet" type="button" id="do-allowed">Allowed values</button>
+        <button class="tool quiet" type="button" id="do-filter">Filter</button>
         <span class="grow"></span>
         <button class="tool" type="button" id="format-close" aria-label="Close formatting">×</button>
     </div>
+
+    <form class="rulebar" id="filterbar" aria-label="Filter rows" hidden>
+        <div class="rule-line">
+            <span id="filter-where">Show rows where column A is</span>
+            <select id="filter-kind" aria-label="The condition">
+                <option value="contains">containing</option>
+                <option value="==">exactly</option>
+                <option value="!=">anything but</option>
+                <option value="<">less than</option>
+                <option value="<=">at most</option>
+                <option value=">">more than</option>
+                <option value=">=">at least</option>
+                <option value="between">between</option>
+            </select>
+            <input id="filter-value" aria-label="The value" autocomplete="off">
+            <span class="allow-range" id="filter-and" hidden>
+                <span>and</span>
+                <input id="filter-value2" aria-label="The other value" autocomplete="off" inputmode="decimal">
+            </span>
+            <button class="tool" type="submit">Add filter</button>
+            <span class="grow"></span>
+            <button class="tool quiet" type="button" id="filter-reapply">Reapply</button>
+            <button class="tool quiet" type="button" id="filter-clear">Clear filters</button>
+            <button class="tool" type="button" id="filter-close" aria-label="Close filter">×</button>
+        </div>
+        <ul class="rule-list" id="filter-list"></ul>
+    </form>
 
     <form class="rulebar" id="allowedbar" aria-label="Allowed values" hidden>
         <div class="rule-line">

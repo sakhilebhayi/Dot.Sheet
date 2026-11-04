@@ -173,7 +173,7 @@ Negative numbers use a true minus sign, and thousands are grouped with a space.
 
 The grid fills the window. Rows are 30px on desktop and 40px on touch, so a laptop shows about 28
 rows. Columns are 104px, the label column 188px, and the row gutter 44px. The first column and the
-header row are frozen.
+header row are frozen until someone chooses otherwise.
 
 From top to bottom: the bar, the sheet, then the foot with sheet tabs on the left and sum, average
 and count of the selection on the right.
@@ -211,6 +211,11 @@ so position is clear from anywhere on screen.
 
 **Copied cells.** Their dots grow to 6px in the thread colour until the copy is pasted or dismissed.
 A marching outline would move at rest.
+
+**Freezing.** The palette freezes everything above and to the left of the active cell. A dotted line marks
+the edge of what is frozen, and it stays clear of the scroll: threads and the fill dot go with their
+cells. Frozen rows and columns never take more than 60% of the sheet, so on a phone they give way and
+come back on a larger screen.
 
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.

@@ -45,6 +45,11 @@ class GridController extends Controller
 
     private const ROW_HEIGHTS = [18, 120];
 
+    /** Most rows and columns a sheet may freeze: any more leaves nothing to scroll. */
+    private const MAX_FROZEN_ROWS = 50;
+
+    private const MAX_FROZEN_COLS = 20;
+
     /** Most changed cells sent back with an answer; past it, the browser reloads what it holds. */
     private const MAX_ANSWERED = 500;
 
@@ -329,6 +334,46 @@ class GridController extends Controller
         }
 
         return response()->json(['undo' => (object) $undo]);
+    }
+
+    /**
+     * Freeze the rows above and the columns to the left of a place on the sheet.
+     */
+    public function freeze(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'rows' => 'required|integer|min:0|max:'.self::MAX_FROZEN_ROWS,
+            'cols' => 'required|integer|min:0|max:'.self::MAX_FROZEN_COLS,
+        ]);
+
+        $undo = [];
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, &$undo, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $input, &$undo) {
+                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($input, &$undo) {
+                    $undo = ['rows' => (int) ($layout['frozen_rows'] ?? 0), 'cols' => (int) ($layout['frozen_cols'] ?? 1)];
+                    $layout['frozen_rows'] = (int) $input['rows'];
+                    $layout['frozen_cols'] = (int) $input['cols'];
+
+                    return $layout;
+                });
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['undo' => $undo]);
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse

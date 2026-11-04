@@ -584,4 +584,73 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertLessThan(110, $seen[1]['width']);
         });
     }
+
+    private function runCommand(Browser $browser, string $name): void
+    {
+        $browser->click('#open-palette')->waitFor('#find')->keys('#find', $name, WebDriverKeys::ENTER);
+    }
+
+    /** Where a cell's text is on screen, relative to the top left of the sheet. */
+    private function placeOf(Browser $browser, string $text): ?array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const cells = [...document.querySelectorAll('.c:not([hidden])')].filter(c => c.textContent === arguments[0]);
+            const box = cells[0]?.getBoundingClientRect();
+            return box ? { x: box.left - sheet.left, y: box.top - sheet.top } : null;
+        JS, [$text]);
+    }
+
+    public function test_frozen_rows_and_columns_stay_while_the_rest_scrolls(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 0, 'col' => 3, 'value' => 'Top right'], ['row' => 40, 'col' => 3, 'value' => 'Far down']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 2);
+            $this->runCommand($browser, 'Freeze above');
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['frozen_cols'] ?? null) === 2);
+            $this->assertSame(1, $tab->fresh()->layout['frozen_rows']);
+
+            $sales = $this->placeOf($browser, 'Sales');
+            $thousand = $this->placeOf($browser, '1 000');
+
+            $browser->script("const s = document.getElementById('sheet'); s.scrollTop = 900; s.scrollLeft = 400");
+            $browser->pause(200);
+
+            // The corner stays, the frozen row keeps its height, and the frozen column keeps its place.
+            $this->assertEquals($sales, $this->placeOf($browser, 'Sales'));
+            $this->assertEquals($thousand, $this->placeOf($browser, '1 000'));
+            $this->assertNull($this->placeOf($browser, 'Rent'), 'A row below the frozen band scrolls away.');
+            $this->assertNotNull($this->placeOf($browser, 'Far down'));
+            $this->assertNoConsoleErrors($browser);
+
+            // It survives a reload, and undo takes it away.
+            $browser->visit("/spreadsheets/{$sheet->id}/grid");
+            $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return document.getElementById('sheet').classList.contains('freeze-rows')"));
+            $this->runCommand($browser, 'Unfreeze');
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['frozen_rows'] ?? null) === 0);
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['frozen_rows'] ?? null) === 1);
+        });
+    }
+
+    public function test_typing_in_a_frozen_row_works_after_scrolling(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['frozen_rows' => 2, 'frozen_cols' => 1]])->save();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $browser->script("document.getElementById('sheet').scrollTop = 600");
+            $browser->pause(150);
+
+            $this->clickCell($browser, 1, 1);
+            $browser->keys('#sheet', '5', WebDriverKeys::ENTER);
+
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 1)->where('col_index', 1)->value('raw_value') === '5');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

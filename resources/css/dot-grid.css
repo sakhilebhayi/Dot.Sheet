@@ -3,12 +3,19 @@
 
 /* The sheet. No ruled lines: a cell is the space between four dots. */
 .canvas { position: relative; }
-.head { position: sticky; top: 0; z-index: 5; height: var(--head); background: var(--sheet); }
+.head { position: sticky; top: 0; z-index: 6; height: var(--head); background: var(--sheet); }
 .head-cols { position: absolute; inset: 0; }
 .head-frozen { position: sticky; left: 0; height: 100%; background: var(--sheet); z-index: 1; }
 .body { position: relative; }
 .layer { position: absolute; left: 0; top: 0; }
 .frozen { position: sticky; left: 0; top: 0; z-index: 3; background: var(--sheet); }
+/* Frozen rows sit in a band that stays under the column letters while the sheet scrolls beneath it. */
+.pinned { position: sticky; top: var(--head); z-index: 5; height: 0; }
+.top-rows { position: absolute; left: 0; top: 0; width: 100%; background: var(--sheet); }
+.corner { position: sticky; left: 0; top: 0; background: var(--sheet); }
+.sheet.freeze-rows .top-rows, .sheet.freeze-rows .corner { box-shadow: 0 1px 0 var(--dot); }
+.sheet.freeze-cols .frozen, .sheet.freeze-cols .corner { box-shadow: 1px 0 0 var(--dot); }
+.sheet.freeze-rows.freeze-cols .corner { box-shadow: 1px 0 0 var(--dot), 0 1px 0 var(--dot); }
 .threads { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; z-index: 4; pointer-events: none; }
 
 .h { position: absolute; top: 0; height: var(--head); display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer; user-select: none; }
@@ -42,7 +49,7 @@
 @keyframes moved { from { color: var(--thread); translate: 0 -3px; } to { translate: 0 0; } }
 
 /* The fill dot: the selection's own corner, and it answers to the pointer. */
-.handle { position: absolute; left: 0; top: 0; z-index: 4; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--thread); box-shadow: 0 0 0 2px var(--sheet); cursor: crosshair; transition: scale .15s var(--ease); }
+.handle { position: absolute; left: 0; top: 0; z-index: 5; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--thread); box-shadow: 0 0 0 2px var(--sheet); cursor: crosshair; transition: scale .15s var(--ease); }
 .handle::after { content: ''; position: absolute; inset: -8px; }
 .handle:hover { scale: 1.35; }
 @media (pointer: coarse) { .handle { display: none; } }

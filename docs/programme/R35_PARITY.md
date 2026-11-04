@@ -14,12 +14,12 @@ The order is what blocks daily work first, not what is largest.
 | Resize, fit to contents, freeze, merged cells | S4c. Freeze and merges are new: the classic editor has neither |
 | Workflow rules | One service for both editors. Edited cells only, as before |
 | Hide and show rows and columns | First parity item |
+| Insert and delete rows and columns | Built, and off until the host switch below is set |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P1 | Insert and delete rows and columns | Grid routes over `SheetStructureService` | The version goes up, so undo history resets, as it does for a classic structure change |
 | P2 | Add, rename and delete sheets | Grid routes, tab bar | |
 | P3 | Formatting: italic, underline, strike, colours, size, alignment, clear | Extend `format`, add bar or palette controls | The grid already draws all of these. Needed for a centred merged title |
 | P4 | Conditional formatting | Draw the stored rules, then a way to set them | Today the rules are kept but not drawn, so sheets look plainer. Highest visual gap |
@@ -32,7 +32,11 @@ The order is what blocks daily work first, not what is largest.
 | P11 | Named ranges, charts, pivot tables | Panels | Charts belong with S9 presentation |
 | P12 | Scripts, AI tools | Panels | AI needs the owner's provider and cost cap |
 
-## Needs an owner decision
+## Needs the owner
+
+**Inserting and deleting rows and columns.** `SHEET_STRUCTURE_OPS_ENABLED` is off by default in both editors
+until the multi-process race test in `tests/Feature/ProductionSettingsTest.php` has been run against the
+host. The code is live either way: while it is off the palette says it is not switched on yet.
 
 **Live updates.** The new editor shows other people's edits on reload. Anyone editing the same cell gets the
 last write. The classic editor's live updates need a websocket server, and `BROADCAST_CONNECTION` defaults

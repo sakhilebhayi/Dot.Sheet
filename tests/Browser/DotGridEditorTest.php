@@ -871,4 +871,62 @@ class DotGridEditorTest extends DuskTestCase
             $browser->clickLink('New editor')->waitForLocation("/spreadsheets/{$sheet->id}")->waitFor('#sheet');
         });
     }
+
+    public function test_rows_go_in_and_come_out_and_undo_takes_both_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $at = fn (int $row, int $col) => Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', $col)->first();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $at) {
+            $this->open($browser, $user, $sheet);
+
+            $this->clickCell($browser, 1, 0);
+            $this->runCommand($browser, 'Insert rows above');
+            $browser->waitForTextIn('#note', 'Inserted 1 row before row 2');
+            $this->assertSame('Rent', $at(2, 0)?->raw_value);
+            $this->assertSame('=SUM(B1:B3)', $at(3, 1)?->formula);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 0) === 'Rent');
+
+            // The new row takes typing, and the answer follows it.
+            $browser->assertSeeIn('#ref', 'A2');
+            $browser->keys('#sheet', WebDriverKeys::ARROW_RIGHT, '100', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '700');
+
+            // Back through the typing, then the insert.
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '600');
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Rent');
+            $this->assertSame('=SUM(B1:B2)', $at(2, 1)?->formula);
+
+            $this->clickCell($browser, 1, 0);
+            $this->runCommand($browser, 'Delete rows');
+            $browser->waitForTextIn('#note', 'Deleted row 2.');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Net');
+            $this->assertNull($this->placeOf($browser, 'Rent'));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Rent');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 1) === '600');
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Net');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_columns_go_in_beside_the_selection(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $this->runCommand($browser, 'Insert columns right');
+            $browser->waitForTextIn('#note', 'Inserted 1 column after column A');
+            $this->assertSame('1000', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 2)->value('raw_value'));
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 2) === '1 000');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

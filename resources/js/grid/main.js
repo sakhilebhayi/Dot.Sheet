@@ -27,6 +27,7 @@ const MAX_COL = 420;
 const MAX_FROZEN_ROWS = 50;
 const MAX_FROZEN_COLS = 20;
 const MAX_HIDDEN = 1000;
+const MAX_STRUCTURE = 20;
 const MIN_ROW = 18;
 const MAX_ROW = 120;
 
@@ -363,6 +364,30 @@ async function retrace(from, to, nothing) {
         const answer = await saveFreeze(step.freeze.rows, step.freeze.cols, { remember: false });
         if (!answer) return;
         to.push({ version, freeze: { tab, ...answer.undo } });
+        return;
+    }
+
+    if (step.structure) {
+        if (step.structure.tab !== tab) await open(step.structure.tab);
+        const { action, axis, at, count } = step.structure;
+        const answer = await changeLines({ action, axis, at, count }, { remember: false });
+        if (!answer) return;
+        const back = structureStep(answer.undo, { action, axis, at, count });
+        if (back) to.push(back);
+        note('');
+        return;
+    }
+
+    if (step.restore) {
+        if (step.restore.tab !== tab) await open(step.restore.tab);
+        const { ok, status, body } = await server.restore(tab, () => version, step.restore.copy);
+        if (!ok) {
+            refused(status, body);
+            return;
+        }
+        version = body.version;
+        await reopen();
+        to.push({ version, structure: { tab, ...step.restore.redo } });
         return;
     }
 
@@ -713,6 +738,69 @@ async function freezeHere() {
         if (grid.frozenRows < r || grid.frozenCols < c) note('Only part of that fits on this screen. The rest stays frozen on a larger one.');
         else note(r === 0 && c === 0 ? 'Nothing is frozen now.' : `Frozen above and to the left of ${cellName(r, c)}.`);
     }
+}
+
+/* Inserting and deleting rows and columns */
+
+/** The step that takes back a structure change, or nothing when it cannot be taken back. */
+function structureStep(undone, request) {
+    if (undone?.restore) return { version, restore: { tab, copy: undone.restore, redo: request } };
+    if (undone?.structure) return { version, structure: { tab, ...undone.structure } };
+    return null;
+}
+
+async function changeLines(request, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    closeEdit(true);
+    const { ok, status, body } = await server.structure(tab, () => version, request);
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    version = body.version;
+    if (clip) letGo();
+    await reopen();
+    if (keep) {
+        const step = structureStep(body.undo, request);
+        if (step) {
+            undoSteps.push(step);
+            if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        } else {
+            undoSteps.length = 0;
+        }
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+function selectedLines(axis) {
+    const area = grid.area();
+    const [first, last] = axis === 'col' ? [area.c1, area.c2] : [area.r1, area.r2];
+    return { first, last, count: last - first + 1 };
+}
+
+const tooManyLines = (axis, count) => {
+    if (count <= MAX_STRUCTURE) return false;
+    note(`Insert or delete at most ${MAX_STRUCTURE} ${lineWord(axis, 2)} at a time.`);
+    return true;
+};
+
+async function insertLines(axis, after) {
+    const { first, last, count } = selectedLines(axis);
+    if (tooManyLines(axis, count)) return;
+    const at = after ? last + 1 : first;
+    if (await changeLines({ action: 'insert', axis, at, count })) {
+        note(`Inserted ${count} ${lineWord(axis, count)} ${after ? 'after' : 'before'} ${lineWord(axis, 1)} ${lineName(axis, after ? last : first)}.`);
+    }
+}
+
+async function deleteLines(axis) {
+    const { first, last, count } = selectedLines(axis);
+    if (tooManyLines(axis, count)) return;
+    const body = await changeLines({ action: 'delete', axis, at: first, count });
+    if (!body) return;
+    const name = `${lineWord(axis, count)} ${lineName(axis, first)}${count > 1 ? ` to ${lineName(axis, last)}` : ''}`;
+    note(body.undo ? `Deleted ${name}.` : `Deleted ${name}. This sheet is too large or has named ranges, so this cannot be undone.`);
 }
 
 /* Hidden rows and columns */
@@ -1355,7 +1443,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
-    'Scripts', 'Sort', 'Filter', 'Insert or delete rows and columns', 'Add, rename or delete a sheet',
+    'Scripts', 'Sort', 'Filter', 'Add, rename or delete a sheet',
     'Text and fill colours', 'Validation rules', 'Conditional formatting', 'Ask AI',
 ];
 
@@ -1373,6 +1461,14 @@ function choices(query) {
             { label: 'Find and replace', run: () => openFind() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
+            ...(boot.structure ? [
+                { label: 'Insert rows above', run: () => insertLines('row', false) },
+                { label: 'Insert rows below', run: () => insertLines('row', true) },
+                { label: 'Insert columns left', run: () => insertLines('col', false) },
+                { label: 'Insert columns right', run: () => insertLines('col', true) },
+                { label: 'Delete rows', run: () => deleteLines('row') },
+                { label: 'Delete columns', run: () => deleteLines('col') },
+            ] : []),
             { label: 'Hide rows', run: () => hideSelected('row') },
             { label: 'Hide columns', run: () => hideSelected('col') },
             { label: 'Show hidden rows', run: () => showHidden('row') },
@@ -1395,6 +1491,9 @@ function choices(query) {
     ];
     list.push(...commands.filter((c) => c.label.toLowerCase().includes(q)));
     if (q) {
+        if (boot.canEdit && !boot.structure && ['insert rows', 'insert columns', 'delete rows', 'delete columns'].some((name) => name.includes(q))) {
+            list.push({ label: 'Insert or delete rows and columns', hint: 'Not switched on yet', run: () => note('Inserting and deleting rows and columns is not available yet.') });
+        }
         const elsewhere = IN_CLASSIC.filter((label) => label.toLowerCase().includes(q));
         list.push(...elsewhere.map((label) => ({ label, hint: 'In the classic editor', href: boot.links.classic })));
     }

@@ -229,6 +229,9 @@ leave a blue dot on the edge where they were, on the row number or column letter
 them back. It is the same dot as the fill handle: a place on the sheet that answers to the pointer. Arrow
 keys step over what is hidden.
 
+**Inserting and deleting.** The palette inserts as many rows or columns as are selected, before or after
+them, and deletes the ones selected. Undo takes it back, and when it cannot, the note says so at once.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

@@ -23,10 +23,34 @@
             <button type="button" id="do-bold" aria-label="Bold" aria-pressed="false"><b>B</b></button>
             <button type="button" id="do-percent" aria-label="Percent">%</button>
             <button type="button" id="do-rand" aria-label="Rand">R</button>
+            <button type="button" id="do-more" aria-label="More formatting" aria-expanded="false" aria-controls="formatbar">Aa</button>
         </div>
         <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
         <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
     </header>
+
+    <div class="formatbar" id="formatbar" role="toolbar" aria-label="Format cells" hidden>
+        <div class="set">
+            <button type="button" id="do-italic" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+            <button type="button" id="do-underline" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+            <button type="button" id="do-strike" aria-label="Strikethrough" aria-pressed="false"><s>S</s></button>
+        </div>
+        <div class="set">
+            <button type="button" id="do-left" aria-label="Align left" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h7M2 12h10"/></svg></button>
+            <button type="button" id="do-center" aria-label="Align centre" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M4.5 8h7M3 12h10"/></svg></button>
+            <button type="button" id="do-right" aria-label="Align right" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M7 8h7M4 12h10"/></svg></button>
+        </div>
+        <div class="set">
+            <button type="button" id="do-smaller" aria-label="Smaller text">A<sub>-</sub></button>
+            <output id="size-now" aria-label="Text size">14</output>
+            <button type="button" id="do-larger" aria-label="Larger text">A<sup>+</sup></button>
+        </div>
+        <div class="set" role="group" aria-labelledby="text-label"><span id="text-label">Text</span><span class="swatches" id="text-swatches"></span></div>
+        <div class="set" role="group" aria-labelledby="fill-label"><span id="fill-label">Fill</span><span class="swatches" id="fill-swatches"></span></div>
+        <button class="tool quiet" type="button" id="do-clear">Clear formatting</button>
+        <span class="grow"></span>
+        <button class="tool" type="button" id="format-close" aria-label="Close formatting">×</button>
+    </div>
 
     <form class="findbar" id="findbar" role="search" hidden>
         <label><span class="sr">Find</span><input id="find-text" placeholder="Find" autocomplete="off" spellcheck="false"></label>

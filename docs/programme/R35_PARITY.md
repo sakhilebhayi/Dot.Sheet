@@ -16,12 +16,12 @@ The order is what blocks daily work first, not what is largest.
 | Hide and show rows and columns | First parity item |
 | Insert and delete rows and columns | Built, and off until the host switch below is set |
 | Add, rename and delete sheets | Rename now rewrites formulas in both editors. Delete asks first and cannot be undone |
+| Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P3 | Formatting: italic, underline, strike, colours, size, alignment, clear | Extend `format`, add bar or palette controls | The grid already draws all of these. Needed for a centred merged title |
 | P4 | Conditional formatting | Draw the stored rules, then a way to set them | Today the rules are kept but not drawn, so sheets look plainer. Highest visual gap |
 | P5 | Validation | Set rules, list cells get a picker | Rules are already enforced on write |
 | P6 | Sort and filter | Sort over the server, re-check filters when values change | Sort must refuse or handle merges. Filtered rows stay hidden today but are not re-checked |

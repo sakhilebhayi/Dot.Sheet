@@ -74,10 +74,11 @@ class CellWriter
      * Change formatting keys on a rectangle of cells, creating the cells that do not exist yet.
      *
      * @param  array{r1: int, r2: int, c1: int, c2: int}  $area
-     * @param  array<string, mixed>  $patch
+     * @param  array<string, mixed>  $patch  a null takes that key off
+     * @param  bool  $clear  start from no formatting at all
      * @return list<array{row: int, col: int, value: string, x: array<string, mixed>|null}> what to write back to undo it
      */
-    public function format(int $spreadsheetId, int $sheetTabId, array $area, array $patch): array
+    public function format(int $spreadsheetId, int $sheetTabId, array $area, array $patch, bool $clear = false): array
     {
         $undo = [];
         $merges = SheetMerges::near(SheetMerges::onTab($sheetTabId), $area);
@@ -87,8 +88,22 @@ class CellWriter
                     continue;
                 }
                 $cell = Cell::firstOrNew(['spreadsheet_id' => $spreadsheetId, 'sheet_tab_id' => $sheetTabId, 'row_index' => $row, 'col_index' => $col]);
+                $held = ! $clear && is_array($cell->formatting) ? $cell->formatting : [];
+                $formatting = array_filter(array_replace($held, $patch), fn ($value) => $value !== null);
+
+                // A cell that holds nothing and no formatting is not worth keeping.
+                $empty = $cell->formula === null && (string) $cell->raw_value === '' && $cell->spill_row === null;
+                if ($formatting === [] && $empty) {
+                    if ($cell->exists) {
+                        $undo[] = $this->asFound($row, $col, $cell);
+                        $cell->delete();
+                    }
+
+                    continue;
+                }
+
                 $undo[] = $this->asFound($row, $col, $cell->exists ? $cell : null);
-                $cell->formatting = array_replace(is_array($cell->formatting) ? $cell->formatting : [], $patch);
+                $cell->formatting = $formatting === [] ? null : $formatting;
                 $cell->updated_at = now();
                 $cell->save();
             }

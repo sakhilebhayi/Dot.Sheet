@@ -1027,4 +1027,156 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    /** What the page has drawn for the cell holding this text. */
+    private function drawnAs(Browser $browser, string $text): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const cell = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.textContent === arguments[0]);
+            const style = getComputedStyle(cell);
+            return { fill: style.backgroundColor, colour: style.color, italic: style.fontStyle, line: getComputedStyle(cell.firstChild).textDecorationLine, size: style.fontSize, justify: style.justifyContent };
+        JS, [$text]);
+    }
+
+    public function test_the_tray_docks_under_the_bar_and_formats_the_selection(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $at = fn (int $row, int $col) => Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', $col)->first();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $at) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $top = fn () => $browser->driver->executeScript("return document.getElementById('sheet').getBoundingClientRect().top");
+            $before = $top();
+
+            $browser->click('#do-more')->waitFor('#formatbar:not([hidden])');
+            $this->assertGreaterThan($before, $top(), 'The tray pushes the sheet down.');
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $browser->click('#do-italic');
+            $browser->waitUsing(10, 25, fn () => ($at(0, 0)?->formatting['italic'] ?? false) === true);
+            $this->assertSame('italic', $this->drawnAs($browser, 'Sales')['italic']);
+            $this->assertSame('true', $browser->attribute('#do-italic', 'aria-pressed'));
+
+            $browser->click('#do-underline');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['line'] === 'underline');
+
+            $browser->click('#do-center');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['justify'] === 'center');
+
+            $browser->click('#do-larger');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['size'] === '16px');
+            $browser->assertSeeIn('#size-now', '16');
+
+            $browser->click('#text-swatches [aria-label="Forest"]');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['colour'] === 'rgb(30, 107, 69)');
+            $browser->click('#fill-swatches [aria-label="Butter"]');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['fill'] === 'rgb(251, 240, 191)');
+            $this->assertSame('true', $browser->attribute('#fill-swatches [aria-label="Butter"]', 'aria-pressed'));
+
+            // The tray follows the selection: the next cell has none of this.
+            $browser->keys('#sheet', WebDriverKeys::ARROW_DOWN);
+            $browser->waitUsing(10, 25, fn () => $browser->attribute('#do-italic', 'aria-pressed') === 'false');
+            $browser->assertSeeIn('#size-now', '14');
+            $this->assertSame('true', $browser->attribute('#fill-swatches .none', 'aria-pressed'));
+
+            // Clear takes it all off, the words stay, and undo puts it back.
+            $browser->keys('#sheet', WebDriverKeys::ARROW_UP);
+            $browser->click('#do-clear');
+            $browser->waitUsing(10, 25, fn () => $at(0, 0)?->formatting === null);
+            $this->assertSame('Sales', $at(0, 0)->raw_value);
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => ($at(0, 0)?->formatting['bg_color'] ?? null) === '#FBF0BF');
+
+            $browser->click('#format-close');
+            $browser->waitUsing(10, 25, fn () => $top() === $before);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_cells_past_the_data_take_a_colour_and_a_selection_shows_on_filled_cells(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 8, 2);
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN]);
+
+            $this->runCommand($browser, 'Fill: Sage');
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 9)->where('col_index', 2)->value('formatting') !== null);
+
+            $marked = fn () => $browser->driver->executeScript(<<<'JS'
+                const cell = document.querySelector('.c.filled.sel:not([hidden])');
+                return cell ? getComputedStyle(cell, '::after').content : null;
+            JS);
+            $this->assertSame('""', $marked());
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_format_keys_work(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'i']);
+            $browser->waitUsing(10, 25, fn () => (Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->first()?->formatting['italic'] ?? false) === true);
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'u']);
+            $browser->waitUsing(10, 25, fn () => (Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->first()?->formatting['underline'] ?? false) === true);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_merged_title_can_be_centred(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['merges' => [['r1' => 0, 'r2' => 0, 'c1' => 0, 'c2' => 2]]]])->save();
+        Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 1)->delete();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $this->runCommand($browser, 'Align centre');
+            $browser->waitUsing(10, 25, fn () => $this->drawnAs($browser, 'Sales')['justify'] === 'center');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_tray_keeps_every_tool_on_a_phone(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->resize(500, 800);
+            $this->runCommand($browser, 'Format cells');
+            $browser->waitFor('#formatbar:not([hidden])');
+
+            $hidden = fn () => $browser->driver->executeScript(<<<'JS'
+                return [...document.querySelectorAll('#formatbar button')].filter(b => b.getBoundingClientRect().width === 0).map(b => b.id || b.title);
+            JS);
+            $this->assertSame([], $hidden());
+            $this->assertFalse((bool) $browser->driver->executeScript('return document.documentElement.scrollWidth > innerWidth'));
+            $browser->resize(1280, 800);
+        });
+    }
+
+    public function test_someone_who_can_only_view_gets_no_format_tray(): void
+    {
+        [, $sheet] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $this->assertTrue((bool) $browser->driver->executeScript("return document.getElementById('do-more').disabled"));
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Format cells');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Format cells');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

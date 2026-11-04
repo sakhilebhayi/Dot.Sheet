@@ -46,6 +46,18 @@ export function show(cell) {
     return { text: sign + text, number: true, negative: n < 0, error: false };
 }
 
+/** The colours people give their own cells. No blue and no red: here those mean selection and loss. */
+export const TEXT_COLOURS = [
+    ['Slate', '#56645D'], ['Forest', '#1E6B45'], ['Teal', '#0F6C6C'], ['Plum', '#6A2C7E'], ['Rust', '#8F4A0E'],
+];
+
+export const FILL_COLOURS = [
+    ['Butter', '#FBF0BF'], ['Sage', '#DCEBD9'], ['Aqua', '#D5ECE7'], ['Rose', '#F7E0DA'], ['Lilac', '#EBE2F4'], ['Stone', '#E4E9E3'],
+];
+
+/** Stops at the tallest text that still fits a row. */
+export const TEXT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24];
+
 export function columnName(index) {
     let name = '';
     for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + ((n - 1) % 26)) + name;

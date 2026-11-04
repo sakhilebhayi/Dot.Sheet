@@ -11,7 +11,7 @@
                 <div>
                     <select id="team_id" name="team_id">
                         <option value="">You</option>
-                        @foreach (auth()->user()->teams as $team)
+                        @foreach (auth()->user()->allTeams() as $team)
                             <option value="{{ $team->id }}" @selected(old('team_id') == $team->id)>{{ $team->name }}</option>
                         @endforeach
                     </select>
@@ -24,5 +24,24 @@
             <button class="button" type="submit">Create spreadsheet</button>
             <a class="button quiet" href="{{ route('dashboard') }}">Cancel</a>
         </div>
+
+        <section class="starts" aria-labelledby="starts-title">
+            <h2 id="starts-title">Or start from a template</h2>
+            <p>Working formulas, allowed values and summaries, ready for your figures. Nothing in them is made up.</p>
+            @foreach ($groups as $group => $templates)
+                <h3>{{ $group }}</h3>
+                <ul>
+                    @foreach ($templates as $template)
+                        <li>
+                            <button type="submit" name="template" value="{{ $template['key'] }}" formaction="{{ route('spreadsheets.from-template') }}" formnovalidate>
+                                <b>{{ $template['title'] }}</b>
+                                <span>{{ $template['summary'] }}</span>
+                                <small>{{ collect($template['sheets'])->pluck('name')->implode(', ') }}</small>
+                            </button>
+                        </li>
+                    @endforeach
+                </ul>
+            @endforeach
+        </section>
     </form>
 </x-dot-layout>

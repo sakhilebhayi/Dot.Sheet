@@ -320,7 +320,9 @@ colours, so they stay apart. Hiding a sheet takes it off the foot and the palett
 not privacy, so a hidden sheet stays readable by everyone who can open the workbook, and a workbook always keeps one
 sheet showing. Duplicating keeps the work and leaves the conversation and the record: a duplicate holds cells, formats,
 charts and pivots, and comments and history stay with the original. A workbook's duplicate is a private copy for the
-person who made it, with no people and no public link.
+person who made it, with no people and no public link. Protection is set by the owner and admins and stops everyone
+else on the server. A protected sheet shows a small square after its name, and protected cells carry a faint diagonal
+rule. It guards against changes and not against reading.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

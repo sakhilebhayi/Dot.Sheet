@@ -63,6 +63,7 @@ class SheetVersions
             'comment_places' => app(SheetComments::class)->placesOf($sheetTabId),
             'chart_ranges' => app(SheetCharts::class)->rangesOf($sheetTabId),
             'pivot_sources' => app(PivotTableService::class)->sourcesOf($sheetTabId),
+            'protection_places' => app(SheetProtections::class)->placesOf($sheetTabId),
             'cells_snapshot' => $cells,
         ]);
 
@@ -167,6 +168,10 @@ class SheetVersions
 
         if ($version->chart_ranges !== null) {
             app(SheetCharts::class)->restoreRanges($sheetTabId, $version->chart_ranges);
+        }
+
+        if ($version->protection_places !== null) {
+            app(SheetProtections::class)->restorePlaces($sheetTabId, $version->protection_places);
         }
 
         if ($version->pivot_sources !== null) {

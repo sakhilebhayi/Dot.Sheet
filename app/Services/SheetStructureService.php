@@ -6,6 +6,7 @@ use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\NamedRange;
 use App\Models\PivotTable;
+use App\Models\SheetProtection;
 use App\Models\SheetTab;
 use App\Services\Formula\Recalculator;
 use Illuminate\Database\QueryException;
@@ -137,6 +138,7 @@ class SheetStructureService
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, 1);
             $this->shiftCharts($sheetTabId, $axis, $index, 1);
             $this->shiftPivots($sheetTabId, $axis, $index, 1);
+            $this->shiftProtections($sheetTabId, $axis, $index, 1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -157,6 +159,7 @@ class SheetStructureService
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, -1);
             $this->shiftCharts($sheetTabId, $axis, $index, -1);
             $this->shiftPivots($sheetTabId, $axis, $index, -1);
+            $this->shiftProtections($sheetTabId, $axis, $index, -1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -434,6 +437,24 @@ class SheetStructureService
         }
 
         return [$start > $index ? $start - 1 : $start, $end >= $index ? $end - 1 : $end];
+    }
+
+    /**
+     * Protected cells stay the same cells. Cells that are all gone take their protection with them.
+     */
+    protected function shiftProtections(int $sheetTabId, string $axis, int $index, int $delta): void
+    {
+        [$from, $to] = $axis === 'row_index' ? ['start_row', 'end_row'] : ['start_col', 'end_col'];
+
+        SheetProtection::where('sheet_tab_id', $sheetTabId)->whereNotNull('start_row')->get()->each(function (SheetProtection $protection) use ($from, $to, $index, $delta) {
+            $moved = $this->shiftSpan((int) $protection->{$from}, (int) $protection->{$to}, $index, $delta);
+            if ($moved === null) {
+                $protection->delete();
+
+                return;
+            }
+            $protection->update([$from => $moved[0], $to => $moved[1]]);
+        });
     }
 
     /**

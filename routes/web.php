@@ -10,12 +10,14 @@ use App\Http\Controllers\GridDuplicateController;
 use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
+use App\Http\Controllers\GridProtectionController;
 use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
+use App\Http\Middleware\RefuseProtectedSheet;
 use App\Models\Spreadsheet;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Session\Middleware\StartSession;
@@ -90,7 +92,7 @@ Route::middleware([
         Route::post('link', [GridShareController::class, 'link'])->name('link');
         Route::post('link/new', [GridShareController::class, 'newLink'])->name('link.new');
     });
-    Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware('throttle:1200,1')->group(function () {
+    Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware(['throttle:1200,1', RefuseProtectedSheet::class])->group(function () {
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
         Route::get('cells', [GridController::class, 'cells'])->name('cells');
         Route::post('cells', [GridController::class, 'edit'])->name('edit');
@@ -127,6 +129,9 @@ Route::middleware([
         Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
         Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');
+        Route::get('protections', [GridProtectionController::class, 'index'])->name('protections.index');
+        Route::post('protections', [GridProtectionController::class, 'store'])->name('protections.store');
+        Route::delete('protections/{protection}', [GridProtectionController::class, 'destroy'])->name('protections.destroy');
         Route::post('names', [GridNameController::class, 'store'])->name('names.store');
         Route::get('names/{namedRange}/uses', [GridNameController::class, 'uses'])->name('names.uses');
         Route::delete('names/{namedRange}', [GridNameController::class, 'destroy'])->name('names.destroy');

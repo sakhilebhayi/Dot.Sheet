@@ -178,6 +178,6 @@ class GridTabsTest extends TestCase
         $this->second->update(['color' => 'plum', 'hidden' => true]);
 
         $this->get("/spreadsheets/{$this->sheet->id}")->assertOk()
-            ->assertViewHas('boot', fn (array $boot) => $boot['tabs'][1] === ['id' => $this->second->id, 'name' => 'Second', 'color' => 'plum', 'hidden' => true]);
+            ->assertViewHas('boot', fn (array $boot) => $boot['tabs'][1] === ['id' => $this->second->id, 'name' => 'Second', 'color' => 'plum', 'hidden' => true, 'locked' => false]);
     }
 }

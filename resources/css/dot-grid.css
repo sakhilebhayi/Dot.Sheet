@@ -251,6 +251,7 @@ button.where:hover { translate: 0 -1px; }
 .pivot-form .button:disabled { background: var(--raised); color: var(--soft); cursor: default; translate: 0 0; }
 .dock-form .dock-note, .dock-form .deeds { grid-column: 1 / -1; margin-bottom: 0; }
 .names-form { grid-template-columns: minmax(0, 1fr) 11ch auto; }
+.protection-form { grid-template-columns: 11ch minmax(0, 1fr) auto; }
 .person.auto b { font-weight: 400; color: var(--soft); }
 
 /* The foot: the sheets, and a place for one more. */
@@ -265,6 +266,9 @@ button.where:hover { translate: 0 -1px; }
 .sheet-dot.pink { background: var(--chart-6); }
 .tabs .moving { translate: 0 -2px; cursor: grabbing; }
 .tabs .held-back { font-style: italic; }
+/* A protected sheet says so after its name, and protected cells carry a faint rule across them. */
+.tabs .locked::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border: 1.5px solid currentColor; border-radius: 2px; vertical-align: 0; opacity: .6; }
+.c.held { background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--ink) 7%, transparent) 6px 7px); }
 .tabs .naming { width: 16ch; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1.5px var(--thread); outline: none; font: inherit; font-weight: 600; }
 .confirm { padding: 20px; }
 .confirm p { margin: 0 0 16px; max-width: 52ch; line-height: 1.5; }
@@ -283,7 +287,7 @@ button.where:hover { translate: 0 -1px; }
     .work { flex-direction: column; }
     .work .sheet { flex: 1 1 0; }
     .dock { flex: 1.3 1 0; width: auto; padding: 10px 12px 0; }
-    #sharing, #copies, #names, #charts, #pivots, #macros { flex-grow: 3; }
+    #sharing, #copies, #names, #protection, #charts, #pivots, #macros { flex-grow: 3; }
     #charts, #pivots { width: auto; }
     .bar .share { display: none; }
     .dock .deeds button { padding: 8px 10px; }

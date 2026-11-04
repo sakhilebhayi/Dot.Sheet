@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\ChartConfig;
 use App\Models\Spreadsheet;
 use App\Services\SheetCharts;
@@ -13,6 +14,8 @@ use Livewire\Component;
 
 class ChartBuilder extends Component
 {
+    use RefusesProtectedWorkbook;
+
     /** The chart colours in DESIGN.md. */
     private const COLOURS = ['#1F8A5F', '#8B3FA8', '#6E7A1E', '#0E8AA0', '#B5791A', '#B0498C'];
 

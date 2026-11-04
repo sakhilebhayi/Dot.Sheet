@@ -14,12 +14,14 @@ use App\Services\Formula\FunctionCatalogue;
 use App\Services\Formula\Recalculator;
 use App\Services\HideRefused;
 use App\Services\MergeRefused;
+use App\Services\ProtectionRefused;
 use App\Services\RangeCopy;
 use App\Services\RangeFill;
 use App\Services\RangeSort;
 use App\Services\SheetComments;
 use App\Services\SheetFilter;
 use App\Services\SheetMerges;
+use App\Services\SheetProtections;
 use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
@@ -32,6 +34,7 @@ use App\Services\WorkbookSheets;
 use App\Services\WriteLock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -100,6 +103,7 @@ class GridController extends Controller
                 'canEdit' => Auth::user()->can('update', $spreadsheet),
                 'canComment' => Auth::user()->can('comment', $spreadsheet),
                 'canShare' => Auth::user()->can('manageSharing', $spreadsheet),
+                'canKeep' => app(SheetProtections::class)->isKeeper(Auth::user(), $spreadsheet),
                 'scripts' => (bool) config('sheet.scripts_enabled'),
                 'told' => session('success'),
                 'structure' => (bool) config('sheet.structure_ops_enabled'),
@@ -133,6 +137,7 @@ class GridController extends Controller
             'lastRow' => Cell::where('sheet_tab_id', $sheetTab->id)->max('row_index'),
             'lastCol' => Cell::where('sheet_tab_id', $sheetTab->id)->max('col_index'),
             'marks' => app(SheetComments::class)->marks($sheetTab->id),
+            'protection' => app(SheetProtections::class)->state($sheetTab->id),
         ]);
     }
 
@@ -652,6 +657,12 @@ class GridController extends Controller
 
         $input = $request->validate(['version' => 'required|integer']);
 
+        try {
+            app(SheetProtections::class)->refuseAny($spreadsheet, $sheetTab->id, Auth::user());
+        } catch (ProtectionRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
+
         return $this->changeSheets($spreadsheet, (int) $input['version'], fn () => $sheets->remove($sheetTab));
     }
 
@@ -1029,6 +1040,13 @@ class GridController extends Controller
         if ($at + $count > ($axis === 'col' ? SheetStructureService::GRID_COLS : SheetStructureService::GRID_ROWS)) {
             return response()->json(['message' => 'That is not a place on the sheet.'], 422);
         }
+        if ($action === 'delete') {
+            try {
+                app(SheetProtections::class)->refuseDelete($spreadsheet, $sheetTab->id, $axis, $at, $count, Auth::user());
+            } catch (ProtectionRefused $refused) {
+                return response()->json(['message' => $refused->getMessage()], 422);
+            }
+        }
 
         $undo = $action === 'insert' ? ['structure' => ['action' => 'delete', 'axis' => $axis, 'at' => $at, 'count' => $count]] : null;
         if ($action === 'delete' && config('sheet.structure_ops_enabled') && StructureVersion::current($spreadsheet->id) === $version && $this->copiesWhole($sheetTab)) {
@@ -1080,6 +1098,12 @@ class GridController extends Controller
             ->where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab->id)->first();
         abort_if($copy === null, 404);
 
+        try {
+            app(SheetProtections::class)->refuseAny($spreadsheet, $sheetTab->id, Auth::user());
+        } catch (ProtectionRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
+
         $written = false;
         $busy = false;
         WriteLock::guard(function () use ($spreadsheet, $input, $copy, $versions, &$written) {
@@ -1130,6 +1154,11 @@ class GridController extends Controller
         // Clearing is a patch of nothing that starts from nothing; a null takes one key off.
         $clear = isset($input['clear']);
         $patch = array_diff_key($input, array_flip(['version', 'r1', 'r2', 'c1', 'c2', 'clear']));
+        try {
+            app(SheetProtections::class)->refuseChange($spreadsheet, [], [$sheetTab->id => ['add' => [array_map('intval', Arr::only($input, ['r1', 'r2', 'c1', 'c2']))]]], Auth::user());
+        } catch (ProtectionRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
         $undo = [];
         $written = false;
         $busy = false;
@@ -1220,6 +1249,7 @@ class GridController extends Controller
                         $changes[$tab] = SheetMerges::apply($tab, $change['add'] ?? [], $change['remove'] ?? []);
                     }
                     $plans = $plan();
+                    app(SheetProtections::class)->refuseChange($spreadsheet, $plans, $merges, Auth::user());
                     foreach ($plans as $tab => $edits) {
                         $results[$tab] = $writer->write($spreadsheet->id, $tab, $edits, (int) Auth::id());
                     }
@@ -1229,7 +1259,7 @@ class GridController extends Controller
             }, function () use (&$busy) {
                 $busy = true;
             });
-        } catch (MergeRefused|SortRefused $refused) {
+        } catch (MergeRefused|SortRefused|ProtectionRefused $refused) {
             return response()->json(['message' => $refused->getMessage()], 422);
         }
 

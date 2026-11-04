@@ -18,6 +18,7 @@ class SpreadsheetVersion extends Model
         'comment_places',
         'chart_ranges',
         'pivot_sources',
+        'protection_places',
         'cells_snapshot',
     ];
 
@@ -27,6 +28,7 @@ class SpreadsheetVersion extends Model
         'comment_places' => 'array',
         'chart_ranges' => 'array',
         'pivot_sources' => 'array',
+        'protection_places' => 'array',
         'cell_count' => 'integer',
     ];
 

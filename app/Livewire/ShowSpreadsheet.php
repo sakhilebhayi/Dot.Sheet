@@ -7,6 +7,7 @@ use App\Events\SpreadsheetCursorMoved;
 use App\Http\Controllers\SpreadsheetController;
 use App\Jobs\BulkPasteChunkJob;
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Cell;
 use App\Models\CellHistory;
 use App\Models\SheetTab;
@@ -36,6 +37,7 @@ class ShowSpreadsheet extends Component
 {
     use AuthorizesRequests;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

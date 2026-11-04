@@ -42,6 +42,8 @@ final class CellFormat
                 $clean[$key] = $value;
             } elseif ($key === 'decimals' && is_int($value) && $value >= 0 && $value <= self::MAX_DECIMALS) {
                 $clean[$key] = $value;
+            } elseif ($key === 'sparkline' && is_string($value) && RangeText::parse($value) !== null) {
+                $clean[$key] = $value;
             } elseif ($key === 'align' && in_array($value, self::ALIGNMENTS, true)) {
                 $clean[$key] = $value;
             } elseif ($key === 'font_size' && is_numeric($value) && $value >= 6 && $value <= 96) {

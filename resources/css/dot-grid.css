@@ -279,6 +279,22 @@ button.where:hover { translate: 0 -1px; }
 .assistant-field input { padding: 6px 0; border: 0; border-bottom: 1px solid var(--ink); background: none; color: var(--ink); font: inherit; font-size: 14px; }
 .assistant-field input:focus { border-bottom-color: var(--thread); outline: 0; }
 .explain-wrong { color: var(--loss); }
+.pivot-open { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.pivot-open:hover { color: var(--thread); text-decoration: underline; }
+.pivot-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pivot-chips li { padding: 2px 8px; border-radius: 999px; background: var(--raised); font-size: 12px; cursor: grab; }
+#pivots-records { display: grid; gap: 6px; margin-top: 12px; }
+#pivots-records[hidden] { display: none; }
+#pivots-records > button { justify-self: start; padding: 0; border: 0; background: none; color: var(--soft); font: inherit; font-size: 13px; cursor: pointer; }
+/* A chart on the sheet sits over the cells, on the same paper. */
+.placed { position: absolute; top: 0; left: 0; z-index: 4; display: flex; flex-direction: column; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--faint); border-radius: 12px; background: var(--desk); }
+.placed figcaption { flex: none; margin-bottom: 6px; font-weight: 600; cursor: grab; touch-action: none; user-select: none; }
+.placed .chart-canvas { flex: 1; min-height: 0; height: auto; }
+.placed.blank .chart-canvas { visibility: hidden; }
+.placed-corner { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; cursor: nwse-resize; background: radial-gradient(circle at 70% 70%, var(--soft) 0 2px, transparent 2.5px); }
+.spark { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.spark polyline { fill: none; stroke: var(--thread); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.spark circle { fill: var(--thread); }
 .assistant-preview { overflow-wrap: anywhere; font-family: inherit; font-weight: 600; }
 .person.auto b { font-weight: 400; color: var(--soft); }
 

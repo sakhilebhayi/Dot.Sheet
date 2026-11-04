@@ -32,7 +32,7 @@ class FormulaFromWords
      */
     public function read(int $sheetTabId, string $sentence): array
     {
-        $table = $this->table($sheetTabId);
+        $table = $this->tableOn($sheetTabId);
         if ($table === null) {
             return ['says' => 'This sheet has no headings to work from. Put headings in the top row of a table first.'];
         }
@@ -96,7 +96,7 @@ class FormulaFromWords
      *
      * @return array{sheet: int, top: int, last: int, columns: list<array{col: int, heading: string}>}|null
      */
-    private function table(int $sheetTabId): ?array
+    public function tableOn(int $sheetTabId): ?array
     {
         /** @var Collection<int, Collection<int, Cell>> $rows */
         $rows = Cell::where('sheet_tab_id', $sheetTabId)->where('row_index', '<', 50)->whereNull('formula')->whereNotNull('raw_value')->where('raw_value', '!=', '')

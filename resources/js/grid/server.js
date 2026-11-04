@@ -128,6 +128,25 @@ export class Server {
         return json(`${this.base}/${tab}/from-words?sentence=${encodeURIComponent(sentence)}`);
     }
 
+    ruleFacts(tab) {
+        return json(`${this.base}/${tab}/rule-facts`);
+    }
+
+    placeChart(tab, id, place) {
+        return json(`${this.base}/${tab}/charts/${id}/place`, { method: 'POST', body: JSON.stringify(place) });
+    }
+
+    pivotRecords(tab, id, row, column) {
+        const asked = new URLSearchParams();
+        if (row !== null) asked.set('row', row);
+        if (column !== null) asked.set('column', column);
+        return json(`${this.base}/${tab}/pivots/${id}/records?${asked}`);
+    }
+
+    dashboard(tab) {
+        return json(`${this.base}/${tab}/dashboard`, { method: 'POST' });
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

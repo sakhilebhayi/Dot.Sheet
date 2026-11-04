@@ -109,10 +109,12 @@ Route::middleware([
         Route::post('freeze', [GridController::class, 'freeze'])->name('freeze');
         Route::post('hidden', [GridController::class, 'hidden'])->name('hidden');
         Route::post('rules', [GridController::class, 'rules'])->name('rules');
+        Route::get('rule-facts', [GridController::class, 'ruleFacts'])->name('rule-facts');
         Route::post('allowed', [GridController::class, 'allowed'])->name('allowed');
         Route::post('sort', [GridController::class, 'sort'])->name('sort');
         Route::post('filter', [GridController::class, 'filter'])->name('filter');
         Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
+        Route::post('dashboard', [GridDuplicateController::class, 'dashboard'])->middleware('throttle:20,1')->name('dashboard');
         Route::post('duplicate', [GridDuplicateController::class, 'sheet'])->middleware('throttle:20,1')->name('duplicate');
         Route::post('look/colour', [GridTabController::class, 'colour'])->name('look.colour');
         Route::post('look/hidden', [GridTabController::class, 'hidden'])->name('look.hidden');
@@ -127,9 +129,11 @@ Route::middleware([
         Route::post('pivots', [GridPivotController::class, 'store'])->name('pivots.store');
         Route::get('pivots/fields', [GridPivotController::class, 'fields'])->name('pivots.fields');
         Route::get('pivots/{pivot}', [GridPivotController::class, 'show'])->whereNumber('pivot')->name('pivots.show');
+        Route::get('pivots/{pivot}/records', [GridPivotController::class, 'records'])->whereNumber('pivot')->name('pivots.records');
         Route::delete('pivots/{pivot}', [GridPivotController::class, 'destroy'])->whereNumber('pivot')->name('pivots.destroy');
         Route::get('charts', [GridChartController::class, 'index'])->name('charts');
         Route::post('charts', [GridChartController::class, 'store'])->name('charts.store');
+        Route::post('charts/{chart}/place', [GridChartController::class, 'place'])->name('charts.place');
         Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
         Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');

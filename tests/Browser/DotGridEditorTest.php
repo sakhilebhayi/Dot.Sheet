@@ -4,6 +4,7 @@ namespace Tests\Browser;
 
 use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
+use App\Models\PivotTable;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
@@ -16,6 +17,7 @@ use App\Services\SheetMacros;
 use App\Services\SheetNames;
 use App\Services\SheetProtections;
 use App\Services\SheetVersions;
+use Facebook\WebDriver\WebDriverBy;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
@@ -3716,6 +3718,267 @@ class DotGridEditorTest extends DuskTestCase
             $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}/print-sheet?sheet_tab_id={$tab->id}");
             $browser->assertSee('Sales')->assertPresent('button');
             $this->assertSame('none', $browser->driver->executeScript("return [...document.styleSheets[0].cssRules].some(r => r.media?.mediaText === 'print') ? 'none' : 'missing'"));
+        });
+    }
+
+    /** @param array<string, mixed> $rule */
+    private function columnRule(SheetTab $tab, array $rule): void
+    {
+        SheetTab::updateLayout($tab->id, fn (array $layout) => [...$layout, 'conditional_formatting_rules' => [...($layout['conditional_formatting_rules'] ?? []), ['id' => (string) str()->uuid(), 'target' => 'column', 'color' => '#DCEBD9', ...$rule]]]);
+    }
+
+    private function look(Browser $browser, int $row, int $col, string $property): string
+    {
+        return (string) $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const x = px('--gutter') + (arguments[1] === 0 ? 0 : px('--label') + (arguments[1] - 1) * px('--col'));
+            const at = `translate(${x}px, ${arguments[0] * px('--row')}px)`;
+            const cell = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.style.transform === at);
+            return cell ? cell.style[arguments[2]] : null;
+        JS, [$row, $col, $property]);
+    }
+
+    public function test_a_column_rule_draws_bars_and_marks_from_the_whole_column(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $this->columnRule($tab, ['row' => 1, 'col' => 1, 'kind' => 'bars']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundImage'), '100%'));
+            $this->assertStringContainsString(' 0%', $this->look($browser, 1, 1, 'backgroundImage'));
+            $this->assertStringContainsString('50%', $this->look($browser, 2, 1, 'backgroundImage'));
+            $this->assertSame('', $this->look($browser, 0, 1, 'backgroundImage'));
+
+            $this->clickCell($browser, 3, 1);
+            $browser->driver->getKeyboard()->sendKeys(['500', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 2, 1, 'backgroundImage'), '25%'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_column_rule_starts_where_it_was_set_and_copes_with_one_value(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 1, 'col' => 2, 'value' => '5'], ['row' => 2, 'col' => 2, 'value' => '5'],
+            ['row' => 5, 'col' => 1, 'value' => '', 'x' => ['bold' => true]],
+        ], $user->id);
+        $this->columnRule($tab, ['row' => 2, 'col' => 1, 'kind' => 'bars']);
+        $this->columnRule($tab, ['row' => 1, 'col' => 2, 'kind' => 'bars']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundImage'), '100%'));
+            $this->assertSame('', $this->look($browser, 1, 1, 'backgroundImage'));
+            $this->assertSame('', $this->look($browser, 5, 1, 'backgroundColor'));
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 1, 2, 'backgroundImage'), '100%'));
+        });
+    }
+
+    public function test_marks_say_high_middle_and_low_without_colour(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $this->columnRule($tab, ['row' => 1, 'col' => 1, 'kind' => 'icons']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 1) === '▲ 300');
+            $this->assertSame('▼ 100', $this->cell($browser, 1, 1));
+            $this->assertSame('▬ 200', $this->cell($browser, 2, 1));
+        });
+    }
+
+    public function test_repeats_and_gaps_are_coloured(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 5, 'col' => 0, 'value' => 'Later']], $user->id);
+        $this->columnRule($tab, ['row' => 1, 'col' => 0, 'kind' => 'duplicates']);
+        $this->columnRule($tab, ['row' => 1, 'col' => 0, 'kind' => 'missing', 'color' => '#F7E0DA']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => $this->look($browser, 1, 0, 'backgroundColor') !== '');
+            $this->assertNotSame('', $this->look($browser, 3, 0, 'backgroundColor'));
+            $this->assertSame('', $this->look($browser, 2, 0, 'backgroundColor'));
+            $this->assertNotSame('', $this->look($browser, 4, 0, 'backgroundColor'));
+            $this->assertSame('', $this->look($browser, 9, 0, 'backgroundColor'));
+        });
+    }
+
+    public function test_a_scale_runs_from_light_to_full_and_the_form_makes_one(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 1);
+            $this->runCommand($browser, 'Colour rules');
+            $browser->waitFor('#rulebar:not([hidden])')->select('#rule-operator', 'kind:scale');
+            $browser->assertMissing('#rule-value:not([hidden])');
+            $browser->click('#rulebar button[type=submit]');
+            $browser->waitForTextIn('#rule-list', 'a colour scale');
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundColor'), '100%'));
+            $this->assertStringContainsString('20%', $this->look($browser, 1, 1, 'backgroundColor'));
+        });
+    }
+
+    public function test_a_chart_goes_on_the_sheet_and_follows_its_cells(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, 'Spend', 'bar', 'A1:B4', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $chart) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 6, 0);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Put on the sheet')->assertMissing('.placed');
+            $browser->driver->executeScript("[...document.querySelectorAll('#charts-list button')].find(b => b.textContent === 'Put on the sheet').click()");
+            $browser->waitFor('.placed')->assertSeeIn('.placed', 'Spend');
+            $this->assertSame(6, $chart->fresh()->position_row);
+
+            $browser->waitForTextIn('#charts-list', 'Take off the sheet');
+            $browser->pause(200);
+            $this->assertTrue($browser->driver->executeScript("const c = document.querySelector('.placed canvas'); return c.width > 0"));
+
+            $browser->driver->executeScript(<<<'JS'
+                const title = document.querySelector('.placed figcaption');
+                const box = title.getBoundingClientRect();
+                title.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: box.left + 5, clientY: box.top + 5, button: 0, pointerType: 'mouse' }));
+                window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + 5 + 300, clientY: box.top + 5 }));
+                window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            JS);
+            $browser->waitUsing(5, 25, fn () => (int) $chart->fresh()->position_col > 0);
+
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitFor('.placed');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_reader_sees_a_chart_on_the_sheet_but_cannot_move_it(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, 'Spend', 'bar', 'A1:B4', null);
+        app(SheetCharts::class)->place($chart, ['on_sheet' => true, 'row' => 6, 'col' => 0]);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $reader, $sheet);
+            $browser->waitFor('.placed')->assertMissing('.placed-corner');
+        });
+    }
+
+    public function test_the_new_kinds_of_chart_draw_without_trouble(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        foreach (['hbar', 'combo', 'histogram', 'waterfall'] as $i => $type) {
+            $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, $type, $type, 'A1:B4', null);
+            app(SheetCharts::class)->place($chart, ['on_sheet' => true, 'row' => 6 + $i * 11, 'col' => 0]);
+        }
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(10, 50, fn () => count($browser->driver->findElements(WebDriverBy::cssSelector('.placed'))) === 4);
+            $browser->pause(400);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_sparkline_is_drawn_from_the_numbers_selected_and_follows_them(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->dragAcrossCol($browser, 1, 1, 3);
+            $this->runCommand($browser, 'Add sparklines');
+            $browser->waitFor('.c svg.spark');
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formatting')['sparkline'] ?? null);
+            $this->assertSame('B2:B4', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formatting')['sparkline']);
+            $before = $browser->driver->executeScript("return document.querySelector('.c svg.spark polyline').getAttribute('points')");
+
+            $this->clickCell($browser, 2, 1);
+            $browser->driver->getKeyboard()->sendKeys(['999', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript("return document.querySelector('.c svg.spark polyline').getAttribute('points')") !== $before);
+        });
+    }
+
+    private function dragAcrossCol(Browser $browser, int $col, int $fromRow, int $toRow): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const x = sheet.left + px('--gutter') + px('--label') + (arguments[0] - 1) * px('--col') + 20;
+            const y = (row) => sheet.top + px('--head') + row * px('--row') + 10;
+            document.elementFromPoint(x, y(arguments[1])).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y(arguments[1]), button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
+        JS, [$col, $fromRow, $toRow]);
+    }
+
+    public function test_a_pivot_sorts_charts_and_opens_the_rows_behind_a_figure(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'By department', 'A1:B4', 'A', null, 'B', 'sum');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'By department');
+            $browser->driver->executeScript("[...document.querySelectorAll('#pivots-list button')].find(b => b.textContent === 'Show').click()");
+            $browser->waitFor('#pivots-table tbody tr');
+            $names = fn () => $browser->driver->executeScript("return [...document.querySelectorAll('#pivots-table tbody th')].map(t => t.textContent)");
+            $this->assertSame(['Mining', 'Sales'], $names());
+
+            $browser->driver->executeScript("document.querySelector('#pivots-order').click()");
+            $browser->waitUsing(5, 25, fn () => $names()[0] === 'Sales');
+            $browser->assertSeeIn('#pivots-order', 'In name order');
+
+            $browser->driver->executeScript("document.querySelector('#pivots-chart').click()");
+            $browser->waitFor('#pivots-canvas-holder:not([hidden])')->pause(200);
+
+            $browser->driver->executeScript("[...document.querySelectorAll('.pivot-open')].find(b => b.textContent === '400').click()");
+            $browser->waitForTextIn('#pivots-records', '2 rows behind Sales.');
+            $browser->assertSeeIn('#pivots-records', '300');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_pivot_is_built_from_the_form_with_a_filter(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitFor('#pivots:not([hidden])');
+            $browser->clear('#pivots-range')->type('#pivots-range', 'A1:B4');
+            $browser->waitUsing(5, 50, fn () => $browser->driver->executeScript("return document.querySelectorAll('#pivots-chips li').length") === 2);
+            $browser->select('#pivots-filter', 'A');
+            $browser->type('#pivots-filter-value', 'Sales');
+            $browser->click('#pivots-form button');
+            $browser->waitForTextIn('#pivots-said', 'Only rows where Department is Sales.');
+            $this->assertSame('Sales', PivotTable::where('sheet_tab_id', $tab->id)->sole()->filter_value);
+        });
+    }
+
+    public function test_a_dashboard_is_made_from_the_palette_and_opens_with_its_chart(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Make a dashboard');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Dashboard');
+            $browser->waitFor('.placed')->assertSeeIn('.placed', 'Expense by Department');
+            // Its columns are wider than the rest, so the figure is looked for by what it says.
+            $browser->waitForTextIn('#sheet', 'Total Expense')->waitForTextIn('#sheet', '600');
+            $browser->waitForTextIn('#note', 'Made a dashboard.');
+            $this->assertNoConsoleErrors($browser);
         });
     }
 }

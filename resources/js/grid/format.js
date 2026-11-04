@@ -108,6 +108,7 @@ export function ruleFill(rules, r, c, cell) {
     const value = cell.v ?? '';
     let fill = null;
     for (const rule of rules) {
+        if (rule?.kind) continue;
         const target = rule?.target ?? 'cell';
         if (target === 'cell' && (Number(rule.row) !== r || Number(rule.col) !== c)) continue;
         if (target === 'column' && Number(rule.col) !== c) continue;
@@ -115,6 +116,36 @@ export function ruleFill(rules, r, c, cell) {
         if (/^#[0-9A-Fa-f]{6}$/.test(String(rule.color ?? '#FEE2E2'))) fill = rule.color ?? '#FEE2E2';
     }
     return fill;
+}
+
+/** The marks a higher, middle or lower value gets, so a reader needs no colour to tell them apart. */
+const ICONS = ['▼', '▬', '▲'];
+
+/**
+ * What the rules about whole columns add to a cell: a fill, a bar, or a mark before the value. They read the
+ * column's facts, which come from the server because a window of cells cannot know them.
+ */
+export function ruleLook(rules, facts, r, c, cell) {
+    const look = { fill: ruleFill(rules, r, c, cell), bar: null, icon: null };
+    for (const rule of rules ?? []) {
+        if (!rule?.kind || Number(rule.col) !== c || r < Number(rule.row)) continue;
+        const known = facts?.[rule.id];
+        if (!known) continue;
+
+        const value = String(cell?.v ?? '').trim();
+        if (rule.kind === 'missing') {
+            if (value === '' && r <= known.last) look.fill = rule.color;
+        } else if (rule.kind === 'duplicates') {
+            if (known.twice.includes(value)) look.fill = rule.color;
+        } else if (value !== '' && isNumber(value) && known.max !== null) {
+            const span = known.max - known.min;
+            const part = span === 0 ? 1 : (Number(value) - known.min) / span;
+            if (rule.kind === 'scale') look.fill = `color-mix(in oklab, ${rule.color} ${Math.round(20 + part * 80)}%, transparent)`;
+            else if (rule.kind === 'bars') look.bar = { width: Math.round(part * 100), color: rule.color };
+            else look.icon = ICONS[Math.min(2, Math.floor(part * 3))];
+        }
+    }
+    return look;
 }
 
 /** What a list rule lets a cell hold. Matches CellRules::items. */

@@ -9,6 +9,7 @@ import { Names } from './names';
 import { Protection } from './protection';
 import { Assistant } from './assistant';
 import { Explain } from './explain';
+import { PlacedCharts } from './placed';
 import { ImportReport } from './report';
 import { FormulaHelp } from './suggest';
 import { Notes } from './notes';
@@ -112,6 +113,8 @@ const sharing = boot.canShare ? new Sharing({
     ask,
 }) : null;
 const charts = new Charts({
+    active: () => grid.active,
+    placed: () => placedCharts.load(),
     server,
     canEdit: boot.canEdit,
     tab: () => tab,
@@ -123,6 +126,14 @@ const charts = new Charts({
     note,
     refused,
     ask,
+});
+const placedCharts = new PlacedCharts({
+    server,
+    grid: () => grid,
+    canEdit: () => boot.canEdit,
+    tab: () => tab,
+    figure: amount,
+    refused,
 });
 const pivots = new Pivots({
     server,
@@ -316,10 +327,33 @@ async function putBackCopy(copy) {
 }
 
 /** A panel took room from the sheet, or gave it back. */
+function placedMoved() {
+    placedCharts.reposition();
+}
+
 function panelMoved() {
     grid.measure();
     grid.reveal(grid.active.r, grid.active.c);
     grid.paint();
+    placedCharts.reposition();
+}
+
+/** A small line in a cell for each row of numbers selected, or one under a column of them. */
+function addSparklines() {
+    const { r1, r2, c1, c2 } = grid.area();
+    if (r1 === r2 && c1 === c2) {
+        note('Select a row or a column of numbers first.');
+        return;
+    }
+    const rangeOf = (a, b, d, e) => `${cellName(a, b)}:${cellName(d, e)}`;
+    const places = c1 === c2
+        ? [{ row: r2 + 1, col: c1, range: rangeOf(r1, c1, r2, c2) }]
+        : Array.from({ length: r2 - r1 + 1 }, (_, i) => ({ row: r1 + i, col: c2 + 1, range: rangeOf(r1 + i, c1, r1 + i, c2) }));
+    write(places.map(({ row, col, range }) => {
+        const cell = store.get(row, col);
+        return { row, col, value: contents(cell), x: { ...cell?.x, sparkline: range } };
+    }));
+    note(places.length === 1 ? 'Added a sparkline.' : `Added ${places.length} sparklines.`);
 }
 
 function goToComment(r, c) {
@@ -363,6 +397,8 @@ async function open(id, stillWriting = false) {
     grid.setLayout(body.layout);
     showMarks(body.marks);
     showProtection(body.protection);
+    grid.setFacts(body.ruleFacts);
+    placedCharts.load();
     drawRules();
     drawAllowed();
     drawFilters();
@@ -466,6 +502,17 @@ async function duplicateSheet() {
     await open(body.tab);
     sheet.focus({ preventScroll: true });
     note(`Made ${boot.tabs.find((t) => t.id === body.tab)?.name}. Comments and history stay with the original.`);
+}
+
+async function makeDashboard() {
+    const { ok, status, body } = await server.dashboard(tab);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    await open(body.tab);
+    sheet.focus({ preventScroll: true });
+    note('Made a dashboard. Its figures follow the table.');
 }
 
 async function duplicateWorkbook() {
@@ -905,6 +952,8 @@ async function absorb(body, edited) {
     if (body.reload) await store.refresh();
     charts.touched();
     pivots.touched();
+    placedCharts.touched();
+    refreshFacts();
     if (body.marks) {
         showMarks(body.marks);
         if (!notes.closed) notes.load();
@@ -1063,6 +1112,7 @@ async function reopen() {
     drawTabs();
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
+    grid.setFacts(body.ruleFacts);
     showMarks(body.marks);
     drawRules();
     drawAllowed();
@@ -1361,7 +1411,22 @@ let ruleColour = FILL_COLOURS[3][1];
 
 function ruleWords(rule) {
     const where = rule.target === 'column' ? `Column ${columnName(Number(rule.col))}` : cellName(Number(rule.row), Number(rule.col));
+    if (rule.kind) return `${where} from row ${Number(rule.row) + 1}, ${KIND_WORDS[rule.kind]}`;
     return `${where}, ${OPERATOR_WORDS[rule.operator] ?? rule.operator} ${rule.value ?? ''}`;
+}
+
+const KIND_WORDS = { scale: 'a colour scale', bars: 'data bars', icons: 'marks for high, middle and low', duplicates: 'values that repeat', missing: 'empty cells' };
+
+/** The column's facts changed with its cells. Only worth asking when a rule uses them. */
+let factsWait = null;
+function refreshFacts() {
+    if (!(grid.layout.conditional_formatting_rules ?? []).some((rule) => rule?.kind)) return;
+    clearTimeout(factsWait);
+    factsWait = setTimeout(async () => {
+        const asked = tab;
+        const { ok, body } = await server.ruleFacts(asked);
+        if (ok && asked === tab) grid.setFacts(body.facts);
+    }, 200);
 }
 
 function drawRules() {
@@ -1404,6 +1469,7 @@ async function changeRules(request, { remember: keep = true } = {}) {
     grid.setRules(body.rules);
     grid.paint();
     drawRules();
+    refreshFacts();
     if (keep && body.undo) {
         undoSteps.push({ version, rule: { tab, request: body.undo } });
         if (undoSteps.length > MAX_STEPS) undoSteps.shift();
@@ -1446,11 +1512,19 @@ drawRuleSwatches();
 rulebar.addEventListener('submit', async (e) => {
     e.preventDefault();
     const { r, c } = grid.active;
-    const body = await changeRules({ add: { target: ruleTarget.value, row: r, col: c, operator: ruleOperator.value, value: ruleValue.value, color: ruleColour } });
+    const kind = ruleOperator.value.startsWith('kind:') ? ruleOperator.value.slice(5) : null;
+    const body = await changeRules({ add: kind
+        ? { target: 'column', row: r, col: c, kind, color: ruleColour }
+        : { target: ruleTarget.value, row: r, col: c, operator: ruleOperator.value, value: ruleValue.value, color: ruleColour } });
     if (body) {
         ruleValue.value = '';
         ruleValue.focus();
     }
+});
+ruleOperator.addEventListener('change', () => {
+    const kind = ruleOperator.value.startsWith('kind:');
+    ruleValue.hidden = kind;
+    ruleTarget.disabled = kind;
 });
 rulebar.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') toggleRulebar(false);
@@ -2816,6 +2890,7 @@ function choices(query) {
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Add a sheet', run: addSheet },
             ...(boot.canKeep ? [{ label: 'Protect this sheet', hint: 'Or these cells', run: () => protectionPanel.toggle(true) }] : []),
+            { label: 'Make a dashboard', hint: 'Key figures, a summary and a chart of this table', run: makeDashboard },
             { label: 'Duplicate this sheet', hint: 'Everything but its comments and history', run: duplicateSheet },
             { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
             { label: 'Delete this sheet', run: removeSheet },
@@ -2823,6 +2898,7 @@ function choices(query) {
             ...boot.tabs.filter((t) => t.hidden).map((t) => ({ label: `Show sheet: ${t.name}`, run: () => showSheet(t) })),
             { label: 'Move sheet left', run: () => moveSheet(-1) },
             { label: 'Move sheet right', run: () => moveSheet(1) },
+            { label: 'Add sparklines', hint: 'A small line in a cell for the numbers selected', run: addSparklines },
             ...SHEET_COLOURS.map(([name, colour]) => ({ label: `Sheet colour: ${name}`, run: () => changeSheetLook({ kind: 'colour', tab, colour }) })),
             { label: 'No sheet colour', run: () => changeSheetLook({ kind: 'colour', tab, colour: null }) },
             ...(boot.structure ? [

@@ -491,6 +491,7 @@ class SheetStructureService
             $pivot->row_field = (string) $column($pivot->row_field);
             $pivot->column_field = $column($pivot->column_field);
             $pivot->value_field = (string) $column($pivot->value_field);
+            $pivot->filter_field = $column($pivot->filter_field);
             $pivot->save();
         });
     }

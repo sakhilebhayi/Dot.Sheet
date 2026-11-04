@@ -53,12 +53,26 @@ class GridPivotController extends Controller
             'title' => $pivot->title,
             'aggregation' => $pivot->aggregation,
             'across' => $pivot->column_field !== null,
+            'filter' => $pivot->filter_field === null ? null : $this->heading($sheetTab, $pivot, $pivot->filter_field).' is '.$pivot->filter_value,
             'headings' => [
                 'row' => $this->heading($sheetTab, $pivot, $pivot->row_field),
                 'value' => $this->heading($sheetTab, $pivot, $pivot->value_field),
             ],
             ...$this->pivots->compute($pivot),
         ]);
+    }
+
+    /** The rows behind one figure. */
+    public function records(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, PivotTable $pivot, Recalculator $recalculator): JsonResponse
+    {
+        $this->authorizeTab('view', $spreadsheet, $sheetTab);
+        abort_unless($pivot->sheet_tab_id === $sheetTab->id, 404);
+
+        $input = $request->validate(['row' => 'sometimes|nullable|string|max:255', 'column' => 'sometimes|nullable|string|max:255']);
+
+        $recalculator->ensureBuilt($spreadsheet->id, $sheetTab->id);
+
+        return response()->json($this->pivots->records($pivot, $input['row'] ?? null, $input['column'] ?? null));
     }
 
     public function store(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
@@ -72,6 +86,8 @@ class GridPivotController extends Controller
             'column_field' => 'present|nullable|string|max:3',
             'value_field' => 'required|string|max:3',
             'aggregation' => ['required', Rule::in(PivotTable::AGGREGATIONS)],
+            'filter_field' => 'sometimes|nullable|string|max:3',
+            'filter_value' => 'sometimes|nullable|string|max:255',
         ], [
             'title.required' => 'Give the pivot table a title.',
             'title.max' => 'Use a shorter title: 100 characters at most.',
@@ -84,7 +100,7 @@ class GridPivotController extends Controller
             $pivot = null;
             $busy = false;
             WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, &$pivot) {
-                $pivot = $this->pivots->add($spreadsheet->id, $sheetTab->id, $input['title'], $input['source_range'], $input['row_field'], $input['column_field'], $input['value_field'], $input['aggregation']);
+                $pivot = $this->pivots->add($spreadsheet->id, $sheetTab->id, $input['title'], $input['source_range'], $input['row_field'], $input['column_field'], $input['value_field'], $input['aggregation'], $input['filter_field'] ?? null, $input['filter_value'] ?? null);
             }, function () use (&$busy) {
                 $busy = true;
             });

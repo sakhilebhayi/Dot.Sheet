@@ -4,7 +4,7 @@
  */
 import { Axis } from './axis';
 import { hasContent } from './store';
-import { cellName, columnName, ruleFill, show } from './format';
+import { cellName, columnIndex, columnName, ruleLook, show } from './format';
 import { threadCurve } from './thread';
 
 const OVERSCAN_ROWS = 6;
@@ -112,6 +112,7 @@ export class Grid {
         this.marks = [];
         this.noted = new Map();
         this.held = [];
+        this.facts = {};
 
         this.sheet.addEventListener('scroll', () => {
             this.slide();
@@ -187,6 +188,11 @@ export class Grid {
         this.layout = { ...this.layout, [axis === 'col' ? 'hidden_cols' : 'hidden_rows']: list };
         this.measure();
         if (this.lines.length) this.drawThreads(false);
+    }
+
+    setFacts(facts) {
+        this.facts = facts;
+        this.paint();
     }
 
     setRules(rules) {
@@ -590,7 +596,8 @@ export class Grid {
         if (shown.negative) names += ' neg';
         if (shown.error) names += ' err';
         if (x.bold) names += ' b';
-        const fill = ruleFill(this.layout.conditional_formatting_rules, r, c, cell) ?? x.bg_color;
+        const look = ruleLook(this.layout.conditional_formatting_rules, this.facts, r, c, cell);
+        const fill = look.fill ?? x.bg_color;
         if (fill) names += ' filled';
         if (r >= area.r1 && r <= area.r2 && c >= area.c1 && c <= area.c2) names += ' sel';
         else if (this.isRead(r, c)) names += ' read';
@@ -610,7 +617,8 @@ export class Grid {
         const { w, h } = merge ? this.drawnSpan(merge) : { w: this.cols.sizeOf(c), h: this.rows.sizeOf(r) };
         const room = !merge && align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
         if (room > 0) names += ' over';
-        const sig = `${names}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${fill}|${x.font_size}|${cell?.e}`;
+        const line = x.sparkline ? this.sparkline(x.sparkline) : null;
+        const sig = `${names}|${line}|${look.bar?.width}|${look.bar?.color}|${look.icon}|${fill}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${fill}|${x.font_size}|${cell?.e}`;
         if (el.sig === sig) return;
         el.sig = sig;
 
@@ -622,10 +630,51 @@ export class Grid {
         el.firstChild.style.textDecoration = [x.underline && 'underline', x.strike && 'line-through'].filter(Boolean).join(' ');
         el.style.color = x.font_color ?? '';
         el.style.backgroundColor = fill ?? '';
+        el.style.backgroundImage = look.bar ? `linear-gradient(90deg, ${look.bar.color} ${look.bar.width}%, transparent ${look.bar.width}%)` : '';
         el.style.fontSize = x.font_size ? `${Number(x.font_size)}px` : '';
         el.title = cell?.e ?? '';
-        el.firstChild.textContent = shown.text;
+        el.firstChild.textContent = look.icon ? `${look.icon} ${shown.text}` : shown.text;
+        this.drawSparkline(el, line, w, h);
         el.firstChild.style.maxWidth = room > 0 ? `${w + room - CELL_PADDING}px` : '';
+    }
+
+    /** The numbers a sparkline reads, as they stand now. */
+    sparkline(range) {
+        const found = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(range);
+        if (!found) return null;
+        const [c1, r1, c2, r2] = [columnIndex(found[1]), Number(found[2]) - 1, columnIndex(found[3]), Number(found[4]) - 1];
+        const values = [];
+        for (let r = r1; r <= r2; r++) {
+            for (let c = c1; c <= c2; c++) {
+                const value = this.store.get(r, c)?.v;
+                if (value !== undefined && value !== '' && Number.isFinite(Number(value))) values.push(Number(value));
+            }
+        }
+        return values.length > 1 ? values.join(',') : null;
+    }
+
+    drawSparkline(el, line, width, height) {
+        el.querySelector('svg')?.remove();
+        if (!line) return;
+        const values = line.split(',').map(Number);
+        const low = Math.min(...values);
+        const span = Math.max(...values) - low || 1;
+        const pad = 6;
+        const at = (value, i) => [
+            pad + (i * (width - pad * 2)) / (values.length - 1),
+            height - pad - ((value - low) * (height - pad * 2)) / span,
+        ];
+        const points = values.map(at);
+        const svg = document.createElementNS(SVG, 'svg');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('class', 'spark');
+        const path = document.createElementNS(SVG, 'polyline');
+        path.setAttribute('points', points.map((p) => p.join(',')).join(' '));
+        const end = document.createElementNS(SVG, 'circle');
+        [end.cx.baseVal.value, end.cy.baseVal.value] = points[points.length - 1];
+        end.r.baseVal.value = 2.5;
+        svg.append(path, end);
+        el.append(svg);
     }
 
     /**

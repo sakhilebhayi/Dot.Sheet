@@ -18,6 +18,7 @@ use App\Services\ProtectionRefused;
 use App\Services\RangeCopy;
 use App\Services\RangeFill;
 use App\Services\RangeSort;
+use App\Services\RuleFacts;
 use App\Services\SheetComments;
 use App\Services\SheetFilter;
 use App\Services\SheetMerges;
@@ -145,6 +146,7 @@ class GridController extends Controller
             'lastCol' => Cell::where('sheet_tab_id', $sheetTab->id)->max('col_index'),
             'marks' => app(SheetComments::class)->marks($sheetTab->id),
             'protection' => app(SheetProtections::class)->state($sheetTab->id),
+            'ruleFacts' => (object) app(RuleFacts::class)->of($sheetTab->fresh()),
         ]);
     }
 
@@ -831,18 +833,22 @@ class GridController extends Controller
             'add.target' => 'required_with:add|in:cell,column',
             'add.row' => 'required_with:add|integer|min:0|max:'.(SheetStructureService::GRID_ROWS - 1),
             'add.col' => 'required_with:add|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
-            'add.operator' => 'required_with:add|in:>,>=,<,<=,==,!=,contains',
-            'add.value' => 'present_with:add|nullable|string|max:255',
+            'add.kind' => 'sometimes|in:'.implode(',', RuleFacts::KINDS),
+            'add.operator' => 'exclude_without:add|required_without:add.kind|in:>,>=,<,<=,==,!=,contains',
+            'add.value' => 'sometimes|nullable|string|max:255',
             'add.color' => ['required_with:add', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'remove' => 'required_without:add|string|max:64',
         ]);
 
         $add = $input['add'] ?? null;
-        if ($add !== null && in_array($add['operator'], ['>', '>=', '<', '<='], true) && ! is_numeric($add['value'] ?? null)) {
+        if ($add !== null && isset($add['kind']) && $add['target'] !== 'column') {
+            return response()->json(['message' => 'These rules read a whole column.'], 422);
+        }
+        if ($add !== null && in_array($add['operator'] ?? null, ['>', '>=', '<', '<='], true) && ! is_numeric($add['value'] ?? null)) {
             return response()->json(['message' => 'More and less compare numbers: give it a number.'], 422);
         }
 
-        $rule = $add === null ? null : ['id' => $add['id'] ?? (string) str()->uuid(), 'target' => $add['target'], 'row' => (int) $add['row'], 'col' => (int) $add['col'], 'operator' => $add['operator'], 'value' => (string) ($add['value'] ?? ''), 'color' => $add['color']];
+        $rule = $add === null ? null : ['id' => $add['id'] ?? (string) str()->uuid(), 'target' => $add['target'], 'row' => (int) $add['row'], 'col' => (int) $add['col'], ...(isset($add['kind']) ? ['kind' => $add['kind']] : ['operator' => $add['operator'], 'value' => (string) ($add['value'] ?? '')]), 'color' => $add['color']];
 
         return $this->changeRules($spreadsheet, $sheetTab, (int) $input['version'], 'conditional_formatting_rules', $rule, $input['remove'] ?? null, self::MAX_RULES, 'A sheet holds at most '.self::MAX_RULES.' colour rules.');
     }
@@ -1325,6 +1331,14 @@ class GridController extends Controller
             ...($commentsBack !== [] ? ['marks' => app(SheetComments::class)->marks($sheetTab->id)] : []),
             ...(is_callable($extra) ? $extra() : $extra),
         ]);
+    }
+
+    /** What whole-column rules need after the sheet has changed. */
+    public function ruleFacts(Spreadsheet $spreadsheet, SheetTab $sheetTab, RuleFacts $facts): JsonResponse
+    {
+        $this->authorizeTab('view', $spreadsheet, $sheetTab);
+
+        return response()->json(['facts' => (object) $facts->of($sheetTab)]);
     }
 
     private function authorizeTab(string $ability, Spreadsheet $spreadsheet, SheetTab $sheetTab): void

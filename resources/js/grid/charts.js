@@ -5,7 +5,10 @@
  */
 import { deed, make } from './notes';
 
-const NAMES = { bar: 'Bars', line: 'Line', area: 'Area', pie: 'Pie', doughnut: 'Doughnut', scatter: 'Scatter' };
+const NAMES = { bar: 'Bars', hbar: 'Bars across', line: 'Line', area: 'Area', combo: 'Bars and lines', pie: 'Pie', doughnut: 'Doughnut', scatter: 'Scatter', histogram: 'Histogram', waterfall: 'Waterfall' };
+
+/** The kind of chart each one is drawn as. */
+const DRAWN_AS = { area: 'line', hbar: 'bar', combo: 'bar', histogram: 'bar', waterfall: 'bar' };
 const MAX_SLICES = 6;
 const compact = new Intl.NumberFormat('en-ZA', { notation: 'compact', maximumFractionDigits: 1 });
 
@@ -27,8 +30,53 @@ function slices(labels, values) {
     return { kept: [...kept.slice(0, MAX_SLICES - 1), ['Other', rest]], dropped, flipped };
 }
 
+/** How many figures fall in each of a few even steps, the first series only. */
+function histogram(chart) {
+    const values = chart.series[0].values.filter((value) => value !== null);
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    const steps = Math.max(5, Math.min(20, Math.ceil(Math.log2(values.length) + 1)));
+    const width = high === low ? 1 : (high - low) / steps;
+    const counts = Array(steps).fill(0);
+    for (const value of values) counts[Math.min(steps - 1, Math.floor((value - low) / width))]++;
+    return {
+        labels: counts.map((_, i) => `${compact.format(low + i * width)} to ${compact.format(low + (i + 1) * width)}`),
+        series: [{ name: `How many in ${chart.series[0].name}`, values: counts }],
+    };
+}
+
+/** Each figure stands where the last one ended, and the last bar is the total. */
+function waterfall(chart, colours) {
+    let total = 0;
+    const steps = chart.series[0].values.map((value) => {
+        const from = total;
+        total += value ?? 0;
+        return [from, total];
+    });
+    return {
+        labels: [...chart.labels, 'Total'],
+        datasets: [{
+            label: chart.series[0].name,
+            data: [...steps, [0, total]],
+            backgroundColor: [...steps.map(([from, to]) => (to >= from ? colours[0] : colours[4])), colours[1]],
+            maxBarThickness: 32,
+            borderRadius: 4,
+            borderSkipped: false,
+        }],
+    };
+}
+
 function datasets(chart, colours, surface) {
-    const { type, series, labels } = chart;
+    const { type, labels } = chart;
+    const series = chart.series;
+    if (type === 'waterfall') return waterfall(chart, colours);
+    if (type === 'histogram') {
+        const bins = histogram(chart);
+        return {
+            labels: bins.labels,
+            datasets: [{ label: bins.series[0].name, data: bins.series[0].values, backgroundColor: colours[0], borderRadius: 2, categoryPercentage: 1, barPercentage: 0.96 }],
+        };
+    }
     if (type === 'pie' || type === 'doughnut') {
         const { kept } = slices(labels, series[0].values);
         return { labels: kept.map(([label]) => label), datasets: [{ label: series[0].name, data: kept.map(([, value]) => value), backgroundColor: colours, borderColor: surface, borderWidth: 2 }] };
@@ -54,7 +102,8 @@ function datasets(chart, colours, surface) {
         datasets: series.map((s, i) => ({
             label: s.name,
             data: s.values,
-            ...(type === 'bar'
+            ...(type === 'combo' && i > 0 ? { type: 'line' } : {}),
+            ...(type === 'bar' || type === 'hbar' || (type === 'combo' && i === 0)
                 ? { backgroundColor: colours[i], maxBarThickness: 24, borderRadius: 4, borderSkipped: 'start' }
                 : {
                     borderColor: colours[i],
@@ -74,8 +123,10 @@ function datasets(chart, colours, surface) {
 function settings(chart, surface, ink, soft, faint, figure) {
     const round = chart.type === 'pie' || chart.type === 'doughnut';
     const scatter = chart.type === 'scatter';
+    const across = chart.type === 'hbar';
     const font = { family: 'Hanken Grotesk', size: 12 };
-    const shown = scatter ? Math.max(1, chart.series.length - 1) : chart.series.length;
+    const single = chart.type === 'histogram' || chart.type === 'waterfall';
+    const shown = scatter ? Math.max(1, chart.series.length - 1) : single ? 1 : chart.series.length;
     const axis = {
         grid: { color: faint, drawTicks: false },
         border: { display: false },
@@ -85,6 +136,7 @@ function settings(chart, surface, ink, soft, faint, figure) {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        ...(across ? { indexAxis: 'y' } : {}),
         interaction: round || scatter ? { mode: 'nearest', intersect: true } : { mode: 'index', intersect: false },
         plugins: {
             title: { display: false },
@@ -100,7 +152,11 @@ function settings(chart, surface, ink, soft, faint, figure) {
                 cornerRadius: 10,
                 callbacks: {
                     label: (item) => {
-                        const value = scatter ? `${figure(item.parsed.x)}, ${figure(item.parsed.y)}` : figure(round ? item.parsed : item.parsed.y);
+                        if (chart.type === 'waterfall') {
+                            const [from, to] = item.raw;
+                            return `${figure(to - from)}  ${item.label}`;
+                        }
+                        const value = scatter ? `${figure(item.parsed.x)}, ${figure(item.parsed.y)}` : figure(round ? item.parsed : across ? item.parsed.x : item.parsed.y);
                         return `${value}  ${round ? item.label : item.dataset.label}`;
                     },
                 },
@@ -113,6 +169,22 @@ function settings(chart, surface, ink, soft, faint, figure) {
         },
     };
 }
+
+/**
+ * Draw a chart on a canvas. Chart.js is large, so it loads with the first one.
+ */
+export async function drawChart(canvas, chart, figure) {
+    const { default: Chart } = await import('chart.js/auto');
+    const surface = token('--desk');
+    const colours = [1, 2, 3, 4, 5, 6].map((n) => token(`--chart-${n}`));
+    return new Chart(canvas, {
+        type: DRAWN_AS[chart.type] ?? chart.type,
+        data: datasets(chart, colours, surface),
+        options: settings(chart, surface, token('--ink'), token('--soft'), token('--faint'), figure),
+    });
+}
+
+export const chartName = (type) => NAMES[type];
 
 export class Charts {
     /**
@@ -236,6 +308,18 @@ export class Charts {
         });
     }
 
+    async place(chart, onSheet) {
+        const { r, c } = this.editor.active();
+        const { ok, status, body } = await this.editor.server.placeChart(this.editor.tab(), chart.id, onSheet ? { on_sheet: true, row: r, col: c } : { on_sheet: false });
+        if (!ok) {
+            this.editor.refused(status, body);
+            return;
+        }
+        this.drawList(body.charts);
+        this.editor.placed();
+        this.editor.note(onSheet ? `Put ${chart.title} on the sheet.` : `Took ${chart.title} off the sheet. It stays in this list.`);
+    }
+
     drawList(charts) {
         const items = charts.map((chart) => this.row(chart));
         if (charts.length === 0) items.push(make('li', 'notes-none', `No charts on this sheet yet.${this.editor.canEdit ? ' Select some figures and add one.' : ''}`));
@@ -250,7 +334,10 @@ export class Charts {
         row.append(who);
         const deeds = make('div', 'deeds');
         deeds.append(deed('Show', () => this.show(chart.id)));
-        if (this.editor.canEdit) deeds.append(deed('Delete', () => this.remove(chart)));
+        if (this.editor.canEdit) {
+            deeds.append(deed(chart.on_sheet ? 'Take off the sheet' : 'Put on the sheet', () => this.place(chart, !chart.on_sheet)));
+            deeds.append(deed('Delete', () => this.remove(chart)));
+        }
         row.append(deeds);
         return row;
     }
@@ -288,16 +375,13 @@ export class Charts {
         this.drawn = null;
         if (noFigures) return;
 
-        const { default: Chart } = await import('chart.js/auto');
-        if (turn !== this.turn || this.closed) return;
-        const surface = token('--desk');
-        const colours = [1, 2, 3, 4, 5, 6].map((n) => token(`--chart-${n}`));
+        const drawn = await drawChart(this.canvas, chart, this.editor.figure);
+        if (turn !== this.turn || this.closed) {
+            drawn.destroy();
+            return;
+        }
         this.drawn?.destroy();
-        this.drawn = new Chart(this.canvas, {
-            type: chart.type === 'area' ? 'line' : chart.type,
-            data: datasets(chart, colours, surface),
-            options: settings(chart, surface, token('--ink'), token('--soft'), token('--faint'), this.editor.figure),
-        });
+        this.drawn = drawn;
         this.canvas.setAttribute('aria-label', `${NAMES[chart.type]} chart: ${chart.title}. The figures are in the table below it.`);
     }
 

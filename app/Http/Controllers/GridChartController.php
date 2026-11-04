@@ -8,6 +8,7 @@ use App\Models\Spreadsheet;
 use App\Services\ChartRefused;
 use App\Services\Formula\Recalculator;
 use App\Services\SheetCharts;
+use App\Services\SheetStructureService;
 use App\Services\WriteLock;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
@@ -74,6 +75,27 @@ class GridChartController extends Controller
         }
 
         return $busy ? response()->json(['message' => WriteLock::BUSY_MESSAGE], 503) : $this->answer($spreadsheet, $sheetTab, $chart?->id);
+    }
+
+    public function place(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, ChartConfig $chart): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+        abort_unless($chart->sheet_tab_id === $sheetTab->id, 404);
+
+        $input = $request->validate([
+            'on_sheet' => 'required|boolean',
+            'row' => 'sometimes|integer|min:0|max:'.(SheetStructureService::GRID_ROWS - 1),
+            'col' => 'sometimes|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
+            'cols' => 'sometimes|integer|min:2|max:30',
+            'rows' => 'sometimes|integer|min:4|max:60',
+        ]);
+
+        $busy = false;
+        WriteLock::guard(fn () => $this->charts->place($chart, $input), function () use (&$busy) {
+            $busy = true;
+        });
+
+        return $busy ? response()->json(['message' => WriteLock::BUSY_MESSAGE], 503) : $this->answer($spreadsheet, $sheetTab);
     }
 
     public function destroy(Spreadsheet $spreadsheet, SheetTab $sheetTab, ChartConfig $chart): JsonResponse

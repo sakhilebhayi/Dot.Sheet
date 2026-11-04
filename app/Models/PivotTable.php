@@ -17,6 +17,8 @@ class PivotTable extends Model
         'row_field',
         'column_field',
         'value_field',
+        'filter_field',
+        'filter_value',
         'aggregation',
     ];
 

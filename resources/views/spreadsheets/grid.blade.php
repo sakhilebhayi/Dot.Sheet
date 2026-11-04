@@ -330,7 +330,13 @@
             <h2>Functions</h2>
             <button class="tool" type="button" id="assistant-close" aria-label="Close the function assistant">×</button>
         </div>
-        <input class="assistant-search" id="assistant-search" autocomplete="off" spellcheck="false" placeholder="What should it do?" aria-label="Find a function">
+        <form class="dock-form assistant-ask" id="assistant-ask">
+            <label for="assistant-words">Say what to work out</label>
+            <input id="assistant-words" autocomplete="off" maxlength="300" placeholder="Total expenses for each department">
+            <button class="button" type="submit">Work it out</button>
+        </form>
+        <div class="assistant-detail" id="assistant-answer" hidden></div>
+        <input class="assistant-search" id="assistant-search" autocomplete="off" spellcheck="false" placeholder="Or find a function" aria-label="Find a function">
         <ul class="assistant-list" id="assistant-list"></ul>
         <div class="assistant-detail" id="assistant-detail" hidden></div>
     </aside>
@@ -413,6 +419,7 @@
     <footer class="foot">
         <nav class="tabs" id="tabs" aria-label="Sheets"></nav>
         <p class="note" id="note" role="status"></p>
+        <button class="tool quiet" type="button" id="fill-offer" hidden></button>
         <div class="stats">
             <span>Sum<b id="s-sum">-</b></span><span>Average<b id="s-avg">-</b></span><span>Count<b id="s-count">0</b></span>
         </div>

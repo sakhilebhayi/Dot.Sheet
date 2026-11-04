@@ -425,4 +425,107 @@ class GridPivotsTest extends TestCase
 
         $this->assertSame(0, PivotTable::count());
     }
+
+    /** Region, Item, Status, Amount. */
+    private function records(): void
+    {
+        $this->table([
+            ['Region', 'Item', 'Status', 'Amount'],
+            ['North', 'Bolts', 'Open', '10'],
+            ['North', 'Nuts', 'Closed', '20'],
+            ['South', 'Bolts', 'Open', '30'],
+            ['', 'Nuts', 'Open', '40'],
+        ]);
+    }
+
+    /** @param array<string, mixed> $body */
+    private function made(array $body = []): int
+    {
+        return (int) $this->postJson($this->url(), ['title' => 'P', 'source_range' => 'A1:D5', 'row_field' => 'A', 'column_field' => null, 'value_field' => 'D', 'aggregation' => 'sum', ...$body])->assertOk()->json('added');
+    }
+
+    public function test_a_pivot_can_keep_only_some_rows(): void
+    {
+        $this->records();
+
+        $id = $this->made(['filter_field' => 'C', 'filter_value' => 'open']);
+        $answer = $this->getJson($this->url("pivots/{$id}"))->assertOk()->json();
+
+        $this->assertEquals(10, $answer['rowTotals']['North']);
+        $this->assertEquals(80, $answer['grandTotal']);
+        $this->assertSame('Status is open', $answer['filter']);
+    }
+
+    public function test_a_filter_must_be_inside_the_table(): void
+    {
+        $this->records();
+
+        $this->postJson($this->url(), ['title' => 'P', 'source_range' => 'A1:D5', 'row_field' => 'A', 'column_field' => null, 'value_field' => 'D', 'aggregation' => 'sum', 'filter_field' => 'Z', 'filter_value' => 'x'])->assertUnprocessable();
+    }
+
+    public function test_the_filter_moves_with_its_column(): void
+    {
+        config(['sheet.structure_ops_enabled' => true]);
+        $this->records();
+        $id = $this->made(['filter_field' => 'C', 'filter_value' => 'open']);
+
+        $this->postJson($this->url('structure'), ['version' => StructureVersion::current($this->sheet->id), 'action' => 'insert', 'axis' => 'col', 'at' => 1, 'count' => 1])->assertOk();
+
+        $this->assertSame('D', PivotTable::findOrFail($id)->filter_field);
+        $this->assertEquals(80, $this->getJson($this->url("pivots/{$id}"))->json('grandTotal'));
+    }
+
+    public function test_a_figure_opens_the_rows_behind_it(): void
+    {
+        $this->records();
+        $id = $this->made();
+
+        $answer = $this->getJson($this->url("pivots/{$id}/records?row=North"))->assertOk()->json();
+
+        $this->assertSame(['Region', 'Item', 'Status', 'Amount'], $answer['headings']);
+        $this->assertSame([['North', 'Bolts', 'Open', '10'], ['North', 'Nuts', 'Closed', '20']], $answer['rows']);
+        $this->assertSame(0, $answer['more']);
+    }
+
+    public function test_the_rows_behind_a_blank_row_label_and_a_column_are_found(): void
+    {
+        $this->records();
+        $id = $this->made(['column_field' => 'C']);
+
+        $this->assertCount(1, $this->getJson($this->url('pivots/'.$id.'/records?row='.rawurlencode(PivotTableService::BLANK).'&column=Open'))->json('rows'));
+        $this->assertSame([['North', 'Nuts', 'Closed', '20']], $this->getJson($this->url("pivots/{$id}/records?row=North&column=Closed"))->json('rows'));
+    }
+
+    public function test_the_rows_behind_a_figure_respect_the_filter(): void
+    {
+        $this->records();
+        $id = $this->made(['filter_field' => 'C', 'filter_value' => 'open']);
+
+        $this->assertSame([['North', 'Bolts', 'Open', '10']], $this->getJson($this->url("pivots/{$id}/records?row=North"))->json('rows'));
+    }
+
+    public function test_a_long_list_of_rows_is_capped_and_says_so(): void
+    {
+        $rows = [['Region', 'Amount']];
+        foreach (range(1, 230) as $i) {
+            $rows[] = ['North', (string) $i];
+        }
+        $this->table($rows);
+        $id = $this->made(['source_range' => 'A1:B231', 'value_field' => 'B']);
+
+        $answer = $this->getJson($this->url("pivots/{$id}/records?row=North"))->json();
+
+        $this->assertCount(200, $answer['rows']);
+        $this->assertSame(30, $answer['more']);
+    }
+
+    public function test_rows_behind_a_figure_are_for_those_who_can_read_it_through_its_own_sheet(): void
+    {
+        $this->records();
+        $id = $this->made();
+        $other = SheetTab::create(['spreadsheet_id' => $this->sheet->id, 'name' => 'Other', 'sort_order' => 3]);
+
+        $this->getJson($this->url("pivots/{$id}/records", $other))->assertNotFound();
+        $this->actingAs(User::factory()->withPersonalTeam()->create())->getJson($this->url("pivots/{$id}/records"))->assertForbidden();
+    }
 }

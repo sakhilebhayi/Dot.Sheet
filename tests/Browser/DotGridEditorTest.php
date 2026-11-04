@@ -4,6 +4,7 @@ namespace Tests\Browser;
 
 use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
+use App\Models\PivotTable;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
@@ -3917,5 +3918,51 @@ class DotGridEditorTest extends DuskTestCase
             window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
             window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
         JS, [$col, $fromRow, $toRow]);
+    }
+
+    public function test_a_pivot_sorts_charts_and_opens_the_rows_behind_a_figure(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(PivotTableService::class)->add($sheet->id, $tab->id, 'By department', 'A1:B4', 'A', null, 'B', 'sum');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitForTextIn('#pivots-list', 'By department');
+            $browser->driver->executeScript("[...document.querySelectorAll('#pivots-list button')].find(b => b.textContent === 'Show').click()");
+            $browser->waitFor('#pivots-table tbody tr');
+            $names = fn () => $browser->driver->executeScript("return [...document.querySelectorAll('#pivots-table tbody th')].map(t => t.textContent)");
+            $this->assertSame(['Mining', 'Sales'], $names());
+
+            $browser->driver->executeScript("document.querySelector('#pivots-order').click()");
+            $browser->waitUsing(5, 25, fn () => $names()[0] === 'Sales');
+            $browser->assertSeeIn('#pivots-order', 'In name order');
+
+            $browser->driver->executeScript("document.querySelector('#pivots-chart').click()");
+            $browser->waitFor('#pivots-canvas-holder:not([hidden])')->pause(200);
+
+            $browser->driver->executeScript("[...document.querySelectorAll('.pivot-open')].find(b => b.textContent === '400').click()");
+            $browser->waitForTextIn('#pivots-records', '2 rows behind Sales.');
+            $browser->assertSeeIn('#pivots-records', '300');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_pivot_is_built_from_the_form_with_a_filter(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Pivot tables');
+            $browser->waitFor('#pivots:not([hidden])');
+            $browser->clear('#pivots-range')->type('#pivots-range', 'A1:B4');
+            $browser->waitUsing(5, 50, fn () => $browser->driver->executeScript("return document.querySelectorAll('#pivots-chips li').length") === 2);
+            $browser->select('#pivots-filter', 'A');
+            $browser->type('#pivots-filter-value', 'Sales');
+            $browser->click('#pivots-form button');
+            $browser->waitForTextIn('#pivots-said', 'Only rows where Department is Sales.');
+            $this->assertSame('Sales', PivotTable::where('sheet_tab_id', $tab->id)->sole()->filter_value);
+        });
     }
 }

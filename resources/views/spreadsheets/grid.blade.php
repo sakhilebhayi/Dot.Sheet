@@ -226,8 +226,14 @@
         <div class="share-body">
             <figure class="pivot-view" id="pivots-view" hidden>
                 <figcaption id="pivots-heading"></figcaption>
+                <div class="deeds">
+                    <button type="button" id="pivots-order">Largest first</button>
+                    <button type="button" id="pivots-chart" aria-expanded="false">Show as a chart</button>
+                </div>
+                <div class="chart-canvas" id="pivots-canvas-holder" hidden><canvas id="pivots-canvas" role="img"></canvas></div>
                 <div class="pivot-scroll"><table class="pivot-table" id="pivots-table"></table></div>
                 <p class="dock-note" id="pivots-said" hidden></p>
+                <div id="pivots-records" hidden></div>
             </figure>
             <form class="pivot-form" id="pivots-form">
                 <label for="pivots-range">Summarise a table with headings</label>
@@ -246,7 +252,12 @@
                     <select id="pivots-row" aria-label="What to group by"></select>
                     <span>and</span>
                     <select id="pivots-across" aria-label="What to group across, if anything"></select>
+                    <span>where</span>
+                    <select id="pivots-filter" aria-label="Which rows to keep, if not all"></select>
+                    <span>is</span>
+                    <input id="pivots-filter-value" aria-label="What that column must hold" autocomplete="off">
                 </p>
+                <ul class="pivot-chips" id="pivots-chips" aria-hidden="true"></ul>
                 <p class="dock-note" id="pivots-hint" hidden>Select a table with its headings in the first row.</p>
                 <button class="button" type="submit" disabled>Add</button>
             </form>

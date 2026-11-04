@@ -2,6 +2,7 @@
  * Pivot tables: the panel beside the sheet. The form reads as a sentence and offers the table's own
  * headings, and what a total means is named, because the total of an average is not a sum.
  */
+import { drawChart } from './charts';
 import { deed, make } from './notes';
 
 const WORDS = { sum: 'Sum', count: 'Count', average: 'Average', min: 'Lowest', max: 'Highest' };
@@ -28,10 +29,36 @@ export class Pivots {
         this.heading = byId('pivots-heading');
         this.said = byId('pivots-said');
         this.table = byId('pivots-table');
+        this.filter = byId('pivots-filter');
+        this.filterValue = byId('pivots-filter-value');
+        this.chips = byId('pivots-chips');
+        this.order = byId('pivots-order');
+        this.chartButton = byId('pivots-chart');
+        this.canvasHolder = byId('pivots-canvas-holder');
+        this.canvas = byId('pivots-canvas');
+        this.records = byId('pivots-records');
         this.typedRange = false;
         this.shown = null;
         this.turn = 0;
         this.asked = '';
+        this.largestFirst = false;
+        this.last = null;
+        this.drawn = null;
+
+        this.order.addEventListener('click', () => {
+            this.largestFirst = !this.largestFirst;
+            this.order.textContent = this.largestFirst ? 'In name order' : 'Largest first';
+            this.drawTable(this.last);
+            if (!this.canvasHolder.hidden) this.drawPivotChart();
+        });
+        this.chartButton.addEventListener('click', () => this.toggleChart());
+        for (const select of [this.value, this.row, this.across, this.filter]) {
+            select.parentElement.addEventListener('dragover', (e) => e.preventDefault());
+            select.addEventListener('drop', (e) => {
+                e.preventDefault();
+                select.value = e.dataTransfer.getData('text/plain');
+            });
+        }
 
         this.form.hidden = !editor.canEdit;
         byId('pivots-close').addEventListener('click', () => this.toggle(false));
@@ -106,9 +133,13 @@ export class Pivots {
         this.value.replaceChildren(...options());
         this.row.replaceChildren(...options());
         this.across.replaceChildren(...options([none]));
+        const everything = make('option', '', 'nothing');
+        everything.value = '';
+        this.filter.replaceChildren(...options([everything]));
+        this.drawChips(fields);
 
         const usable = fields.length >= 2;
-        for (const control of [this.value, this.row, this.across, this.aggregation]) control.disabled = !usable;
+        for (const control of [this.value, this.row, this.across, this.filter, this.filterValue, this.aggregation]) control.disabled = !usable;
         this.form.querySelector('button').disabled = !usable;
         this.hint.hidden = usable;
         if (!usable) return;
@@ -117,6 +148,16 @@ export class Pivots {
         this.row.value = (fields.find((f) => !f.figures) ?? fields[0]).col;
         this.value.value = ([...fields].reverse().find((f) => f.figures && f.col !== this.row.value) ?? fields.find((f) => f.col !== this.row.value)).col;
         this.across.value = '';
+    }
+
+    /** Each heading as a chip to drag into the sentence. The lists do the same from a keyboard. */
+    drawChips(fields) {
+        this.chips.replaceChildren(...fields.map(({ col, name }) => {
+            const chip = make('li', '', name);
+            chip.draggable = true;
+            chip.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', col));
+            return chip;
+        }));
     }
 
     async load() {
@@ -144,7 +185,8 @@ export class Pivots {
     title() {
         const name = (select) => select.selectedOptions[0]?.textContent ?? '';
         const across = this.across.value ? ` and ${name(this.across)}` : '';
-        return `${WORDS[this.aggregation.value]} of ${name(this.value)} by ${name(this.row)}${across}`.slice(0, 100);
+        const only = this.filter.value ? ` where ${name(this.filter)} is ${this.filterValue.value.trim()}` : '';
+        return `${WORDS[this.aggregation.value]} of ${name(this.value)} by ${name(this.row)}${across}${only}`.slice(0, 100);
     }
 
     async add() {
@@ -155,6 +197,8 @@ export class Pivots {
             column_field: this.across.value || null,
             value_field: this.value.value,
             aggregation: this.aggregation.value,
+            filter_field: this.filter.value || null,
+            filter_value: this.filter.value ? this.filterValue.value.trim() : null,
         });
         if (!ok) {
             this.editor.refused(status, body);
@@ -212,11 +256,77 @@ export class Pivots {
             if (status !== 404) this.editor.refused(status, body);
             return;
         }
+        if (this.shown !== id) this.records.hidden = true;
         this.shown = id;
+        this.last = body;
         this.view.hidden = false;
         this.heading.textContent = body.title;
         this.drawTable(body);
         this.saying(body);
+        if (!this.canvasHolder.hidden) this.drawPivotChart();
+    }
+
+    labels(pivot) {
+        if (!this.largestFirst) return pivot.rowLabels;
+        const size = (label) => pivot.rowTotals[label] ?? -Infinity;
+        return [...pivot.rowLabels].sort((a, b) => size(b) - size(a));
+    }
+
+    toggleChart() {
+        const show = this.canvasHolder.hidden;
+        this.canvasHolder.hidden = !show;
+        this.chartButton.textContent = show ? 'Hide the chart' : 'Show as a chart';
+        this.chartButton.setAttribute('aria-expanded', String(show));
+        if (show) this.drawPivotChart();
+    }
+
+    async drawPivotChart() {
+        const pivot = this.last;
+        const labels = this.labels(pivot);
+        const chart = {
+            type: 'bar',
+            labels,
+            series: pivot.columnLabels.slice(0, 6).map((column) => ({ name: pivot.across ? column : pivot.headings.value, values: labels.map((label) => pivot.matrix[label][column] ?? null) })),
+        };
+        const drawn = await drawChart(this.canvas, chart, this.editor.figure);
+        this.drawn?.destroy();
+        this.drawn = drawn;
+    }
+
+    /** The rows of the table behind a figure. */
+    async drill(row, column) {
+        const { ok, status, body } = await this.editor.server.pivotRecords(this.editor.tab(), this.shown, row, column);
+        if (!ok) {
+            this.editor.refused(status, body);
+            return;
+        }
+        const head = make('tr');
+        head.append(...body.headings.map((heading) => make('th', '', heading)));
+        const rows = body.rows.map((cells) => {
+            const line = make('tr');
+            line.append(...cells.map((cell) => make('td', '', cell)));
+            return line;
+        });
+        const table = make('table', 'pivot-table');
+        table.append(head, ...rows);
+        const scroll = make('div', 'pivot-scroll');
+        scroll.append(table);
+        const said = make('p', 'dock-note', `${body.rows.length.toLocaleString('en-ZA')} ${body.rows.length === 1 ? 'row' : 'rows'} behind ${[row, column].filter((part) => part !== null).join(', ') || 'this figure'}.${body.more ? ` ${body.more.toLocaleString('en-ZA')} more are not listed.` : ''}`);
+        this.records.replaceChildren(said, scroll, deed('Hide these rows', () => {
+            this.records.hidden = true;
+        }));
+        this.records.hidden = false;
+    }
+
+    /** A figure that opens the rows behind it. */
+    figureCell(tag, value, row, column) {
+        const el = this.cell(tag, value);
+        if (value === null || value === undefined) return el;
+        const open = make('button', 'pivot-open', el.textContent);
+        open.type = 'button';
+        open.addEventListener('click', () => this.drill(row, column));
+        el.replaceChildren(open);
+        return el;
     }
 
     cell(tag, value) {
@@ -237,9 +347,9 @@ export class Pivots {
         thead.append(head);
 
         const tbody = make('tbody');
-        tbody.append(...rowLabels.map((label) => {
+        tbody.append(...this.labels(pivot).map((label) => {
             const row = make('tr');
-            row.append(make('th', '', label), ...columnLabels.map((column) => this.cell('td', matrix[label][column])));
+            row.append(make('th', '', label), ...columnLabels.map((column) => this.figureCell('td', matrix[label][column], label, across ? column : null)));
             if (across) {
                 const total = this.cell('td', rowTotals[label]);
                 total.classList.add('total');
@@ -265,6 +375,7 @@ export class Pivots {
         else if (pivot.rowLabels.length === 0) said.push('There is nothing under the headings yet.');
         if (pivot.more_rows) said.push(`Showing the first ${pivot.rowLabels.length.toLocaleString('en-ZA')} rows. The totals count them all.`);
         if (pivot.more_columns) said.push(`Showing the first ${pivot.columnLabels.length} columns. The totals count them all.`);
+        if (pivot.filter) said.push(`Only rows where ${pivot.filter}.`);
         if (pivot.words) said.push(`${pivot.words.toLocaleString('en-ZA')} ${pivot.words === 1 ? 'cell holds' : 'cells hold'} words, so ${pivot.words === 1 ? 'it is' : 'they are'} left out.`);
         this.said.textContent = said.join(' ');
         this.said.hidden = said.length === 0;

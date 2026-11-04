@@ -128,6 +128,7 @@ Route::middleware([
         Route::post('pivots', [GridPivotController::class, 'store'])->name('pivots.store');
         Route::get('pivots/fields', [GridPivotController::class, 'fields'])->name('pivots.fields');
         Route::get('pivots/{pivot}', [GridPivotController::class, 'show'])->whereNumber('pivot')->name('pivots.show');
+        Route::get('pivots/{pivot}/records', [GridPivotController::class, 'records'])->whereNumber('pivot')->name('pivots.records');
         Route::delete('pivots/{pivot}', [GridPivotController::class, 'destroy'])->whereNumber('pivot')->name('pivots.destroy');
         Route::get('charts', [GridChartController::class, 'index'])->name('charts');
         Route::post('charts', [GridChartController::class, 'store'])->name('charts.store');

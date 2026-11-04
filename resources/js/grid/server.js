@@ -136,6 +136,13 @@ export class Server {
         return json(`${this.base}/${tab}/charts/${id}/place`, { method: 'POST', body: JSON.stringify(place) });
     }
 
+    pivotRecords(tab, id, row, column) {
+        const asked = new URLSearchParams();
+        if (row !== null) asked.set('row', row);
+        if (column !== null) asked.set('column', column);
+        return json(`${this.base}/${tab}/pivots/${id}/records?${asked}`);
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

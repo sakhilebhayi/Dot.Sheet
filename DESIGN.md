@@ -341,7 +341,9 @@ workbook downloads as Excel or ODS with its formulas and formats. Paper is a pla
 through the browser, and PDF is the same page. Colour rules can also read a whole column from the selected cell down: a
 colour scale in one hue, data bars, marks for high, middle and low that do not rely on colour, repeated values and
 missing cells. A chart can sit on the sheet itself, moved by its title and sized by its corner, and it stays tied to its
-cells. A sparkline is a thin line in a cell, with a dot on the latest figure.
+cells. A sparkline is a thin line in a cell, with a dot on the latest figure. A pivot table's headings are chips to drag
+into its sentence, and the lists do the same from a keyboard. A pivot can keep only some rows, sort largest first and
+show as a chart, and any figure opens the rows behind it.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

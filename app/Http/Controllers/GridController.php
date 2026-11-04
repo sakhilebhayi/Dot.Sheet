@@ -119,6 +119,11 @@ class GridController extends Controller
                     'classic' => route('spreadsheets.classic', $spreadsheet),
                     'csv' => route('spreadsheets.export.csv', $spreadsheet),
                     'excel' => route('spreadsheets.export.excel', $spreadsheet),
+                    'tsv' => route('spreadsheets.export.tsv', $spreadsheet),
+                    'pdf' => route('spreadsheets.export.pdf', $spreadsheet),
+                    'print' => route('spreadsheets.print-sheet', $spreadsheet),
+                    'workbookExcel' => route('spreadsheets.export.workbook', [$spreadsheet, 'xlsx']),
+                    'workbookOds' => route('spreadsheets.export.workbook', [$spreadsheet, 'ods']),
                 ],
             ],
         ]);

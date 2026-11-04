@@ -3687,4 +3687,35 @@ class DotGridEditorTest extends DuskTestCase
             $browser->pause(150)->assertMissing('#fill-offer:not([hidden])');
         });
     }
+
+    public function test_the_palette_downloads_the_sheet_that_is_open(): void
+    {
+        [$user, $sheet] = $this->sheetWithFigures();
+        $other = SheetTab::where('spreadsheet_id', $sheet->id)->where('name', 'Cash flow')->sole();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $other) {
+            $this->open($browser, $user, $sheet);
+            $browser->pause(100);
+            $this->clickTab($browser, 'Cash flow');
+            $browser->waitForTextIn('#tabs [aria-current]', 'Cash flow');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'this sheet as');
+            $browser->waitForTextIn('#found', 'Download this sheet as PDF');
+            $links = $browser->driver->executeScript("return [...document.querySelectorAll('#found a')].map(a => a.getAttribute('href'))");
+            $this->assertCount(4, $links);
+            foreach ($links as $link) {
+                $this->assertStringContainsString("sheet_tab_id={$other->id}", $link);
+            }
+        });
+    }
+
+    public function test_the_print_page_opens_with_a_way_to_print(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}/print-sheet?sheet_tab_id={$tab->id}");
+            $browser->assertSee('Sales')->assertPresent('button');
+            $this->assertSame('none', $browser->driver->executeScript("return [...document.styleSheets[0].cssRules].some(r => r.media?.mediaText === 'print') ? 'none' : 'missing'"));
+        });
+    }
 }

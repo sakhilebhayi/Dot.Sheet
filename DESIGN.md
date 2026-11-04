@@ -336,7 +336,9 @@ with a formula offers Explain in the bar: the formula in plain words, and for an
 sheet's own cells, with a repair shown before it is made when one is certain. The assistant also reads a sentence against
 the sheet's own headings, and shows the formula before putting it in. A new formula beside a column of data offers to
 fill down, in the foot, and changes nothing until pressed. An imported file opens on a report of what came across and,
-by name, what did not. It stays in the palette as What came across, because nothing is left behind in silence.
+by name, what did not. It stays in the palette as What came across, because nothing is left behind in silence. A whole
+workbook downloads as Excel or ODS with its formulas and formats. Paper is a plain table on a white page: print goes
+through the browser, and PDF is the same page.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

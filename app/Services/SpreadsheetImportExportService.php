@@ -36,7 +36,7 @@ class SpreadsheetImportExportService
      * Rows and columns are 0-based, like everywhere else in the editor, so the first row and
      * the first column of the sheet are part of the file.
      */
-    public function exportCsv(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null): string
+    public function exportCsv(Spreadsheet $spreadsheet, ?SheetTab $sheetTab = null, string $separator = ','): string
     {
         $sheetTab ??= $spreadsheet->defaultSheetTab();
 
@@ -49,7 +49,7 @@ class SpreadsheetImportExportService
 
         foreach ($this->exportRows($spreadsheet, $sheetTab, $bounds) as $rowData) {
             // fputcsv's default escape character is deprecated in PHP 8.4; '' selects RFC 4180 quoting.
-            fputcsv($output, array_map($this->neutraliseSpreadsheetFormula(...), $rowData), ',', '"', '');
+            fputcsv($output, array_map($this->neutraliseSpreadsheetFormula(...), $rowData), $separator, '"', '');
         }
 
         rewind($output);

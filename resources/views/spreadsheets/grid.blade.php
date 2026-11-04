@@ -75,6 +75,16 @@
         </div>
     </footer>
 
+    <dialog id="confirm" aria-labelledby="confirm-text">
+        <form method="dialog" class="confirm">
+            <p id="confirm-text"></p>
+            <div class="deeds">
+                <button class="button quiet" value="cancel" autofocus>Keep it</button>
+                <button class="button" value="yes" id="confirm-yes">Delete sheet</button>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="palette" aria-label="Find anything">
         <input id="find" placeholder="A command, a function, or a cell such as B12" autocomplete="off" aria-label="Find a command, a function or a cell">
         <ul id="found"></ul>

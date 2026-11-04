@@ -70,6 +70,13 @@
 
 .edit { position: absolute; z-index: 2; padding: 0 12px; border: 0; background: var(--sheet); box-shadow: 0 0 0 2px var(--thread); outline: none; border-radius: 3px; }
 
+/* The foot: the sheets, and a place for one more. */
+.tabs .add { padding: 5px 9px; color: var(--soft); }
+.tabs .naming { width: 16ch; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1.5px var(--thread); outline: none; font: inherit; font-weight: 600; }
+.confirm { padding: 20px; }
+.confirm p { margin: 0 0 16px; max-width: 52ch; line-height: 1.5; }
+.confirm .deeds { display: flex; justify-content: flex-end; gap: 8px; }
+
 @media (max-width: 720px) {
     .findbar { padding: 0 12px 8px; }
     .findbar input:not([type]) { width: 100%; }

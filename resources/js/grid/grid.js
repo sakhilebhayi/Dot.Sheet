@@ -21,6 +21,7 @@ const ROUGH_CHARACTER = 5;    // narrower than most, so no text that needs room 
 const WIDE_CHARACTER = 9;     // wider than most, so the room found is always enough
 const MAX_OVERFLOW_COLS = 12;
 const MOST_FROZEN = 0.6;      // the share of the sheet frozen rows or columns may take up
+const GAP_REACH = 7;          // how near the blue dot a press counts, in pixels
 const SVG = 'http://www.w3.org/2000/svg';
 
 const byId = (id) => document.getElementById(id);
@@ -178,6 +179,12 @@ export class Grid {
         if (this.lines.length) this.drawThreads(false);
     }
 
+    setHidden(axis, list) {
+        this.layout = { ...this.layout, [axis === 'col' ? 'hidden_cols' : 'hidden_rows']: list };
+        this.measure();
+        if (this.lines.length) this.drawThreads(false);
+    }
+
     setMerges(merges) {
         this.merges = merges;
         this.layout = { ...this.layout, merges };
@@ -197,11 +204,55 @@ export class Grid {
     /** One step from a place: out of a merged cell by its far edge, or to the next cell. */
     step({ r, c }, dr, dc) {
         const merge = this.mergeAt(r, c);
-        if (!merge) return { r: r + dr, c: c + dc };
-        return {
-            r: dr > 0 ? merge.r2 + 1 : dr < 0 ? merge.r1 - 1 : r,
-            c: dc > 0 ? merge.c2 + 1 : dc < 0 ? merge.c1 - 1 : c,
-        };
+        const to = merge
+            ? { r: dr > 0 ? merge.r2 + 1 : dr < 0 ? merge.r1 - 1 : r, c: dc > 0 ? merge.c2 + 1 : dc < 0 ? merge.c1 - 1 : c }
+            : { r: r + dr, c: c + dc };
+        while (dr && to.r >= 0 && to.r < this.size.rows && this.rows.sizeOf(to.r) === 0) to.r += dr;
+        while (dc && to.c >= 0 && to.c < this.size.cols && this.cols.sizeOf(to.c) === 0) to.c += dc;
+        // Nothing showing that way: stay put.
+        return to.r < 0 || to.c < 0 || to.r >= this.size.rows || to.c >= this.size.cols ? { r, c } : to;
+    }
+
+    /** The nearest place that shows: hidden rows and columns cannot be stood on. */
+    showing({ r, c }) {
+        return { r: this.nearestShown(this.rows, r), c: this.nearestShown(this.cols, c) };
+    }
+
+    nearestShown(axis, at) {
+        for (let i = at; i < axis.count; i++) if (axis.sizeOf(i) > 0) return i;
+        for (let i = at; i >= 0; i--) if (axis.sizeOf(i) > 0) return i;
+        return at;
+    }
+
+    /** The hidden rows or columns just before a place. */
+    hiddenBefore(axis, at) {
+        let first = at;
+        while (first > 0 && axis.sizeOf(first - 1) === 0) first--;
+        return { first, last: at - 1 };
+    }
+
+    /** The blue dot under a point in the headers, marking hidden rows or columns. */
+    gapAt(x, y) {
+        const box = this.sheet.getBoundingClientRect();
+        const px = x - box.left;
+        const py = y - box.top;
+
+        if (py >= 0 && py < this.headHeight && px >= this.gutter) {
+            const { c } = this.hit(x, y);
+            const left = this.gutter + this.cols.offset(c) - (c < this.frozenCols ? 0 : this.sheet.scrollLeft);
+            const right = left + this.cols.sizeOf(c);
+            if (c > 0 && Math.abs(px - left) <= GAP_REACH && this.cols.sizeOf(c - 1) === 0) return { axis: 'col', ...this.hiddenBefore(this.cols, c) };
+            if (Math.abs(px - right) <= GAP_REACH && this.cols.sizeOf(c + 1) === 0) return { axis: 'col', ...this.hiddenBefore(this.cols, this.nearestShown(this.cols, c + 1)) };
+            return null;
+        }
+        if (px >= 0 && px < this.gutter && py >= this.headHeight) {
+            const { r } = this.hit(x, y);
+            const top = this.rowTop(r) - (r < this.frozenRows ? 0 : this.sheet.scrollTop) + this.headHeight;
+            const bottom = top + this.rows.sizeOf(r);
+            if (r > 0 && Math.abs(py - top) <= GAP_REACH && this.rows.sizeOf(r - 1) === 0) return { axis: 'row', ...this.hiddenBefore(this.rows, r) };
+            if (Math.abs(py - bottom) <= GAP_REACH && this.rows.sizeOf(r + 1) === 0) return { axis: 'row', ...this.hiddenBefore(this.rows, this.nearestShown(this.rows, r + 1)) };
+        }
+        return null;
     }
 
     /** How much room a cell has: all of its merge when it starts one. */
@@ -418,7 +469,9 @@ export class Grid {
         for (const m of this.nearMerges) {
             const rowDrawn = m.r1 < frozenRows || (m.r1 >= view.r1 && m.r1 <= view.r2);
             const colDrawn = m.c1 < frozenCols || (m.c1 >= view.c1 && m.c1 <= view.c2);
-            if ((!rowDrawn || !colDrawn) && rows.sizeOf(m.r1) > 0) cell(this.poolOf(m.r1, m.c1), m.r1, m.c1);
+            const hiddenStart = rows.sizeOf(m.r1) === 0 || cols.sizeOf(m.c1) === 0;
+            const { w, h } = this.drawnSpan(m);
+            if ((!rowDrawn || !colDrawn || hiddenStart) && w > 0 && h > 0) this.paintCell(this.poolOf(m.r1, m.c1).take(`${m.r1}:${m.c1}`), m.r1, m.c1, area);
         }
 
         for (const pool of pools) pool.end();
@@ -470,21 +523,25 @@ export class Grid {
     paintColumn(el, c, area) {
         const on = c >= area.c1 && c <= area.c2;
         const left = this.gutter + this.cols.offset(c);
-        const sig = `${left}|${this.cols.sizeOf(c)}|${on}|${c}`;
+        const gap = c > 0 && this.cols.sizeOf(c - 1) === 0;
+        const sig = `${left}|${this.cols.sizeOf(c)}|${on}|${c}|${gap}`;
         if (el.sig === sig) return;
         el.sig = sig;
         el.classList.toggle('on', on);
         el.classList.toggle('first', c === 0);
+        el.classList.toggle('gap', gap);
         el.style.cssText = `transform:translateX(${left}px);width:${this.cols.sizeOf(c)}px`;
         el.textContent = columnName(c);
     }
 
     paintNumber(el, r, area) {
         const on = r >= area.r1 && r <= area.r2;
-        const sig = `${this.rowTop(r)}|${this.rows.sizeOf(r)}|${on}`;
+        const gap = r > 0 && this.rows.sizeOf(r - 1) === 0;
+        const sig = `${this.rowTop(r)}|${this.rows.sizeOf(r)}|${on}|${gap}`;
         if (el.sig === sig) return;
         el.sig = sig;
         el.classList.toggle('on', on);
+        el.classList.toggle('gap', gap);
         el.style.cssText = `transform:translateY(${this.rowTop(r)}px);height:${this.rows.sizeOf(r)}px`;
         el.firstChild.textContent = r + 1;
     }

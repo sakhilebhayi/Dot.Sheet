@@ -1,6 +1,6 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
 import { fromText, toText } from './clipboard';
-import { cellName, columnIndex, show } from './format';
+import { cellName, columnIndex, columnName, show } from './format';
 import { Grid } from './grid';
 import { Server } from './server';
 import { hasContent, Store } from './store';
@@ -26,6 +26,7 @@ const MIN_COL = 48;
 const MAX_COL = 420;
 const MAX_FROZEN_ROWS = 50;
 const MAX_FROZEN_COLS = 20;
+const MAX_HIDDEN = 1000;
 const MIN_ROW = 18;
 const MAX_ROW = 120;
 
@@ -205,7 +206,7 @@ function clamp(r, c) {
 }
 
 function select(r, c, extend = false) {
-    const to = grid.anchorOf(clamp(r, c));
+    const to = grid.anchorOf(grid.showing(clamp(r, c)));
     grid.extent = to;
     if (!extend) grid.active = to;
     grid.reveal(to.r, to.c);
@@ -362,6 +363,14 @@ async function retrace(from, to, nothing) {
         const answer = await saveFreeze(step.freeze.rows, step.freeze.cols, { remember: false });
         if (!answer) return;
         to.push({ version, freeze: { tab, ...answer.undo } });
+        return;
+    }
+
+    if (step.hidden) {
+        if (step.hidden.tab !== tab) await open(step.hidden.tab);
+        const answer = await saveHidden(step.hidden.axis, step.hidden.hide, step.hidden.show, { remember: false });
+        if (!answer) return;
+        to.push({ version, hidden: { tab, axis: step.hidden.axis, ...answer.undo } });
         return;
     }
 
@@ -704,6 +713,56 @@ async function freezeHere() {
         if (grid.frozenRows < r || grid.frozenCols < c) note('Only part of that fits on this screen. The rest stays frozen on a larger one.');
         else note(r === 0 && c === 0 ? 'Nothing is frozen now.' : `Frozen above and to the left of ${cellName(r, c)}.`);
     }
+}
+
+/* Hidden rows and columns */
+
+async function saveHidden(axis, hide, show, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.hidden(tab, () => version, { axis, hide, show });
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    grid.setHidden(axis, body.hidden);
+    if (keep) {
+        undoSteps.push({ version, hidden: { tab, axis, ...body.undo } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    select(grid.active.r, grid.active.c);
+    return body;
+}
+
+const lineName = (axis, at) => (axis === 'col' ? columnName(at) : String(at + 1));
+const lineWord = (axis, count) => `${axis === 'col' ? 'column' : 'row'}${count === 1 ? '' : 's'}`;
+
+async function hideSelected(axis) {
+    const area = grid.area();
+    const [first, last] = axis === 'col' ? [area.c1, area.c2] : [area.r1, area.r2];
+    const count = last - first + 1;
+    if (count > MAX_HIDDEN) {
+        note(`Hide at most ${MAX_HIDDEN.toLocaleString('en-ZA')} ${lineWord(axis, 2)} at a time.`);
+        return;
+    }
+    const hide = Array.from({ length: count }, (_, i) => first + i);
+    if (await saveHidden(axis, hide, [])) {
+        note(`Hid ${lineWord(axis, count)} ${lineName(axis, first)}${count > 1 ? ` to ${lineName(axis, last)}` : ''}. The blue dot shows ${count === 1 ? 'it' : 'them'} again.`);
+    }
+}
+
+/** Those inside the selection, or all of them when the selection has none. */
+async function showHidden(axis) {
+    const list = grid.layout[axis === 'col' ? 'hidden_cols' : 'hidden_rows'] ?? [];
+    const area = grid.area();
+    const [first, last] = axis === 'col' ? [area.c1, area.c2] : [area.r1, area.r2];
+    const inside = list.filter((at) => at >= first && at <= last);
+    const show = (inside.length ? inside : list).slice(0, MAX_HIDDEN);
+    if (show.length === 0) {
+        note(`No ${lineWord(axis, 2)} are hidden.`);
+        return;
+    }
+    if (await saveHidden(axis, [], show)) note(`Showing ${show.length} ${lineWord(axis, show.length)} again.`);
 }
 
 /* Merged cells */
@@ -1155,6 +1214,13 @@ sheet.addEventListener('mousedown', (e) => {
 
 sheet.addEventListener('pointerdown', (e) => {
     if (e.target === sheet || e.target === box || e.button !== 0) return;
+    const gap = boot.canEdit && e.pointerType !== 'touch' ? grid.gapAt(e.clientX, e.clientY) : null;
+    if (gap) {
+        e.preventDefault();
+        closeEdit(true);
+        saveHidden(gap.axis, [], Array.from({ length: gap.last - gap.first + 1 }, (_, i) => gap.first + i));
+        return;
+    }
     const edge = boot.canEdit && e.pointerType !== 'touch' ? grid.edgeAt(e.clientX, e.clientY) : null;
     if (edge) {
         e.preventDefault();
@@ -1198,7 +1264,7 @@ window.addEventListener('pointermove', (e) => {
         return;
     }
     if (!dragging) {
-        if (boot.canEdit && e.pointerType !== 'touch' && !editing) sheet.dataset.edge = grid.edgeAt(e.clientX, e.clientY)?.axis ?? '';
+        if (boot.canEdit && e.pointerType !== 'touch' && !editing) sheet.dataset.edge = grid.gapAt(e.clientX, e.clientY) ? '' : grid.edgeAt(e.clientX, e.clientY)?.axis ?? '';
         return;
     }
     const edge = sheet.getBoundingClientRect();
@@ -1289,7 +1355,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
-    'Scripts', 'Sort', 'Filter', 'Insert or delete rows and columns', 'Hide rows or columns', 'Add, rename or delete a sheet',
+    'Scripts', 'Sort', 'Filter', 'Insert or delete rows and columns', 'Add, rename or delete a sheet',
     'Text and fill colours', 'Validation rules', 'Conditional formatting', 'Ask AI',
 ];
 
@@ -1307,6 +1373,10 @@ function choices(query) {
             { label: 'Find and replace', run: () => openFind() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
+            { label: 'Hide rows', run: () => hideSelected('row') },
+            { label: 'Hide columns', run: () => hideSelected('col') },
+            { label: 'Show hidden rows', run: () => showHidden('row') },
+            { label: 'Show hidden columns', run: () => showHidden('col') },
             { label: 'Merge cells', run: mergeCells },
             { label: 'Unmerge cells', run: unmergeCells },
             { label: 'Fill down', run: fillDown },

@@ -9,6 +9,7 @@ use App\Services\CellFormat;
 use App\Services\CellWriter;
 use App\Services\Formula\FunctionCatalogue;
 use App\Services\Formula\Recalculator;
+use App\Services\HideRefused;
 use App\Services\MergeRefused;
 use App\Services\RangeCopy;
 use App\Services\RangeFill;
@@ -47,6 +48,9 @@ class GridController extends Controller
     private const COLUMN_WIDTHS = [48, 420];
 
     private const ROW_HEIGHTS = [18, 120];
+
+    /** Most rows or columns one request may hide or show. */
+    private const MAX_HIDDEN_CHANGE = 1000;
 
     /** Most rows and columns a sheet may freeze: any more leaves nothing to scroll. */
     private const MAX_FROZEN_ROWS = 50;
@@ -534,6 +538,67 @@ class GridController extends Controller
     private function areas(array $rows): array
     {
         return array_values(array_map(fn (array $a) => ['r1' => (int) $a['r1'], 'r2' => (int) $a['r2'], 'c1' => (int) $a['c1'], 'c2' => (int) $a['c2']], $rows));
+    }
+
+    /**
+     * Hide or show rows or columns, shared with the classic editor. The answer says how to put them back.
+     */
+    public function hidden(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'axis' => 'required|in:col,row',
+            'hide' => 'present|array|max:'.self::MAX_HIDDEN_CHANGE,
+            'hide.*' => 'integer|min:0',
+            'show' => 'present|array|max:'.self::MAX_HIDDEN_CHANGE,
+            'show.*' => 'integer|min:0',
+        ]);
+
+        $column = $input['axis'] === 'col';
+        $size = $column ? SheetStructureService::GRID_COLS : SheetStructureService::GRID_ROWS;
+        $hide = array_values(array_unique(array_map('intval', $input['hide'])));
+        $show = array_values(array_unique(array_map('intval', $input['show'])));
+        if (array_filter([...$hide, ...$show], fn (int $at) => $at >= $size) !== []) {
+            return response()->json(['message' => 'That is not a place on the sheet.'], 422);
+        }
+
+        $key = $column ? 'hidden_cols' : 'hidden_rows';
+        $undo = [];
+        $list = [];
+        $written = false;
+        $busy = false;
+        try {
+            WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $key, $size, $hide, $show, &$undo, &$list, &$written) {
+                $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $key, $size, $hide, $show, &$undo, &$list) {
+                    SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($key, $size, $hide, $show, &$undo, &$list) {
+                        $held = array_map('intval', is_array($layout[$key] ?? null) ? $layout[$key] : []);
+                        $list = array_values(array_unique([...array_diff($held, $show), ...$hide]));
+                        if (count($list) >= $size) {
+                            throw new HideRefused;
+                        }
+                        $undo = ['hide' => array_values(array_diff($held, $list)), 'show' => array_values(array_diff($list, $held))];
+                        $layout[$key] = $list;
+
+                        return $layout;
+                    });
+                });
+            }, function () use (&$busy) {
+                $busy = true;
+            });
+        } catch (HideRefused) {
+            return response()->json(['message' => 'Leave at least one showing.'], 422);
+        }
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['hidden' => $list, 'undo' => $undo]);
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse

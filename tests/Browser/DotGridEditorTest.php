@@ -773,6 +773,88 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
+    /** Press a point in the headers, the way a mouse does. */
+    private function pressAt(Browser $browser, string $script): void
+    {
+        $browser->driver->executeScript(<<<JS
+            const at = (() => { {$script} })();
+            document.elementFromPoint(at.x, at.y).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: at.x, clientY: at.y, button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: at.x, clientY: at.y }));
+        JS);
+    }
+
+    public function test_hidden_rows_are_stepped_over_and_the_blue_dot_brings_them_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 0);
+            $this->runCommand($browser, 'Hide rows');
+            $browser->waitForTextIn('#note', 'Hid row 2');
+
+            $this->assertSame([1], $tab->fresh()->layout['hidden_rows']);
+            $this->assertNull($this->placeOf($browser, 'Rent'), 'A hidden row is not drawn.');
+
+            // The selection left the row it hid, and the keys step over it.
+            $browser->assertSeeIn('#ref', 'A3');
+            $browser->keys('#sheet', WebDriverKeys::ARROW_UP);
+            $browser->assertSeeIn('#ref', 'A1');
+            $browser->keys('#sheet', WebDriverKeys::ARROW_DOWN);
+            $browser->assertSeeIn('#ref', 'A3');
+
+            // A formula still reads what is hidden.
+            $this->assertNotNull($this->placeOf($browser, '600'));
+
+            // The dot on the next row number brings it back, and undo hides it again.
+            $this->assertTrue($browser->driver->executeScript("return [...document.querySelectorAll('.n.gap:not([hidden])')].some(n => n.textContent === '3')"));
+            $this->pressAt($browser, "const n = [...document.querySelectorAll('.n:not([hidden])')].find(n => n.textContent === '3').getBoundingClientRect(); return { x: n.left + n.width / 2, y: n.top + 1 };");
+            $browser->waitUsing(10, 25, fn () => $tab->fresh()->layout['hidden_rows'] === []);
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Rent') !== null);
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $tab->fresh()->layout['hidden_rows'] === [1]);
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Rent') === null);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_hidden_columns_go_and_the_palette_shows_them_again(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 1);
+            $this->runCommand($browser, 'Hide columns');
+            $browser->waitForTextIn('#note', 'Hid column B');
+            $this->assertNull($this->placeOf($browser, '1 000'));
+            $browser->assertSeeIn('#ref', 'C1');
+
+            $browser->keys('#sheet', WebDriverKeys::ARROW_LEFT);
+            $browser->assertSeeIn('#ref', 'A1');
+
+            $this->runCommand($browser, 'Show hidden columns');
+            $browser->waitForTextIn('#note', 'Showing 1 column again');
+            $this->assertSame([], $tab->fresh()->layout['hidden_cols']);
+            $this->assertNotNull($this->placeOf($browser, '1 000'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_going_to_a_hidden_cell_lands_on_the_next_one_that_shows(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['hidden_rows' => [3, 4]]])->save();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'A4');
+            $browser->waitForTextIn('#ref', 'A6');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
     public function test_looking_for_something_still_in_the_classic_editor_finds_the_way_there(): void
     {
         [$user, $sheet] = $this->sheet();

@@ -75,6 +75,7 @@ Route::middleware([
         Route::post('format', [GridController::class, 'format'])->name('format');
         Route::post('layout', [GridController::class, 'layout'])->name('layout');
         Route::post('freeze', [GridController::class, 'freeze'])->name('freeze');
+        Route::post('hidden', [GridController::class, 'hidden'])->name('hidden');
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');

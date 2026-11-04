@@ -328,7 +328,10 @@ every spreadsheet: text that only looks like a date stays text. While a formula 
 fetch a reference from: the formula stays in the bar at the top, cells picked there arrive with their sheet's name, and
 Enter lands back on the cell the formula belongs to. A template is a working workbook with no figures in it: headings,
 formulas, allowed values, colour rules and summaries, ready for someone's own numbers. The new spreadsheet page offers a
-name, an idea, a file or a template, on one page with one list of teams.
+name, an idea, a file or a template, on one page with one list of teams. While a formula is being written, a small list
+offers functions, names and sheets as a word is typed, and inside brackets it shows the function's arguments with the
+current one in bold. Tab takes the top suggestion, and Enter still finishes the formula unless an arrow key chose one.
+The function assistant finds a function by what it does and gives each argument a field that takes the selection.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

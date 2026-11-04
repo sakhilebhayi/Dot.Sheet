@@ -111,7 +111,7 @@ class GridController extends Controller
                 'rows' => SheetStructureService::GRID_ROWS,
                 'cols' => SheetStructureService::GRID_COLS,
                 'tabs' => $this->tabs($spreadsheet),
-                'functions' => array_map(fn (array $f) => ['name' => $f['name'], 'summary' => $f['summary'], 'syntax' => $f['syntax']], FunctionCatalogue::all()),
+                'functions' => FunctionCatalogue::all(),
                 'links' => [
                     'dashboard' => route('dashboard'),
                     'classic' => route('spreadsheets.classic', $spreadsheet),

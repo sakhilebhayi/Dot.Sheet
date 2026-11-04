@@ -314,6 +314,18 @@
         <ul class="people dock-list" id="names-list"></ul>
     </aside>
 
+    <div class="formula-help" id="formula-help" role="listbox" aria-label="Suggestions" hidden></div>
+
+    <aside class="dock" id="assistant" aria-label="Function assistant" hidden>
+        <div class="dock-head">
+            <h2>Functions</h2>
+            <button class="tool" type="button" id="assistant-close" aria-label="Close the function assistant">×</button>
+        </div>
+        <input class="assistant-search" id="assistant-search" autocomplete="off" spellcheck="false" placeholder="What should it do?" aria-label="Find a function">
+        <ul class="assistant-list" id="assistant-list"></ul>
+        <div class="assistant-detail" id="assistant-detail" hidden></div>
+    </aside>
+
     <aside class="dock" id="protection" aria-label="Protected cells" hidden>
         <div class="dock-head">
             <h2>Protected cells</h2>

@@ -3393,4 +3393,152 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'plain');
         });
     }
+
+    public function test_a_formula_gets_suggestions_and_its_arguments_as_it_is_typed(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SU']);
+            $browser->waitFor('#formula-help:not([hidden])')->assertSeeIn('#formula-help [aria-selected=true]', 'SUM');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::TAB]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === '=SUM(');
+            $browser->waitForTextIn('#formula-help', 'Adds numbers.');
+            $this->assertSame('number1', $browser->text('#formula-help .help-call b'));
+
+            $browser->driver->getKeyboard()->sendKeys(['B1:B2,']);
+            $browser->waitUsing(5, 25, fn () => $browser->text('#formula-help .help-call b') === '[number2]');
+            $browser->driver->getKeyboard()->sendKeys(['B1)']);
+            $browser->pause(50)->assertMissing('#formula-help:not([hidden])');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SUM(ROUND(B1,2)']);
+            $browser->waitForTextIn('#formula-help', 'Adds numbers.');
+            $this->assertSame('number1', $browser->text('#formula-help .help-call b'));
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SUM(B1:B2,B1)']);
+            $browser->pause(50)->assertMissing('#formula-help:not([hidden])');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '1 600');
+            $this->assertSame('=SUM(B1:B2,B1)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_enter_finishes_what_was_typed_unless_an_arrow_chose_a_suggestion(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SU']);
+            $browser->waitFor('#formula-help:not([hidden])');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula') === '=SU');
+
+            $this->clickCell($browser, 5, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SU']);
+            $browser->waitFor('#formula-help:not([hidden])');
+            $second = $browser->text('#formula-help [role=option]:nth-child(2) b');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ARROW_DOWN, WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "={$second}(");
+            $browser->assertVisible('.edit');
+
+            $browser->driver->getKeyboard()->sendKeys(['ROU']);
+            $browser->waitFor('#formula-help [role=option]');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $browser->waitUntilMissing('#formula-help:not([hidden])')->assertVisible('.edit');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $browser->waitUntilMissing('.edit');
+            $this->assertNull(Cell::where('sheet_tab_id', $tab->id)->where('row_index', 5)->value('formula'));
+        });
+    }
+
+    public function test_suggestions_offer_names_and_sheets_and_leave_quoted_text_alone(): void
+    {
+        [$user, $sheet, $tab] = $this->sheetWithFigures();
+        app(SheetNames::class)->add($sheet->id, $tab->id, 'Takings', 'B1:B2');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SUM(Tak']);
+            $browser->waitForTextIn('#formula-help', 'Takings')->assertSeeIn('#formula-help', 'Named range');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::TAB]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === '=SUM(Takings');
+
+            $browser->driver->getKeyboard()->sendKeys([',Cash']);
+            $browser->waitForTextIn('#formula-help', 'Cash flow')->assertSeeIn('#formula-help', 'Sheet');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::TAB]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#line') === "=SUM(Takings,'Cash flow'!");
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $browser->waitUntilMissing('.edit');
+            $this->clickCell($browser, 5, 0);
+            $browser->driver->getKeyboard()->sendKeys(['="SU']);
+            $browser->pause(100)->assertMissing('#formula-help:not([hidden])');
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+        });
+    }
+
+    public function test_the_function_assistant_finds_a_function_and_fills_it_in_from_the_sheet(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $this->runCommand($browser, 'Function assistant');
+            $browser->waitFor('#assistant:not([hidden])')->type('#assistant-search', 'multiplies');
+            $browser->waitForTextIn('#assistant-list', 'PRODUCT');
+            $browser->clear('#assistant-search')->type('#assistant-search', 'average');
+            $browser->waitForTextIn('#assistant-list', 'AVERAGE');
+            $browser->driver->executeScript("[...document.querySelectorAll('#assistant-list button')].find(b => b.querySelector('b').textContent === 'AVERAGE').click()");
+            $browser->waitForTextIn('#assistant-detail', 'For example');
+
+            $this->dragAcross($browser, 0, 1);
+            $browser->pause(100);
+            $browser->driver->executeScript("const f = document.querySelector('#assistant-detail input'); f.value = 'B1:B2'; f.dispatchEvent(new Event('input', { bubbles: true }))");
+            $browser->waitForTextIn('.assistant-preview', '=AVERAGE(B1:B2)');
+            $browser->click('#assistant-insert');
+            $browser->waitForTextIn('#note', 'Put =AVERAGE(B1:B2)');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_field_in_the_assistant_takes_the_selection(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Function assistant');
+            $browser->waitFor('#assistant:not([hidden])');
+            $browser->driver->executeScript("[...document.querySelectorAll('#assistant-list button')].find(b => b.querySelector('b').textContent === 'SUM').click()");
+            $browser->waitForTextIn('#assistant-detail', 'For example');
+            $this->dragAcross($browser, 0, 1);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#assistant-detail input') === 'A1:A2');
+            $browser->assertSeeIn('.assistant-preview', '=SUM(A1:A2)');
+        });
+    }
+
+    public function test_someone_who_can_only_read_can_look_functions_up(): void
+    {
+        [, $sheet] = $this->sheet();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Function assistant');
+            $browser->waitFor('#assistant:not([hidden])');
+            $browser->driver->executeScript("[...document.querySelectorAll('#assistant-list button')].find(b => b.querySelector('b').textContent === 'SUM').click()");
+            $browser->waitForTextIn('#assistant-detail', 'For example');
+            $browser->assertMissing('#assistant-insert:not([hidden])');
+        });
+    }
 }

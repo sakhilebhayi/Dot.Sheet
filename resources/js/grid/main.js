@@ -7,6 +7,8 @@ import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
 import { Protection } from './protection';
+import { Assistant } from './assistant';
+import { FormulaHelp } from './suggest';
 import { Notes } from './notes';
 import { Pivots } from './pivots';
 import { Server } from './server';
@@ -132,6 +134,19 @@ const pivots = new Pivots({
     refused,
     ask,
 });
+const assistant = new Assistant({
+    functions: boot.functions,
+    canEdit: () => boot.canEdit,
+    selection: selectionText,
+    resized: panelMoved,
+    opening: () => closeOtherPanels(assistant),
+    back: () => sheet.focus({ preventScroll: true }),
+    insert: (formula) => {
+        const { r, c } = grid.active;
+        write([{ row: r, col: c, value: formula }]);
+        note(`Put ${formula} in ${cellName(r, c)}.`);
+    },
+});
 const protectionPanel = new Protection({
     server,
     canKeep: boot.canKeep,
@@ -218,7 +233,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -617,6 +632,7 @@ function selected() {
     notes.follow();
     names.follow();
     protectionPanel.follow();
+    assistant.follow();
     charts.follow();
     pivots.follow();
 }
@@ -2184,9 +2200,11 @@ function beginEdit(text, typing = false, inLine = false) {
     box.value = text;
     line.value = text;
     placeBox();
+    learnNames();
     if (!inLine) {
         box.focus({ preventScroll: true });
         box.setSelectionRange(text.length, text.length);
+        formulaHelp.update();
     }
 }
 
@@ -2201,6 +2219,7 @@ function placeBox() {
 
 function closeEdit(save) {
     if (!editing) return;
+    formulaHelp.close();
     if (away) {
         comeHome(save);
         return;
@@ -2234,6 +2253,7 @@ function leave(save, move = null) {
 }
 
 function editingKeys(e) {
+    if (formulaHelp.key(e)) return;
     if (e.key === 'Enter') {
         e.preventDefault();
         leave(true, [e.shiftKey ? -1 : 1, 0]);
@@ -2258,11 +2278,13 @@ box.addEventListener('input', () => {
     pointed = null;
     line.value = box.value;
     fit();
+    formulaHelp.update();
 });
 line.addEventListener('input', () => {
     pointed = null;
     box.value = line.value;
     if (editing) fit();
+    formulaHelp.update();
 });
 line.addEventListener('focus', () => {
     if (!editing) beginEdit(contents(store.get(grid.active.r, grid.active.c)), false, true);
@@ -2280,6 +2302,38 @@ line.readOnly = !boot.canEdit;
 const typingIn = () => (document.activeElement === line ? line : box);
 
 const writingFormula = () => editing !== null && box.value.startsWith('=');
+
+// The caret moved inside a formula, so the argument in hand may have changed.
+document.addEventListener('selectionchange', () => {
+    if (editing && !formulaHelp.moved && (document.activeElement === box || document.activeElement === line)) formulaHelp.update();
+});
+
+let namesHere = [];
+
+async function learnNames() {
+    const { ok, body } = await server.names(tab);
+    namesHere = ok ? body.names.map((named) => named.name) : [];
+    if (editing && document.activeElement !== sheet) formulaHelp.update();
+}
+
+const formulaHelp = new FormulaHelp({
+    functions: boot.functions,
+    sheets: () => boot.tabs.filter((t) => !t.hidden || t.id === tab).map((t) => t.name),
+    names: () => namesHere,
+    sheetReference,
+    input: () => typingIn(),
+    chosen: (text, word) => {
+        const input = typingIn();
+        const at = input.selectionStart;
+        const start = at - word.length;
+        const value = input.value.slice(0, start) + text + input.value.slice(at);
+        box.value = value;
+        line.value = value;
+        fit();
+        input.setSelectionRange(start + text.length, start + text.length);
+        pointed = null;
+    },
+});
 
 /** A sheet's name as a formula spells it. One that could be mistaken for something else is quoted. */
 function sheetReference(name) {
@@ -2361,6 +2415,7 @@ function point(r1, c1, r2 = r1, c2 = c1) {
 
     grid.reads = [area];
     grid.paint();
+    formulaHelp.update();
 }
 
 /* The keyboard */
@@ -2765,6 +2820,7 @@ function choices(query) {
         { label: 'Protected cells', hint: 'What only the owner and admins can change', run: () => protectionPanel.toggle(true) },
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
+        { label: 'Function assistant', hint: 'Find a function and fill it in', run: () => assistant.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         { label: 'Pivot tables', hint: 'Sum a table by what is in it', run: () => pivots.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),

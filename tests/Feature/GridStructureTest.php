@@ -195,16 +195,13 @@ class GridStructureTest extends TestCase
         $this->assertSame(0, SpreadsheetVersion::where('kind', SheetVersions::SAFETY)->count());
     }
 
-    public function test_a_copy_restores_only_on_its_own_sheet_and_only_if_it_is_a_safety_copy(): void
+    public function test_a_copy_restores_only_on_its_own_sheet(): void
     {
         $other = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->owner->id, 'team_id' => $this->owner->currentTeam->id, 'name' => 'Other']);
         $copy = $this->change('delete', 'row', 1)->json('undo.restore');
 
         $this->restore($copy, $other->sheetTabs()->firstOrFail())->assertNotFound();
         $this->restore(999999)->assertNotFound();
-
-        $manual = app(SheetVersions::class)->snapshot($this->sheet->id, $this->tab->id, $this->owner->id, SheetVersions::MANUAL, 'Mine');
-        $this->restore($manual->id)->assertNotFound();
     }
 
     public function test_only_people_who_can_edit_may_change_lines_or_restore(): void

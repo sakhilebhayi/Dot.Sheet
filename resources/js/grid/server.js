@@ -34,6 +34,18 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    copies(tab) {
+        return json(`${this.base}/${tab}/copies`);
+    }
+
+    saveCopy(tab, label) {
+        return json(`${this.base}/${tab}/copies`, { method: 'POST', body: JSON.stringify({ label }) });
+    }
+
+    copyChanges(tab, id) {
+        return json(`${this.base}/${tab}/copies/${id}/changes`);
+    }
+
     sharing() {
         return json(this.shares);
     }

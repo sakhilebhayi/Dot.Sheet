@@ -1,5 +1,6 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
 import { fromText, toText } from './clipboard';
+import { Copies } from './copies';
 import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
 import { Notes } from './notes';
@@ -78,9 +79,7 @@ const notes = new Notes({
     go: goToComment,
     back: () => sheet.focus({ preventScroll: true }),
     resized: panelMoved,
-    opening: () => {
-        if (sharing && !sharing.closed) sharing.toggle(false);
-    },
+    opening: () => closeOtherPanels(notes),
     marks: showMarks,
     note,
     refused,
@@ -90,13 +89,24 @@ const sharing = boot.canShare ? new Sharing({
     server,
     back: () => sheet.focus({ preventScroll: true }),
     resized: panelMoved,
-    opening: () => {
-        if (!notes.closed) notes.toggle(false);
-    },
+    opening: () => closeOtherPanels(sharing),
     note,
     refused,
     ask,
 }) : null;
+const copies = new Copies({
+    server,
+    canEdit: boot.canEdit,
+    tab: () => tab,
+    tabName: () => boot.tabs.find((t) => t.id === tab)?.name ?? 'this sheet',
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(copies),
+    putBack: putBackCopy,
+    note,
+    refused,
+    ask,
+});
 const store = new Store(server, () => {
     grid.paint();
     selected();
@@ -121,6 +131,29 @@ function showMarks(marks) {
     notes.tally(marks);
     grid.paint();
     placeNoted();
+}
+
+/** One panel at a time, so the sheet gives up its room once. */
+function closeOtherPanels(keep) {
+    for (const panel of [notes, sharing, copies]) {
+        if (panel && panel !== keep && !panel.closed) panel.toggle(false);
+    }
+}
+
+async function putBackCopy(copy) {
+    closeEdit(true);
+    const { ok, status, body } = await server.restore(tab, () => version, copy.id);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    version = body.version;
+    undoSteps.length = 0;
+    redoSteps.length = 0;
+    if (clip) letGo();
+    await reopen();
+    await copies.load();
+    note(`Put back ${copy.name}. The sheet as it was is the newest copy here.`);
 }
 
 /** A panel took room from the sheet, or gave it back. */
@@ -175,6 +208,7 @@ async function open(id) {
     selected();
     markFound();
     if (!notes.closed) notes.load();
+    if (!copies.closed) copies.load();
 }
 
 function drawTabs() {
@@ -295,9 +329,10 @@ async function removeSheet() {
 }
 
 /** Ask first, keeping what is there unless told otherwise. */
-function ask(text, yes, then) {
+function ask(text, yes, then, no = 'Keep it') {
     confirmText.textContent = text;
     byId('confirm-yes').textContent = yes;
+    byId('confirm-no').textContent = no;
     confirmBox.returnValue = 'cancel';
     confirmBox.showModal();
     confirmBox.addEventListener('close', () => {
@@ -2202,7 +2237,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
+    'Charts', 'Pivot tables', 'Named ranges', 'Import a file',
     'Scripts',
     'Ask AI',
 ];
@@ -2269,6 +2304,7 @@ function choices(query) {
         ] : []),
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
+        { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },

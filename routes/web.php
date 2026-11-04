@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
+use App\Http\Controllers\GridCopyController;
 use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
@@ -100,6 +101,9 @@ Route::middleware([
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('copies', [GridCopyController::class, 'index'])->name('copies');
+        Route::post('copies', [GridCopyController::class, 'store'])->name('copies.store');
+        Route::get('copies/{copy}/changes', [GridCopyController::class, 'changes'])->name('copies.changes');
         Route::get('comments', [GridCommentController::class, 'index'])->name('comments');
         Route::post('comments', [GridCommentController::class, 'store'])->name('comments.store');
         Route::post('comments/{comment}/reply', [GridCommentController::class, 'reply'])->name('comments.reply');

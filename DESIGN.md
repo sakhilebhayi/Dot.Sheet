@@ -322,6 +322,11 @@ not to a position: it goes with its row through a sort, a cut, and rows going in
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
 
+**History.** The palette opens Version history in the same place, listing saved copies of the sheet in view,
+newest first. A copy someone named carries weight, and automatic ones stay soft, so the ones that matter can be
+found among many. Putting one back asks first and says how many cells change, and the sheet as it stood is kept
+as a copy, so nothing is lost by trying.
+
 **Sharing.** Share, in ink, is the one solid button in the bar, for people who may manage sharing. It opens a
 panel in the same place as comments, and only one panel is open at a time, so the sheet gives up its room once.
 The panel reads like a short sheet: who has access on dotted rows, what each can do in plain words, then who has

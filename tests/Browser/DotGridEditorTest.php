@@ -10,6 +10,7 @@ use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
 use App\Services\SheetComments;
+use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
@@ -1978,6 +1979,83 @@ class DotGridEditorTest extends DuskTestCase
             $browser->assertMissing('#do-share')->assertMissing('#sharing');
             $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'share this');
             $browser->pause(100)->assertDontSeeIn('#found', 'Share this sheet');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_copy_is_saved_and_put_back_after_saying_what_changes(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Version history');
+            $browser->waitFor('#copies')->waitForTextIn('#copies-whose', 'Saved copies of Sheet1')->assertSeeIn('#copies-list', 'No copies yet');
+            $this->assertSame('copies-label', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $browser->type('#copies-label', 'Month end')->keys('#copies-label', '{enter}');
+            $browser->waitForTextIn('#copies-list', 'Month end');
+            $browser->assertValue('#copies-label', '')->assertSeeIn('#note', 'Saved a copy');
+
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 0, 'col' => 0, 'value' => 'Changed']], $user->id);
+
+            $this->pressIn($browser, '#copies-list', 'Put back');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Put back Month end')->assertSeeIn('#confirm-text', '1 cell changes')
+                ->assertSeeIn('#confirm-text', 'kept as a copy')->assertSeeIn('#confirm-yes', 'Put it back')->assertSeeIn('#confirm-no', 'Leave the sheet as it is');
+            $this->assertNotSame('rgba(0, 0, 0, 0)', $browser->driver->executeScript("return getComputedStyle(document.getElementById('confirm-yes')).backgroundColor"), 'the action is solid ink');
+
+            $browser->click('#confirm [value=cancel]')->pause(100);
+            $this->assertSame('Changed', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->value('raw_value'), 'keeping it is the default');
+
+            $this->pressIn($browser, '#copies-list', 'Put back');
+            $browser->waitFor('#confirm[open]')->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'Put back Month end');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $browser->waitForTextIn('#copies-list', 'Before restoring');
+            $this->assertSame('Sales', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 0)->where('col_index', 0)->value('raw_value'));
+
+            // The sheet goes on working: the version in the page moved with it.
+            $this->clickCell($browser, 0, 0);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'Typed', '{enter}');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Typed');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_list_follows_the_sheet_in_view_and_only_one_panel_opens(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(SheetVersions::class)->snapshot($sheet->id, $tab->id, $user->id, SheetVersions::AUTO, 'Auto Snapshot');
+        app(SheetVersions::class)->snapshot($sheet->id, $extra->id, $user->id, SheetVersions::MANUAL, 'Stock take');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-comments')->waitFor('#notes');
+            $this->runCommand($browser, 'Version history');
+            $browser->waitForTextIn('#copies-list', 'Automatic copy')->assertMissing('#notes');
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#copies-list', 'Stock take')->assertDontSeeIn('#copies-list', 'Automatic copy')->assertSeeIn('#copies-whose', 'Saved copies of Stock');
+
+            $browser->click('#do-share')->waitFor('#sharing')->assertMissing('#copies');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_reads_the_history_and_changes_nothing(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(SheetVersions::class)->snapshot($sheet->id, $tab->id, $user->id, SheetVersions::MANUAL, 'Month end');
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Version history');
+            $browser->waitForTextIn('#copies-list', 'Month end');
+            $browser->assertMissing('#copies-form')->assertMissing('#copies-list .deeds');
             $this->assertNoConsoleErrors($browser);
         });
     }

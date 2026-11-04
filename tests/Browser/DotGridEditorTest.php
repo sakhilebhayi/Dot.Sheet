@@ -1480,4 +1480,112 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    public function test_sorting_keeps_the_heading_and_the_formulas_right_and_undo_puts_it_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Sales'], ['row' => 0, 'col' => 1, 'value' => 'Price'], ['row' => 0, 'col' => 2, 'value' => 'Double'],
+            ['row' => 1, 'col' => 0, 'value' => 'Pears'], ['row' => 1, 'col' => 1, 'value' => '30'], ['row' => 1, 'col' => 2, 'value' => '=B2*2'],
+            ['row' => 2, 'col' => 0, 'value' => 'Apples'], ['row' => 2, 'col' => 1, 'value' => '10'], ['row' => 2, 'col' => 2, 'value' => '=B3*2'],
+            ['row' => 3, 'col' => 0, 'value' => 'Figs'], ['row' => 3, 'col' => 1, 'value' => '20'], ['row' => 3, 'col' => 2, 'value' => '=B4*2'],
+        ], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+
+            $this->runCommand($browser, 'Sort A to Z');
+            $browser->waitForTextIn('#note', 'Sorted rows 2 to 4 by column B, keeping row 1 as a heading');
+
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Apples');
+            $this->assertSame('Sales', $this->cell($browser, 0, 0));
+            $this->assertSame('Figs', $this->cell($browser, 2, 0));
+            $this->assertSame('Pears', $this->cell($browser, 3, 0));
+            $this->assertSame('20', $this->cell($browser, 1, 2));
+            $this->assertSame('60', $this->cell($browser, 3, 2));
+
+            $this->runCommand($browser, 'Sort Z to A');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Pears');
+            $this->assertSame('60', $this->cell($browser, 1, 2));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Apples');
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 0) === 'Apples');
+            $this->assertSame('Pears', $this->cell($browser, 1, 0));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_sort_that_cannot_be_clean_says_why_and_moves_nothing(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['merges' => [['r1' => 1, 'r2' => 1, 'c1' => 0, 'c2' => 1]]]])->save();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+            $this->runCommand($browser, 'Sort A to Z');
+            $browser->waitForTextIn('#note', 'These rows have merged cells');
+            $this->assertSame('Net', $this->cell($browser, 2, 0));
+        });
+    }
+
+    public function test_a_filter_hides_rows_keeps_the_heading_and_waits_to_be_reapplied(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 0);
+            $this->runCommand($browser, 'Filter rows');
+            $browser->waitFor('#filterbar:not([hidden])');
+            $browser->assertSeeIn('#filter-where', 'Show rows where column A is');
+            $browser->assertSeeIn('#filter-list', 'Every row is showing');
+
+            $browser->keys('#filter-value', 'net', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#filter-list', 'Column A, containing net');
+            $browser->waitForTextIn('#note', '1 row hidden');
+            $this->assertSame([1], $tab->fresh()->layout['hidden_rows']);
+            $this->assertNull($this->placeOf($browser, 'Rent'));
+            $this->assertNotNull($this->placeOf($browser, 'Sales'), 'The heading stays.');
+            $browser->assertSeeIn('#ref', 'A3');
+
+            // A cell changed so it no longer matches stays until the filter runs again.
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'Total', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Total') !== null);
+            $this->assertSame([1], $tab->fresh()->layout['hidden_rows']);
+
+            $browser->click('#filter-reapply');
+            $browser->waitUsing(10, 25, fn () => $tab->fresh()->layout['hidden_rows'] === [1, 2]);
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Total') === null);
+
+            // Clear brings them back, and undo puts the filter on again.
+            $browser->click('#filter-clear');
+            $browser->waitForTextIn('#filter-list', 'Every row is showing');
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Rent') !== null);
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitForTextIn('#filter-list', 'Column A, containing net');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_cannot_sort_or_filter(): void
+    {
+        [, $sheet] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Sort');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Sort A to Z');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

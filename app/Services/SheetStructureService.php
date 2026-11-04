@@ -344,6 +344,9 @@ class SheetStructureService
             }
 
             $settings[$hiddenKey] = array_values(array_filter(array_map($move, is_array($settings[$hiddenKey] ?? null) ? $settings[$hiddenKey] : []), fn ($p) => $p !== null));
+            if ($isRow && isset($settings['filtered_rows'])) {
+                $settings['filtered_rows'] = array_values(array_filter(array_map($move, $settings['filtered_rows']), fn ($p) => $p !== null));
+            }
 
             $ruleKeys = $isRow ? ['validation_rules', 'conditional_formatting_rules'] : ['validation_rules', 'conditional_formatting_rules', 'filter_rules'];
             foreach ($ruleKeys as $key) {

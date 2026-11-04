@@ -139,6 +139,7 @@
     .formatbar .tool { display: inline-block; margin-left: 0; }
     .formatbar .grow { display: none; }
     .rulebar { padding: 0 12px 8px; }
+    .rulebar .tool { display: inline-block; margin-left: 0; }
     .pick { width: 30px; height: 30px; }
     .findbar input:not([type]) { width: 100%; }
     .findbar label:not(.tick) { flex: 1 1 100%; }

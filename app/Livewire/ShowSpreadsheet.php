@@ -13,6 +13,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Services\CellRules;
 use App\Services\Formula\Recalculator;
+use App\Services\SheetFilter;
 use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
@@ -1395,32 +1396,7 @@ class ShowSpreadsheet extends Component
 
     protected function matchCondition(mixed $value, string $operator, mixed $expected): bool
     {
-        if (in_array($operator, ['>', '>=', '<', '<='], true)) {
-            if (! is_numeric($value) || ! is_numeric($expected)) {
-                return false;
-            }
-
-            $lhs = (float) $value;
-            $rhs = (float) $expected;
-
-            return match ($operator) {
-                '>' => $lhs > $rhs,
-                '>=' => $lhs >= $rhs,
-                '<' => $lhs < $rhs,
-                '<=' => $lhs <= $rhs,
-                default => false,
-            };
-        }
-
-        if ($operator === 'contains') {
-            return str_contains(strtolower((string) $value), strtolower((string) $expected));
-        }
-
-        if ($operator === '!=') {
-            return (string) $value !== (string) $expected;
-        }
-
-        return (string) $value === (string) $expected;
+        return SheetFilter::matches($value, $operator, $expected);
     }
 
     #[On('insert-row-selected')]
@@ -1591,28 +1567,14 @@ class ShowSpreadsheet extends Component
 
         // The rows the filter hides are worked out from the data against ALL stored rules plus this one.
         $stored = is_array($this->storedLayout()['filter_rules'] ?? null) ? $this->storedLayout()['filter_rules'] : [];
-        $this->filterRules = [...$stored, $rule];
-        $this->applyFilterRules();
-        $rules = $this->filterRules;
-        $hidden = array_values(array_unique(array_map('intval', $this->hiddenRows)));
 
-        $this->updateLayout(function (array $settings) use ($rules, $hidden) {
-            $settings['filter_rules'] = $rules;
-            $settings['hidden_rows'] = $hidden;
-
-            return $settings;
-        });
+        $this->updateLayout(fn (array $settings) => app(SheetFilter::class)->applied($settings, (int) $this->activeSheetTabId, [...$stored, $rule]));
     }
 
     #[On('clear-filter-rules')]
     public function clearFilterRules(): void
     {
-        $this->updateLayout(function (array $settings) {
-            $settings['filter_rules'] = [];
-            $settings['hidden_rows'] = [];
-
-            return $settings;
-        });
+        $this->updateLayout(fn (array $settings) => app(SheetFilter::class)->applied($settings, (int) $this->activeSheetTabId, []));
     }
 
     #[On('sort-selected-column')]
@@ -1704,75 +1666,6 @@ class ShowSpreadsheet extends Component
         $hadUndoHistory = $this->undoStack !== [] || $this->redoStack !== [];
         $this->resyncAfterStructureChange();
         $this->structureNotice = $hadUndoHistory ? 'Undo history was cleared because rows or columns moved.' : '';
-    }
-
-    protected function applyFilterRules(): void
-    {
-        if (empty($this->filterRules)) {
-            $this->hiddenRows = [];
-
-            return;
-        }
-
-        $rows = $this->cellsQuery()
-            ->select('row_index')
-            ->distinct()
-            ->pluck('row_index')
-            ->map(fn ($r) => (int) $r)
-            ->values()
-            ->toArray();
-
-        $hidden = [];
-        foreach ($rows as $row) {
-            $keep = true;
-            foreach ($this->filterRules as $rule) {
-                $cell = $this->cellsQuery()
-                    ->where('row_index', $row)
-                    ->where('col_index', (int) ($rule['col'] ?? 0))
-                    ->first();
-
-                $value = $cell?->computed_value ?? $cell?->raw_value ?? '';
-                $type = $rule['type'] ?? 'contains';
-                if ($type === 'contains') {
-                    if (! str_contains(strtolower((string) $value), strtolower((string) ($rule['value'] ?? '')))) {
-                        $keep = false;
-                        break;
-                    }
-                } elseif ($type === 'number_between') {
-                    $min = (float) ($rule['value'] ?? 0);
-                    $max = (float) ($rule['value2'] ?? INF);
-                    if (! is_numeric($value) || (float) $value < $min || (float) $value > $max) {
-                        $keep = false;
-                        break;
-                    }
-                } elseif ($type === 'date_range') {
-                    $from = strtotime((string) ($rule['value'] ?? ''));
-                    $to = strtotime((string) ($rule['value2'] ?? ''));
-                    $actual = strtotime((string) $value);
-                    if (! $actual || ! $from || ! $to || $actual < $from || $actual > $to) {
-                        $keep = false;
-                        break;
-                    }
-                } elseif ($type === 'color') {
-                    $fmtColor = $cell?->formatting['bg_color'] ?? null;
-                    if (strtolower((string) $fmtColor) !== strtolower((string) ($rule['color'] ?? ''))) {
-                        $keep = false;
-                        break;
-                    }
-                } elseif ($type === 'condition') {
-                    if (! $this->matchCondition($value, (string) ($rule['operator'] ?? '=='), $rule['value'] ?? null)) {
-                        $keep = false;
-                        break;
-                    }
-                }
-            }
-
-            if (! $keep) {
-                $hidden[] = $row;
-            }
-        }
-
-        $this->hiddenRows = array_values(array_unique($hidden));
     }
 
     protected function evaluateAutomatedWorkflows(int $row, int $col, mixed $rawValue, mixed $computedValue): void

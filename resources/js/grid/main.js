@@ -2,7 +2,7 @@
 import { fromText, toText } from './clipboard';
 import { Charts } from './charts';
 import { Copies } from './copies';
-import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, SHEET_COLOURS, show, TEXT_COLOURS, TEXT_SIZES } from './format';
+import { cellName, columnIndex, columnName, decimalsShown, FILL_COLOURS, listAt, SHEET_COLOURS, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
@@ -29,6 +29,9 @@ const confirmText = byId('confirm-text');
 const bold = byId('do-bold');
 const percent = byId('do-percent');
 const rand = byId('do-rand');
+const numberKind = byId('number-kind');
+const fewerPlaces = byId('do-fewer');
+const morePlaces = byId('do-more-places');
 const formatbar = byId('formatbar');
 const moreFormat = byId('do-more');
 const italic = byId('do-italic');
@@ -62,6 +65,7 @@ const larger = byId('do-larger');
 
 const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
+const MAX_DECIMALS = 6;
 const MARK_INSET = 6;
 const MAX_IMPORT = 10 * 1024 * 1024;
 const IMPORT_POLL = 1000;
@@ -598,6 +602,7 @@ function selected() {
     bold.setAttribute('aria-pressed', String(Boolean(cell?.x?.bold)));
     percent.setAttribute('aria-pressed', String(cell?.x?.number_format === 'percent'));
     rand.setAttribute('aria-pressed', String(cell?.x?.number_format === 'currency'));
+    numberKind.value = numberChoice(cell);
     if (!formatbar.hidden) showFormat(cell);
     placePick();
     placeNoted();
@@ -1710,6 +1715,26 @@ function toggleNumber(format) {
     applyFormat({ number_format: cell?.x?.number_format === format ? 'general' : format });
 }
 
+/** A choice from the list: a format, and for some a currency or a date style after a colon. */
+function chooseNumber(choice) {
+    const [format, detail] = choice.split(':');
+    if (format === 'currency') applyFormat({ number_format: format, currency: detail });
+    else if (format === 'date') applyFormat({ number_format: format, date_style: detail });
+    else applyFormat({ number_format: format });
+}
+
+function numberChoice(cell) {
+    const format = cell?.x?.number_format ?? 'general';
+    if (format === 'currency') return `currency:${cell.x.currency ?? 'ZAR'}`;
+    if (format === 'date') return `date:${cell.x.date_style ?? 'iso'}`;
+    return format;
+}
+
+function stepDecimals(by) {
+    const cell = store.get(grid.active.r, grid.active.c);
+    applyFormat({ decimals: Math.min(MAX_DECIMALS, Math.max(0, decimalsShown(cell) + by)) });
+}
+
 /* Sizes */
 
 async function saveSizes(axis, sizes, { remember: keep = true } = {}) {
@@ -2643,6 +2668,17 @@ function choices(query) {
             { label: 'Show in rand', run: () => toggleNumber('currency') },
             { label: 'Show as a number', run: () => toggleNumber('number') },
             { label: 'Show as a date', run: () => toggleNumber('date') },
+            { label: 'Show as a long date', hint: '4 Nov 2026', run: () => chooseNumber('date:long') },
+            { label: 'Show as day, month, year', hint: '04/11/2026', run: () => chooseNumber('date:dmy') },
+            { label: 'Show as a time', run: () => toggleNumber('time') },
+            { label: 'Show as date and time', run: () => toggleNumber('datetime') },
+            { label: 'Show in dollars', run: () => chooseNumber('currency:USD') },
+            { label: 'Show in euros', run: () => chooseNumber('currency:EUR') },
+            { label: 'Show in pounds', run: () => chooseNumber('currency:GBP') },
+            { label: 'Show in scientific notation', run: () => toggleNumber('scientific') },
+            { label: 'Show as plain text', hint: 'Exactly as stored', run: () => toggleNumber('text') },
+            { label: 'More decimal places', run: () => stepDecimals(1) },
+            { label: 'Fewer decimal places', run: () => stepDecimals(-1) },
         ] : []),
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
@@ -2781,6 +2817,10 @@ byId('format-close').addEventListener('click', () => toggleFormatbar(false));
 // Formatting works on the selection, so pressing a tool leaves the cursor on the sheet.
 formatbar.addEventListener('mousedown', (e) => e.preventDefault());
 percent.addEventListener('click', () => toggleNumber('percent'));
+numberKind.addEventListener('change', () => chooseNumber(numberKind.value));
+fewerPlaces.addEventListener('click', () => stepDecimals(-1));
+morePlaces.addEventListener('click', () => stepDecimals(1));
+for (const control of [numberKind, fewerPlaces, morePlaces]) control.disabled = !boot.canEdit;
 rand.addEventListener('click', () => toggleNumber('currency'));
 for (const button of [bold, percent, rand, moreFormat]) button.disabled = !boot.canEdit;
 

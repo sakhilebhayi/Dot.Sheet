@@ -17,9 +17,28 @@ function grouped(abs, decimals) {
     return group(whole) + (part ? '.' + part : '');
 }
 
-function date(serial) {
-    const day = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
-    return day.toISOString().slice(0, 10);
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const SYMBOLS = { ZAR: 'R', USD: '$', EUR: '€', GBP: '£' };
+
+function date(serial, style) {
+    const day = new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000);
+    const iso = day.toISOString().slice(0, 10);
+    const [year, month, of] = iso.split('-');
+    if (style === 'long') return `${Number(of)} ${MONTHS[Number(month) - 1]} ${year}`;
+    if (style === 'dmy') return `${of}/${month}/${year}`;
+    return iso;
+}
+
+/** The part of a day a serial holds, to the minute. */
+function time(serial) {
+    const minutes = Math.round((serial - Math.floor(serial)) * 1440) % 1440;
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/** The places a cell shows now, so one more or one fewer starts from what is on the screen. */
+export function decimalsShown(cell) {
+    return show(cell).text.match(/\.(\d+)/)?.[1].length ?? 0;
 }
 
 /** @returns {{text: string, number: boolean, negative: boolean, error: boolean}} */
@@ -33,12 +52,18 @@ export function show(cell) {
     const abs = Math.abs(n);
     const sign = n < 0 ? MINUS : '';
     const format = cell.x?.number_format ?? 'general';
+    const places = Number.isInteger(cell.x?.decimals) ? cell.x.decimals : null;
 
     let text;
-    if (format === 'percent') text = (abs * 100).toFixed(1) + '%';
-    else if (format === 'currency') text = 'R ' + grouped(abs, 2);
-    else if (format === 'date') return { text: date(n), number: true, negative: false, error: false };
-    else if (format === 'number') text = grouped(abs, 2);
+    if (format === 'text') return { text: value, number: false, negative: false, error: false };
+    if (format === 'percent') text = grouped(abs * 100, places ?? 1) + '%';
+    else if (format === 'currency') text = (SYMBOLS[cell.x?.currency] ?? 'R') + ' ' + grouped(abs, places ?? 2);
+    else if (format === 'date') return { text: date(n, cell.x?.date_style), number: true, negative: false, error: false };
+    else if (format === 'time') return { text: time(n), number: true, negative: false, error: false };
+    else if (format === 'datetime') return { text: `${date(n, cell.x?.date_style)} ${time(n)}`, number: true, negative: false, error: false };
+    else if (format === 'scientific') text = abs.toExponential(places ?? 2).replace('e+', 'E+').replace('e-', 'E-');
+    else if (format === 'number') text = grouped(abs, places ?? 2);
+    else if (places !== null && format === 'general') text = grouped(abs, places);
     // A total or a count, worked out and never typed, so it cannot be a year.
     else if (format === 'amount') text = grouped(Number(abs.toPrecision(12)), null);
     // Amounts group their thousands; a year stays as typed.

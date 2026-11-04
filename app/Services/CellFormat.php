@@ -12,7 +12,13 @@ final class CellFormat
 
     private const COLOURS = ['bg_color', 'font_color', 'backgroundColor'];
 
-    private const NUMBER_FORMATS = ['general', 'percent', 'currency', 'number', 'date'];
+    public const NUMBER_FORMATS = ['general', 'percent', 'currency', 'number', 'date', 'time', 'datetime', 'scientific', 'text'];
+
+    public const CURRENCIES = ['ZAR', 'USD', 'EUR', 'GBP'];
+
+    public const DATE_STYLES = ['iso', 'long', 'dmy'];
+
+    public const MAX_DECIMALS = 6;
 
     private const ALIGNMENTS = ['left', 'center', 'right'];
 
@@ -29,6 +35,12 @@ final class CellFormat
             } elseif (in_array($key, self::COLOURS, true) && is_string($value) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $value)) {
                 $clean[$key] = $value;
             } elseif ($key === 'number_format' && in_array($value, self::NUMBER_FORMATS, true)) {
+                $clean[$key] = $value;
+            } elseif ($key === 'currency' && in_array($value, self::CURRENCIES, true)) {
+                $clean[$key] = $value;
+            } elseif ($key === 'date_style' && in_array($value, self::DATE_STYLES, true)) {
+                $clean[$key] = $value;
+            } elseif ($key === 'decimals' && is_int($value) && $value >= 0 && $value <= self::MAX_DECIMALS) {
                 $clean[$key] = $value;
             } elseif ($key === 'align' && in_array($value, self::ALIGNMENTS, true)) {
                 $clean[$key] = $value;

@@ -45,6 +45,27 @@
             <button type="button" id="do-right" aria-label="Align right" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M7 8h7M4 12h10"/></svg></button>
         </div>
         <div class="set">
+            <label class="sr" for="number-kind">How numbers show</label>
+            <select id="number-kind">
+                <option value="general">General</option>
+                <option value="number">Number</option>
+                <option value="percent">Percent</option>
+                <option value="currency:ZAR">Rand</option>
+                <option value="currency:USD">Dollar</option>
+                <option value="currency:EUR">Euro</option>
+                <option value="currency:GBP">Pound</option>
+                <option value="date:iso">2026-11-04</option>
+                <option value="date:long">4 Nov 2026</option>
+                <option value="date:dmy">04/11/2026</option>
+                <option value="time">Time</option>
+                <option value="datetime">Date and time</option>
+                <option value="scientific">Scientific</option>
+                <option value="text">Plain text</option>
+            </select>
+            <button type="button" id="do-fewer" aria-label="Fewer decimal places">.0</button>
+            <button type="button" id="do-more-places" aria-label="More decimal places">.00</button>
+        </div>
+        <div class="set">
             <button type="button" id="do-smaller" aria-label="Smaller text">A<sub>-</sub></button>
             <output id="size-now" aria-label="Text size">14</output>
             <button type="button" id="do-larger" aria-label="Larger text">A<sup>+</sup></button>

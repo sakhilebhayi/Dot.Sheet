@@ -71,6 +71,8 @@
 .formatbar .set button:hover { background: var(--raised); translate: 0 -1px; }
 .formatbar .set button:active { translate: 0 0; }
 .formatbar .set button[aria-pressed='true'] { background: var(--raised); }
+.formatbar select { height: 30px; margin-right: 4px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--ink); border-radius: 0; background: none; color: inherit; font: inherit; font-size: 13px; }
+.formatbar #do-fewer, .formatbar #do-more-places { width: auto; min-width: 30px; padding: 0 6px; border-radius: 15px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .formatbar .set button:disabled { color: var(--faint); cursor: default; background: none; translate: 0 0; }
 .formatbar svg { width: 16px; height: 16px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .formatbar output { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }

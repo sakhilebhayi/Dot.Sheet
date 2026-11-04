@@ -259,6 +259,25 @@
         </div>
     </aside>
 
+    @if ($boot['canEdit'])
+        <aside class="dock" id="macros" aria-label="Macros" hidden>
+            <div class="dock-head">
+                <h2>Macros</h2>
+                <button class="tool" type="button" id="macros-close" aria-label="Close macros">×</button>
+            </div>
+            <form class="dock-form" id="macros-form">
+                <label for="macros-name">Record a macro</label>
+                <input id="macros-name" autocomplete="off" maxlength="80" placeholder="Give it a name, if you like">
+                <button class="button" type="submit" id="macros-record">Record</button>
+                <button class="button" type="submit" id="macros-stop" hidden>Stop and save</button>
+                <p class="dock-note" id="macros-state" role="status"></p>
+                <div class="deeds"><button type="button" id="macros-discard" hidden>Discard the recording</button></div>
+            </form>
+            <p class="dock-note">A macro plays on the sheet in view, at the same cells.</p>
+            <ul class="people dock-list" id="macros-list"></ul>
+        </aside>
+    @endif
+
     <aside class="dock" id="names" aria-label="Named ranges" hidden>
         <div class="dock-head">
             <h2>Named ranges</h2>

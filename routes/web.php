@@ -6,6 +6,7 @@ use App\Http\Controllers\GridChartController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
+use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
 use App\Http\Controllers\GridShareController;
@@ -71,6 +72,11 @@ Route::middleware([
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
     Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->name('grid.add');
+    Route::prefix('spreadsheets/{spreadsheet}/macros')->name('grid.macros.')->middleware('throttle:120,1')->group(function () {
+        Route::get('/', [GridMacroController::class, 'index'])->name('index');
+        Route::post('/', [GridMacroController::class, 'store'])->name('store');
+        Route::delete('{macro}', [GridMacroController::class, 'destroy'])->name('destroy');
+    });
     Route::prefix('spreadsheets/{spreadsheet}/sharing')->name('grid.sharing.')->middleware('throttle:120,1')->group(function () {
         Route::get('/', [GridShareController::class, 'index'])->name('index');
         Route::post('people', [GridShareController::class, 'share'])->name('share');

@@ -26,15 +26,21 @@ The order is what blocks daily work first, not what is largest.
 | Named ranges | Panel in the new editor, one service for both. Names now refuse every function in the catalogue, and deleting a used name says what breaks first |
 | Charts | Panel in the new editor, one service for both. An empty cell is a gap, not a nought. Labels are kept, ranges follow rows and columns, and the chart in view follows its figures. Placing charts on the sheet is S9 |
 | Pivot tables | Panel in the new editor, one service for both. Totals are worked out from the figures, so an average's total is a true average. Empty is empty, blank labels stay in, and sources follow rows and columns |
+| Macros | Panel in the new editor, one service for both. Macros are checked as they are saved, and two people saving at once can no longer lose each other's work. Records typing only |
 | Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P12 | Scripts, AI tools | Panels | AI needs the owner's provider and cost cap |
+| P12 | AI tools | Panels | Needs the owner's provider and cost cap |
 
 ## Needs the owner
+
+**Scripts written in code.** They are not carried into the new editor. Any editor can save one, and it runs with the
+rights of whoever presses Run: the worker it runs in can still call `fetch()`, so `config/sheet.php` says itself that it
+is no sandbox. `SHEET_SCRIPTS_ENABLED` is off by default. Bringing them back needs a real sandbox first, and the
+classic editor keeps the switched-off version until it goes.
 
 **Inserting and deleting rows and columns.** `SHEET_STRUCTURE_OPS_ENABLED` is off by default in both editors
 until the multi-process race test in `tests/Feature/ProductionSettingsTest.php` has been run against the

@@ -36,6 +36,7 @@ export class Server {
         this.base = `/spreadsheets/${spreadsheetId}/tabs`;
         this.shares = `/spreadsheets/${spreadsheetId}/sharing`;
         this.imports = `/spreadsheets/${spreadsheetId}/import`;
+        this.macrosAt = `/spreadsheets/${spreadsheetId}/macros`;
         this.queue = Promise.resolve();
     }
 
@@ -49,6 +50,18 @@ export class Server {
 
     trace(tab, row, col) {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
+    }
+
+    macros() {
+        return json(this.macrosAt);
+    }
+
+    addMacro(name, actions) {
+        return json(this.macrosAt, { method: 'POST', body: JSON.stringify({ name, actions }) });
+    }
+
+    removeMacro(id) {
+        return json(`${this.macrosAt}/${id}`, { method: 'DELETE' });
     }
 
     pivots(tab) {

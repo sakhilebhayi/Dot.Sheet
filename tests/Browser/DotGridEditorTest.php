@@ -12,6 +12,7 @@ use App\Services\CellWriter;
 use App\Services\PivotTableService;
 use App\Services\SheetCharts;
 use App\Services\SheetComments;
+use App\Services\SheetMacros;
 use App\Services\SheetNames;
 use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverKeys;
@@ -869,8 +870,8 @@ class DotGridEditorTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'scripts');
-            $browser->waitForTextIn('#found', 'Scripts')->assertSeeIn('#found', 'In the classic editor');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'ask ai');
+            $browser->waitForTextIn('#found', 'Ask AI')->assertSeeIn('#found', 'In the classic editor');
 
             $browser->keys('#find', WebDriverKeys::ENTER);
             $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
@@ -2649,6 +2650,144 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#pivots-list', 'Sales')->assertMissing('#pivots-form')->assertDontSeeIn('#pivots-list', 'Delete');
             $this->pressIn($browser, '#pivots-list', 'Show');
             $browser->waitUsing(5, 25, fn () => count($this->pivotTable($browser)) === 4);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_macro_records_typing_plays_as_one_step_and_undo_takes_it_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Macros');
+            $browser->waitFor('#macros')->waitForTextIn('#macros-list', 'No macros in this spreadsheet yet');
+            $browser->assertMissing('#macros-stop');
+
+            $browser->type('#macros-name', 'Fill in')->click('#macros-record');
+            $browser->waitFor('#macros-stop')->assertSeeIn('#macros-state', 'Recording a macro: 0 edits.')->assertSeeIn('#note', 'Recording a macro');
+
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'First', '{enter}');
+            $browser->waitForTextIn('#macros-state', '1 edit.');
+            $this->clickCell($browser, 4, 1);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'Second', '{enter}');
+            $browser->waitForTextIn('#macros-state', '2 edits.');
+            $this->clickCell($browser, 4, 1);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', 'Second again', '{enter}');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 1) === 'Second again');
+            $browser->assertSeeIn('#note', 'Recording a macro: 2 edits.');
+
+            $browser->click('#macros-stop');
+            $browser->waitForTextIn('#macros-list', 'Fill in');
+            $browser->assertSeeIn('#macros-list', '2 edits')->assertSeeIn('#note', 'Saved the macro: 2 edits.')->assertVisible('#macros-record');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 1) === 'Second');
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z'], [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '');
+
+            $this->pressIn($browser, '#macros-list', 'Play');
+            $browser->waitForTextIn('#note', 'Played Fill in: 2 cells. Undo takes it back.');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 1) === 'Second again');
+            $this->assertSame('First', $this->cell($browser, 4, 0));
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '' && $this->cell($browser, 4, 1) === '');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_playing_is_not_recorded_and_a_recording_can_be_dropped(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        app(SheetMacros::class)->add($sheet->id, 'Stored', [['type' => 'set', 'row' => 5, 'col' => 0, 'value' => 'Played']]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Macros');
+            $browser->waitForTextIn('#macros-list', 'Stored');
+            $browser->click('#macros-record')->waitFor('#macros-stop');
+
+            $this->pressIn($browser, '#macros-list', 'Play');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 5, 0) === 'Played');
+            $browser->assertSeeIn('#macros-state', 'Recording a macro: 0 edits.');
+
+            $browser->click('#macros-discard')->waitUntilMissing('#macros-stop');
+            $browser->assertSeeIn('#note', 'Discarded the recording.')->assertVisible('#macros-record');
+            $this->assertCount(1, app(SheetMacros::class)->of($sheet->fresh()));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_recording_with_nothing_in_it_saves_nothing_and_a_macro_can_be_deleted(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        app(SheetMacros::class)->add($sheet->id, 'Stored', [['type' => 'set', 'row' => 5, 'col' => 0, 'value' => 'x']]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Macros');
+            $browser->waitForTextIn('#macros-list', 'Stored');
+            $browser->click('#macros-record')->waitFor('#macros-stop')->click('#macros-stop');
+            $browser->waitForTextIn('#note', 'Nothing was recorded.');
+            $this->assertCount(1, app(SheetMacros::class)->of($sheet->fresh()));
+
+            $this->pressIn($browser, '#macros-list', 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-yes', 'Delete macro')->click('#confirm-yes');
+            $browser->waitForTextIn('#macros-list', 'No macros in this spreadsheet yet');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_rule_can_refuse_part_of_a_macro_and_it_says_so(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        SheetTab::updateLayout($tab->id, fn (array $layout) => [...$layout, 'validation_rules' => [['col' => 0, 'row' => 6, 'type' => 'number', 'min' => 0, 'max' => 10]]]);
+        app(SheetMacros::class)->add($sheet->id, 'Stored', [['type' => 'set', 'row' => 5, 'col' => 0, 'value' => 'ok'], ['type' => 'set', 'row' => 6, 'col' => 0, 'value' => 'not a number']]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Macros');
+            $browser->waitForTextIn('#macros-list', 'Stored');
+            $this->pressIn($browser, '#macros-list', 'Play');
+            $browser->waitForTextIn('#note', 'Played Stored: 1 cell, 1 refused by rules on them.');
+            $this->assertSame('ok', $this->cell($browser, 5, 0));
+            $this->assertSame('', $this->cell($browser, 6, 0));
+        });
+    }
+
+    public function test_scripts_say_they_are_off(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'scripts');
+            $browser->waitForTextIn('#found', 'Not switched on')->assertDontSeeIn('#found', 'In the classic editor');
+            $browser->keys('#find', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#note', 'Scripts are turned off on this server.');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_has_no_macros(): void
+    {
+        [, $sheet] = $this->sheet();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $browser->assertMissing('#macros');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'macros');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Macros');
             $this->assertNoConsoleErrors($browser);
         });
     }

@@ -80,8 +80,11 @@ class DefaultEditorTest extends TestCase
 
     public function test_a_mention_email_opens_where_comments_are(): void
     {
-        $mail = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 0, 0, 'Look at this'))->toMail($this->owner);
+        $mail = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this', 42))->toMail($this->owner);
+        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?tab=42&cell=C2", $mail->actionUrl);
 
-        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}/classic", $mail->actionUrl);
+        // One already waiting in a queue when this shipped has no sheet to name.
+        $older = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this'))->toMail($this->owner);
+        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?cell=C2", $older->actionUrl);
     }
 }

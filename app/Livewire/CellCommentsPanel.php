@@ -5,8 +5,7 @@ namespace App\Livewire;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Comment;
 use App\Models\Spreadsheet;
-use App\Models\User;
-use App\Notifications\MentionedInComment;
+use App\Services\SheetComments;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Locked;
@@ -179,6 +178,7 @@ class CellCommentsPanel extends Component
             ->where('sheet_tab_id', $this->sheet_tab_id)
             ->where('row_index', $this->selectedRow)
             ->where('col_index', $this->selectedCol)
+            ->where('detached', false)
             ->whereNull('parent_id')
             ->orderByDesc('created_at')
             ->get();
@@ -188,46 +188,9 @@ class CellCommentsPanel extends Component
 
     protected function notifyMentions(Comment $comment): void
     {
-        preg_match_all('/@([A-Za-z0-9_.-]{2,50})/', $comment->content, $matches);
-        $tokens = array_unique($matches[1] ?? []);
-        if (empty($tokens)) {
-            return;
-        }
-
         $spreadsheet = Spreadsheet::find($this->spreadsheet_id);
-        if (! $spreadsheet) {
-            return;
-        }
-
-        $recipientIds = collect([$spreadsheet->owner_id]);
-        $recipientIds = $recipientIds->merge($spreadsheet->sharedUsers()->pluck('users.id'));
-        if ($spreadsheet->team) {
-            $recipientIds = $recipientIds->merge($spreadsheet->team->users()->pluck('users.id'));
-        }
-
-        $recipientIds = $recipientIds->unique()->reject(fn ($id) => (int) $id === (int) Auth::id());
-        if ($recipientIds->isEmpty()) {
-            return;
-        }
-
-        foreach ($tokens as $token) {
-            $users = User::whereIn('id', $recipientIds)
-                ->where(function ($q) use ($token) {
-                    $q->where('name', 'like', $token.'%')
-                        ->orWhere('email', 'like', $token.'%');
-                })
-                ->get();
-
-            foreach ($users as $user) {
-                $user->notify(new MentionedInComment(
-                    actorName: Auth::user()?->name ?? 'Someone',
-                    spreadsheetId: $this->spreadsheet_id,
-                    spreadsheetName: $spreadsheet->name,
-                    row: $comment->row_index + 1,
-                    col: $comment->col_index + 1,
-                    excerpt: mb_strimwidth($comment->content, 0, 140, '...'),
-                ));
-            }
+        if ($spreadsheet) {
+            app(SheetComments::class)->notifyMentions($spreadsheet, $comment, Auth::user());
         }
     }
 }

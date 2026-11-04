@@ -109,6 +109,8 @@ export class Grid {
         this.editable = size.editable;
         this.handle = byId('handle');
         this.onView = () => {};
+        this.marks = [];
+        this.noted = new Map();
 
         this.sheet.addEventListener('scroll', () => {
             this.slide();
@@ -121,6 +123,7 @@ export class Grid {
     setLayout(layout) {
         this.layout = layout ?? {};
         this.merges = this.layout.merges ?? [];
+        this.setMarks(this.marks);
         this.top = 0;
         this.reach = 0;
         this.measure();
@@ -192,6 +195,21 @@ export class Grid {
     setMerges(merges) {
         this.merges = merges;
         this.layout = { ...this.layout, merges };
+        this.setMarks(this.marks);
+    }
+
+    /** Open comments as [row, column, threads]. One inside a merged cell shows on the merged cell. */
+    setMarks(marks) {
+        this.marks = marks;
+        this.noted = new Map();
+        for (const [row, col, threads] of marks) {
+            const { r, c } = this.anchorOf({ r: row, c: col });
+            this.noted.set(`${r}:${c}`, (this.noted.get(`${r}:${c}`) ?? 0) + threads);
+        }
+    }
+
+    notedAt(r, c) {
+        return this.noted.get(`${r}:${c}`) ?? 0;
     }
 
     /** The merged cell a place on the sheet belongs to. */
@@ -570,6 +588,7 @@ export class Grid {
         if (this.fresh.has(`${r}:${c}`)) names += ' moved';
         if (this.isCopied(r, c)) names += ' copied';
         if (this.foundCells.has(`${r}:${c}`)) names += ' found';
+        if (this.noted.has(`${r}:${c}`)) names += ' noted';
         if (this.isFilling(r, c)) names += ' filling';
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;

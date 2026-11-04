@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Copies of one sheet: taking them, putting one back, and keeping their number in check.
  *
- * A copy holds the sheet's cells and its layout. Restoring first takes a safety copy of the sheet as it
+ * A copy holds the sheet's cells, its layout, and where its comments were. Restoring first takes a safety copy of the sheet as it
  * is, so a restore can itself be undone, then changes only the cells that differ: cells that stay keep
  * their edit history, and each changed value is recorded in it. The work reads plain rows and writes in
  * chunks, so a large sheet does not hold thousands of models in memory.
@@ -53,6 +53,7 @@ class SheetVersions
             'kind' => $kind,
             'cell_count' => count($cells),
             'layout' => SheetTab::whereKey($sheetTabId)->value('layout'),
+            'comment_places' => app(SheetComments::class)->placesOf($sheetTabId),
             'cells_snapshot' => $cells,
         ]);
 
@@ -148,6 +149,11 @@ class SheetVersions
         // A copy taken before layouts were kept has none: the sheet keeps the layout it has.
         if ($version->layout !== null) {
             SheetTab::updateLayout($sheetTabId, fn () => $version->layout);
+        }
+
+        // A copy taken before comments were kept leaves them where they are.
+        if ($version->comment_places !== null) {
+            app(SheetComments::class)->restorePlaces($sheetTabId, $version->comment_places);
         }
 
         // Every cell may have moved: editors that had the old grid open must reload, and the formulas

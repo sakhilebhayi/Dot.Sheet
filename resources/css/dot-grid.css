@@ -50,6 +50,8 @@
 .c.filled.sel::after, .c.filled.read::after, .c.filled.found::after, .c.filled.filling::after { content: ''; position: absolute; inset: 0; background: var(--wash); opacity: .45; mix-blend-mode: multiply; pointer-events: none; }
 .c.sel { background: var(--wash); }
 .c.now { box-shadow: inset 0 0 0 1.5px var(--thread); border-radius: 3px; }
+/* A comment is the person's writing, so its mark is ink, in the corner the fill dot does not use. */
+.c.noted { background-image: radial-gradient(circle at calc(100% - 6px) 6px, var(--ink) 2.6px, transparent 3.1px); }
 /* Copied cells wait with larger blue dots: no outline marching at rest. */
 .c.copied::before { width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--thread); }
 .c.moved > span { animation: moved .7s var(--ease); }
@@ -126,6 +128,53 @@
 
 .edit { position: absolute; z-index: 2; padding: 0 12px; border: 0; background: var(--sheet); box-shadow: 0 0 0 2px var(--thread); outline: none; border-radius: 3px; }
 
+/* The sheet and what sits beside it. Comments push the sheet aside, as find pushes it down. */
+.work { display: flex; min-width: 0; min-height: 0; }
+.work .sheet { flex: 1; min-width: 0; }
+#do-comments b { margin-left: 6px; color: var(--ink); font-weight: 600; }
+
+/* The way to a cell's comments, on its mark. */
+.noted-here { position: absolute; left: 0; top: 0; z-index: 3; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.noted-here::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--sheet); transition: scale .15s var(--ease); }
+.noted-here:hover::before { scale: 1.35; }
+
+.notes { flex: none; display: flex; flex-direction: column; width: 320px; min-height: 0; padding: 0 12px 0 8px; }
+.notes-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; }
+.notes h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.notes-list { flex: 1; min-height: 0; margin: 0; padding: 0 4px 0 0; overflow: auto; list-style: none; outline: none; overscroll-behavior: contain; scrollbar-color: var(--faint) transparent; }
+.notes-none { padding: 12px 0; color: var(--soft); line-height: 1.5; }
+.notes-more { padding: 10px 0; }
+.notes-more button { padding: 4px 0; border: 0; background: none; color: var(--soft); cursor: pointer; }
+.notes-more button:hover { color: var(--ink); }
+
+.thread { padding: 12px 0; border-bottom: 1px dotted var(--dot); }
+.thread.fresh { animation: settle .3s var(--ease); }
+@keyframes settle { from { translate: 0 3px; opacity: .4; } to { translate: 0 0; opacity: 1; } }
+.thread.done .text { color: var(--soft); }
+.thread-head { margin-bottom: 6px; }
+/* A thread on the active cell wears the selection's colour, as the active row number does. */
+.where { padding: 2px 9px; border: 0; border-radius: 999px; background: var(--raised); color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; transition: translate .15s var(--ease); }
+button.where:hover { translate: 0 -1px; }
+.where.gone { display: inline-block; color: var(--soft); font-weight: 500; }
+.thread.here .where:not(.gone) { background: var(--thread); color: var(--on-thread); }
+.said { margin-top: 6px; }
+.who { display: flex; justify-content: space-between; gap: 12px; margin: 0; font-size: 12px; font-weight: 500; color: var(--soft); }
+.who b { color: var(--ink); font-weight: 600; }
+.text { margin: 2px 0 0; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.replies { margin: 8px 0 0; padding: 0 0 0 12px; border-left: 1px dotted var(--dot); list-style: none; }
+.deeds { display: flex; gap: 2px; margin: 4px 0 0 -8px; }
+.deeds button { padding: 4px 8px; border: 0; border-radius: 999px; background: none; color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer; transition: background .15s, color .15s; }
+.deeds button:hover { background: var(--raised); color: var(--ink); }
+.reply { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.reply input { flex: 1; min-width: 0; padding: 6px 0; border: 0; border-bottom: 1.5px solid var(--ink); background: none; outline: none; }
+.reply input:focus { border-bottom-color: var(--thread); }
+
+.notes-form { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: end; padding: 10px 4px 2px 0; }
+.notes-form label { grid-column: 1 / -1; color: var(--soft); font-size: 12px; font-weight: 500; }
+.notes-form textarea { min-width: 0; padding: 6px 0; border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0; background: none; color: inherit; font: inherit; line-height: 1.45; resize: none; outline: none; }
+.notes-form textarea:focus { border-bottom-color: var(--thread); }
+.notes-form textarea::placeholder { color: var(--soft); opacity: 1; }
+
 /* The foot: the sheets, and a place for one more. */
 .tabs .add { padding: 5px 9px; color: var(--soft); }
 .tabs .naming { width: 16ch; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1.5px var(--thread); outline: none; font: inherit; font-weight: 600; }
@@ -141,6 +190,12 @@
     .rulebar { padding: 0 12px 8px; }
     .rulebar .tool { display: inline-block; margin-left: 0; }
     .pick { width: 30px; height: 30px; }
+    .noted-here { width: 32px; height: 32px; }
+    /* On a phone the panel sits under the sheet, so the cell it speaks of stays in view. */
+    .work { flex-direction: column; }
+    .work .sheet { flex: 1 1 0; }
+    .notes { flex: 1.3 1 0; width: auto; padding: 10px 12px 0; }
+    .deeds button { padding: 8px 10px; }
     .findbar input:not([type]) { width: 100%; }
     .findbar label:not(.tick) { flex: 1 1 100%; }
 }

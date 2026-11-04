@@ -17,6 +17,7 @@ use App\Services\MergeRefused;
 use App\Services\RangeCopy;
 use App\Services\RangeFill;
 use App\Services\RangeSort;
+use App\Services\SheetComments;
 use App\Services\SheetFilter;
 use App\Services\SheetMerges;
 use App\Services\SheetSearch;
@@ -97,6 +98,7 @@ class GridController extends Controller
                 'id' => $spreadsheet->id,
                 'name' => $spreadsheet->name,
                 'canEdit' => Auth::user()->can('update', $spreadsheet),
+                'canComment' => Auth::user()->can('comment', $spreadsheet),
                 'structure' => (bool) config('sheet.structure_ops_enabled'),
                 'version' => StructureVersion::current($spreadsheet->id),
                 'rows' => SheetStructureService::GRID_ROWS,
@@ -127,6 +129,7 @@ class GridController extends Controller
             'version' => StructureVersion::current($spreadsheet->id),
             'lastRow' => Cell::where('sheet_tab_id', $sheetTab->id)->max('row_index'),
             'lastCol' => Cell::where('sheet_tab_id', $sheetTab->id)->max('col_index'),
+            'marks' => app(SheetComments::class)->marks($sheetTab->id),
         ]);
     }
 
@@ -160,6 +163,12 @@ class GridController extends Controller
             'edits.*.x' => 'sometimes|nullable|array',
             ...$this->mergeRules('merges.add'),
             ...$this->mergeRules('merges.remove'),
+            // Undo of a sort or a cut: where the comments that moved were.
+            'comments' => 'sometimes|array|max:'.self::MAX_EDITS,
+            'comments.*.id' => 'required|integer',
+            'comments.*.tab' => 'required|integer',
+            'comments.*.row' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_ROWS - 1),
+            'comments.*.col' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
         ]);
 
         $edits = array_map(function (array $e) {
@@ -173,7 +182,16 @@ class GridController extends Controller
             'remove' => $this->areas($input['merges']['remove'] ?? []),
         ]] : [];
 
-        return $this->commit($spreadsheet, $sheetTab, (int) $input['version'], fn () => [$sheetTab->id => $edits], $writer, [], $merges);
+        return $this->commit(
+            $spreadsheet,
+            $sheetTab,
+            (int) $input['version'],
+            fn () => [$sheetTab->id => $edits],
+            $writer,
+            [],
+            $merges,
+            moveComments: isset($input['comments']) ? fn () => app(SheetComments::class)->place($spreadsheet->id, $input['comments']) : null,
+        );
     }
 
     /**
@@ -231,6 +249,7 @@ class GridController extends Controller
             $writer,
             ['area' => $target],
             $this->carriedMerges($source->id, $sheetTab->id, $area, $target, $carried['inside'], $landing['inside'], $cut),
+            moveComments: $cut ? fn () => app(SheetComments::class)->moveArea($source->id, $area, $sheetTab->id, $target['r1'] - $area['r1'], $target['c1'] - $area['c1']) : null,
         );
     }
 
@@ -715,6 +734,7 @@ class GridController extends Controller
             $writer,
             ['area' => $area, 'header' => $header],
             watch: false,
+            moveComments: fn () => app(SheetComments::class)->moveRows($sheetTab->id, $sorter->moved, $area['c1'], $area['c2']),
         );
     }
 
@@ -1181,17 +1201,19 @@ class GridController extends Controller
      * @param  callable(): array<int, list<array{row: int, col: int, value: string, x?: array<string, mixed>|null}>>  $plan  sheet id => edits, read inside the lock
      * @param  array<string, mixed>|callable(): array<string, mixed>  $extra  more for the answer
      * @param  array<int, array{add?: list<array{r1: int, r2: int, c1: int, c2: int}>, remove?: list<array{r1: int, r2: int, c1: int, c2: int}>}>  $merges  sheet id => merged cells to change, ahead of the edits
+     * @param  (callable(): list<array{id: int, tab: int, row: int, col: int}>)|null  $moveComments  moves comments after the edits, inside the lock, and says how to put them back
      */
-    private function commit(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, callable $plan, CellWriter $writer, array|callable $extra = [], array $merges = [], bool $watch = true): JsonResponse
+    private function commit(Spreadsheet $spreadsheet, SheetTab $sheetTab, int $version, callable $plan, CellWriter $writer, array|callable $extra = [], array $merges = [], bool $watch = true, ?callable $moveComments = null): JsonResponse
     {
+        $commentsBack = [];
         $results = [];
         $plans = [];
         $changes = [];
         $written = false;
         $busy = false;
         try {
-            WriteLock::guard(function () use ($spreadsheet, $sheetTab, $version, $plan, $writer, $merges, &$results, &$plans, &$changes, &$written) {
-                $written = StructureVersion::writeIfCurrent($spreadsheet->id, $version, function () use ($spreadsheet, $sheetTab, $plan, $writer, $merges, &$results, &$plans, &$changes) {
+            WriteLock::guard(function () use ($spreadsheet, $sheetTab, $version, $plan, $writer, $merges, $moveComments, &$commentsBack, &$results, &$plans, &$changes, &$written) {
+                $written = StructureVersion::writeIfCurrent($spreadsheet->id, $version, function () use ($spreadsheet, $sheetTab, $plan, $writer, $merges, $moveComments, &$commentsBack, &$results, &$plans, &$changes) {
                     foreach ($merges as $tab => $change) {
                         $changes[$tab] = SheetMerges::apply($tab, $change['add'] ?? [], $change['remove'] ?? []);
                     }
@@ -1199,6 +1221,7 @@ class GridController extends Controller
                     foreach ($plans as $tab => $edits) {
                         $results[$tab] = $writer->write($spreadsheet->id, $tab, $edits, (int) Auth::id());
                     }
+                    $commentsBack = $moveComments === null ? [] : $moveComments();
                     app(SheetVersions::class)->autoSnapshot($spreadsheet->id, $sheetTab->id, (int) Auth::id());
                 });
             }, function () use (&$busy) {
@@ -1245,6 +1268,9 @@ class GridController extends Controller
         foreach (array_keys($results + $changes) as $tab) {
             $undo[] = ['tab' => $tab, 'edits' => $results[$tab]['undo'] ?? [], ...(isset($changes[$tab]) ? ['merges' => $changes[$tab]['undo']] : [])];
         }
+        if ($commentsBack !== []) {
+            $undo[0]['comments'] = $commentsBack;
+        }
 
         return response()->json([
             'refused' => $here['refused'],
@@ -1254,6 +1280,7 @@ class GridController extends Controller
             'undo' => $undo,
             'version' => StructureVersion::current($spreadsheet->id),
             ...(isset($changes[$sheetTab->id]) ? ['merges' => $changes[$sheetTab->id]['list']] : []),
+            ...($commentsBack !== [] ? ['marks' => app(SheetComments::class)->marks($sheetTab->id)] : []),
             ...(is_callable($extra) ? $extra() : $extra),
         ]);
     }

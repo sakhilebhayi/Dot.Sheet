@@ -164,7 +164,7 @@ class WorkbookSheetsTest extends TestCase
     {
         app(Recalculator::class)->ensureBuilt($this->sheet->id, $this->first->id);
 
-        $this->getJson("/spreadsheets/{$this->sheet->id}/tabs/{$this->stock->id}/removal")->assertOk()->assertExactJson(['cells' => 1, 'readers' => 1]);
+        $this->getJson("/spreadsheets/{$this->sheet->id}/tabs/{$this->stock->id}/removal")->assertOk()->assertExactJson(['cells' => 1, 'readers' => 1, 'comments' => 0]);
     }
 
     public function test_deleting_a_sheet_takes_its_cells_and_breaks_what_read_it(): void

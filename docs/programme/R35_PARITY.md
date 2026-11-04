@@ -33,7 +33,7 @@ The order is what blocks daily work first, not what is largest.
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P12 | AI tools | Panels | Needs the owner's provider and cost cap |
+| P12 | AI tools | Done in S10 as Ask about this sheet and Check this table. Check works without AI. Ask waits for a provider, which the owner chooses | Tested with a stand-in, not a real model |
 
 ## Needs the owner
 

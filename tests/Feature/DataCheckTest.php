@@ -113,7 +113,7 @@ class DataCheckTest extends TestCase
 
     public function test_labels_that_hold_digits_are_left_alone(): void
     {
-        $this->fill([['Item', 'Code'], ['a', 'B 100'], ['b', 'Part'], ['c', 'Other']]);
+        $this->fill([['Item', 'Code'], ['a', 'Part'], ['b', 'Other'], ['c', '1 200']]);
 
         $this->assertNull($this->found('numbers'));
     }
@@ -131,7 +131,14 @@ class DataCheckTest extends TestCase
 
     public function test_an_impossible_date_is_left_alone(): void
     {
-        $this->fill([['When', 'Hours'], ['31/02/2026', '1'], ['words', '2'], ['more', '3']]);
+        $this->fill([['When', 'Hours'], ['31/02/2026', '1'], ['30/02/2026', '2']]);
+
+        $this->assertNull($this->found('dates'));
+    }
+
+    public function test_a_stray_date_in_a_column_of_words_is_left_alone(): void
+    {
+        $this->fill([['Note', 'Hours'], ['2026-11-04', '1'], ['words', '2'], ['more', '3']]);
 
         $this->assertNull($this->found('dates'));
     }

@@ -151,6 +151,18 @@ export class Server {
         return json(`${this.base}/${tab}/check`);
     }
 
+    ask(tab, question, selection) {
+        return json(`${this.base}/${tab}/ask`, { method: 'POST', body: JSON.stringify({ question, selection }) });
+    }
+
+    askRecord() {
+        return json(this.base.replace(/\/tabs$/, '/asked'));
+    }
+
+    askApplied(id, what) {
+        return json(`${this.base.replace(/\/tabs$/, '/asked')}/${id}/applied`, { method: 'POST', body: JSON.stringify({ what }) });
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

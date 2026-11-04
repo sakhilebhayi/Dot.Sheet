@@ -334,7 +334,7 @@ button.where:hover { translate: 0 -1px; }
     .work { flex-direction: column; }
     .work .sheet { flex: 1 1 0; }
     .dock { flex: 1.3 1 0; width: auto; padding: 10px 12px 0; }
-    #sharing, #copies, #names, #protection, #assistant, #explain, #check, #report, #charts, #pivots, #macros { flex-grow: 3; }
+    #sharing, #copies, #names, #protection, #assistant, #explain, #check, #ask, #report, #charts, #pivots, #macros { flex-grow: 3; }
     #charts, #pivots { width: auto; }
     .bar .share { display: none; }
     .dock .deeds button { padding: 8px 10px; }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
+use App\Http\Controllers\GridAskController;
 use App\Http\Controllers\GridChartController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
@@ -73,6 +74,8 @@ Route::middleware([
     Route::resource('spreadsheets', SpreadsheetController::class)->except('show');
     // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
+    Route::get('spreadsheets/{spreadsheet}/asked', [GridAskController::class, 'record'])->name('grid.asked');
+    Route::post('spreadsheets/{spreadsheet}/asked/{prompt}/applied', [GridAskController::class, 'applied'])->name('grid.asked.applied');
     Route::post('spreadsheets/{spreadsheet}/duplicate', [GridDuplicateController::class, 'workbook'])->middleware('throttle:20,1')->name('spreadsheets.duplicate');
     Route::get('spreadsheets/{spreadsheet}/classic', [SpreadsheetController::class, 'classic'])->name('spreadsheets.classic');
     Route::get('spreadsheets/{spreadsheet}/print', [SpreadsheetController::class, 'printOf'])->name('spreadsheets.print');
@@ -139,6 +142,7 @@ Route::middleware([
         Route::get('names', [GridNameController::class, 'index'])->name('names');
         Route::get('from-words', [GridFormulaController::class, 'fromWords'])->name('from-words');
         Route::get('check', [GridFormulaController::class, 'check'])->name('check');
+        Route::post('ask', [GridAskController::class, 'ask'])->middleware('throttle:20,1')->name('ask');
         Route::get('explain/{row}/{col}', [GridFormulaController::class, 'explain'])->whereNumber(['row', 'col'])->name('explain');
         Route::get('protections', [GridProtectionController::class, 'index'])->name('protections.index');
         Route::post('protections', [GridProtectionController::class, 'store'])->name('protections.store');

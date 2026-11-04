@@ -8,6 +8,7 @@ import { Macros } from './macros';
 import { Names } from './names';
 import { Protection } from './protection';
 import { Assistant } from './assistant';
+import { Explain } from './explain';
 import { FormulaHelp } from './suggest';
 import { Notes } from './notes';
 import { Pivots } from './pivots';
@@ -147,6 +148,22 @@ const assistant = new Assistant({
         note(`Put ${formula} in ${cellName(r, c)}.`);
     },
 });
+const explain = new Explain({
+    server,
+    canEdit: () => boot.canEdit,
+    tab: () => tab,
+    place: () => grid.active,
+    resized: panelMoved,
+    opening: () => closeOtherPanels(explain),
+    back: () => sheet.focus({ preventScroll: true }),
+    repair: async (formula) => {
+        const { r, c } = grid.active;
+        await write([{ row: r, col: c, value: formula }]);
+        explain.follow();
+        note(`Changed ${cellName(r, c)}. Undo takes it back.`);
+    },
+    refused,
+});
 const protectionPanel = new Protection({
     server,
     canKeep: boot.canKeep,
@@ -233,7 +250,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -335,6 +352,7 @@ async function open(id, stillWriting = false) {
     if (!copies.closed) copies.load();
     if (!names.closed) names.load();
     if (!protectionPanel.closed) protectionPanel.load();
+    if (!explain.closed) explain.load();
     if (!charts.closed) charts.load();
     if (!pivots.closed) pivots.load();
 }
@@ -626,6 +644,7 @@ function selected() {
     percent.setAttribute('aria-pressed', String(cell?.x?.number_format === 'percent'));
     rand.setAttribute('aria-pressed', String(cell?.x?.number_format === 'currency'));
     numberKind.value = numberChoice(cell);
+    byId('do-explain').hidden = !cell?.f;
     if (!formatbar.hidden) showFormat(cell);
     placePick();
     placeNoted();
@@ -633,6 +652,7 @@ function selected() {
     names.follow();
     protectionPanel.follow();
     assistant.follow();
+    explain.follow();
     charts.follow();
     pivots.follow();
 }
@@ -2821,6 +2841,7 @@ function choices(query) {
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         { label: 'Function assistant', hint: 'Find a function and fill it in', run: () => assistant.toggle(true) },
+        { label: 'Explain this cell', hint: 'What its formula does, or why it shows an error', run: () => explain.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         { label: 'Pivot tables', hint: 'Sum a table by what is in it', run: () => pivots.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
@@ -2952,6 +2973,7 @@ byId('format-close').addEventListener('click', () => toggleFormatbar(false));
 // Formatting works on the selection, so pressing a tool leaves the cursor on the sheet.
 formatbar.addEventListener('mousedown', (e) => e.preventDefault());
 percent.addEventListener('click', () => toggleNumber('percent'));
+byId('do-explain').addEventListener('click', () => explain.toggle());
 numberKind.addEventListener('change', () => chooseNumber(numberKind.value));
 fewerPlaces.addEventListener('click', () => stepDecimals(-1));
 morePlaces.addEventListener('click', () => stepDecimals(1));

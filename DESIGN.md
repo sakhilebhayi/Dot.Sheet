@@ -331,7 +331,9 @@ formulas, allowed values, colour rules and summaries, ready for someone's own nu
 name, an idea, a file or a template, on one page with one list of teams. While a formula is being written, a small list
 offers functions, names and sheets as a word is typed, and inside brackets it shows the function's arguments with the
 current one in bold. Tab takes the top suggestion, and Enter still finishes the formula unless an arrow key chose one.
-The function assistant finds a function by what it does and gives each argument a field that takes the selection.
+The function assistant finds a function by what it does and gives each argument a field that takes the selection. A cell
+with a formula offers Explain in the bar: the formula in plain words, and for an error what went wrong, in terms of this
+sheet's own cells, with a repair shown before it is made when one is certain.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

@@ -4,14 +4,14 @@
  */
 const stamp = new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-function make(tag, className, text) {
+export function make(tag, className, text) {
     const el = document.createElement(tag);
     if (className) el.className = className;
     if (text !== undefined) el.textContent = text;
     return el;
 }
 
-function deed(text, run) {
+export function deed(text, run) {
     const button = make('button', '', text);
     button.type = 'button';
     button.addEventListener('click', run);
@@ -21,8 +21,8 @@ function deed(text, run) {
 export class Notes {
     /**
      * @param editor what the panel needs from the sheet: server, tab(), canComment, active(), anchor(r, c),
-     *               name(r, c), go(r, c), back(), resized(), marks(list), note(text), refused(status, body),
-     *               ask(text, yes, then)
+     *               name(r, c), go(r, c), back(), resized(), opening(), marks(list), note(text),
+     *               refused(status, body), ask(text, yes, then)
      */
     constructor(editor) {
         this.editor = editor;
@@ -61,6 +61,7 @@ export class Notes {
     }
 
     toggle(show = this.closed) {
+        if (show) this.editor.opening();
         this.panel.hidden = !show;
         this.opener.setAttribute('aria-expanded', String(show));
         this.editor.resized();

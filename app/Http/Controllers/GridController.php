@@ -99,6 +99,8 @@ class GridController extends Controller
                 'name' => $spreadsheet->name,
                 'canEdit' => Auth::user()->can('update', $spreadsheet),
                 'canComment' => Auth::user()->can('comment', $spreadsheet),
+                'canShare' => Auth::user()->can('manageSharing', $spreadsheet),
+                'told' => session('success'),
                 'structure' => (bool) config('sheet.structure_ops_enabled'),
                 'version' => StructureVersion::current($spreadsheet->id),
                 'rows' => SheetStructureService::GRID_ROWS,

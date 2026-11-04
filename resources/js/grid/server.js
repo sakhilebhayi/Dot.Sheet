@@ -18,6 +18,7 @@ async function json(url, options = {}) {
 export class Server {
     constructor(spreadsheetId) {
         this.base = `/spreadsheets/${spreadsheetId}/tabs`;
+        this.shares = `/spreadsheets/${spreadsheetId}/sharing`;
         this.queue = Promise.resolve();
     }
 
@@ -31,6 +32,34 @@ export class Server {
 
     trace(tab, row, col) {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
+    }
+
+    sharing() {
+        return json(this.shares);
+    }
+
+    shareWith(email, permission, days) {
+        return json(`${this.shares}/people`, { method: 'POST', body: JSON.stringify({ email, permission, days }) });
+    }
+
+    setShareAccess(user, permission) {
+        return json(`${this.shares}/people/${user}`, { method: 'PATCH', body: JSON.stringify({ permission }) });
+    }
+
+    removeShareAccess(user) {
+        return json(`${this.shares}/people/${user}`, { method: 'DELETE' });
+    }
+
+    cancelInvitation(id) {
+        return json(`${this.shares}/invitations/${id}`, { method: 'DELETE' });
+    }
+
+    setShareLink(enabled, expiresAt) {
+        return json(`${this.shares}/link`, { method: 'POST', body: JSON.stringify({ enabled, expires_at: expiresAt }) });
+    }
+
+    newShareLink() {
+        return json(`${this.shares}/link/new`, { method: 'POST' });
     }
 
     comments(tab) {

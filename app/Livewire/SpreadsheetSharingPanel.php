@@ -4,12 +4,12 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\Spreadsheet;
-use App\Models\SpreadsheetInvitation;
 use App\Models\User;
+use App\Services\ShareRefused;
+use App\Services\SheetSharing;
 use Carbon\Carbon;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -123,44 +123,18 @@ class SpreadsheetSharingPanel extends Component
         ]);
 
         $email = strtolower(trim($this->inviteEmail));
+        $user = Auth::user();
+        abort_unless($user instanceof User, 401);
 
-        if (strcasecmp($email, (string) User::whereKey($this->spreadsheet->owner_id)->value('email')) === 0) {
-            $this->flash('Cannot share with the owner account.', 'error');
-
-            return;
-        }
-
-        // An account whose address is proven gets access at once. Anyone else, including an account that
-        // changed to this address and has not proven it, accepts an invitation sent to the address.
-        $existingUser = User::whereRaw('lower(email) = ?', [$email])->whereNotNull('email_verified_at')->first();
-        if ($existingUser) {
-            $this->spreadsheet->sharedUsers()->syncWithoutDetaching([
-                $existingUser->id => ['permission' => $this->invitePermission],
-            ]);
-
-            $this->flash('Shared with '.$email.'.', 'success');
-            $this->inviteEmail = '';
-            $this->refreshData();
+        try {
+            $shared = app(SheetSharing::class)->share($this->spreadsheet, $user, $email, $this->invitePermission, (int) $this->inviteExpiryDays);
+        } catch (ShareRefused $refused) {
+            $this->flash($refused->getMessage(), 'error');
 
             return;
         }
 
-        // External email flow: create invitation record.
-        $invite = SpreadsheetInvitation::updateOrCreate(
-            [
-                'spreadsheet_id' => $this->spreadsheet->id,
-                'email' => $email,
-                'accepted_at' => null,
-            ],
-            [
-                'invited_by' => Auth::id(),
-                'permission' => $this->invitePermission,
-                'token' => Str::random(48),
-                'expires_at' => now()->addDays((int) $this->inviteExpiryDays),
-            ]
-        );
-
-        $this->flash('Shared with '.$email.'. Send them the acceptance link below.', 'success');
+        $this->flash($shared ? 'Shared with '.$email.'.' : $email.' has no account here yet. Copy their link below and send it to them.', 'success');
         $this->inviteEmail = '';
         $this->refreshData();
     }
@@ -171,9 +145,13 @@ class SpreadsheetSharingPanel extends Component
             return;
         }
 
-        $this->spreadsheet->sharedUsers()->updateExistingPivot($userId, [
-            'permission' => $permission,
-        ]);
+        try {
+            app(SheetSharing::class)->setPermission($this->spreadsheet, (int) $userId, $permission, (int) Auth::id());
+        } catch (ShareRefused $refused) {
+            $this->flash($refused->getMessage(), 'error');
+
+            return;
+        }
 
         $this->flash('Permission updated.', 'success');
         $this->refreshData();
@@ -181,7 +159,14 @@ class SpreadsheetSharingPanel extends Component
 
     public function revokeUser($userId): void
     {
-        $this->spreadsheet->sharedUsers()->detach($userId);
+        try {
+            app(SheetSharing::class)->remove($this->spreadsheet, (int) $userId, (int) Auth::id());
+        } catch (ShareRefused $refused) {
+            $this->flash($refused->getMessage(), 'error');
+
+            return;
+        }
+
         $this->flash('User access revoked.', 'success');
         $this->refreshData();
     }
@@ -195,18 +180,9 @@ class SpreadsheetSharingPanel extends Component
 
     public function savePublicLinkSettings(): void
     {
-        $expiresAt = null;
-        if ($this->publicExpiresAt) {
-            $expiresAt = Carbon::parse($this->publicExpiresAt);
-        }
+        $this->validate(['publicExpiresAt' => 'nullable|date']);
 
-        if ($this->publicEnabled && ! $this->spreadsheet->public_token) {
-            $this->spreadsheet->public_token = Str::random(40);
-        }
-
-        $this->spreadsheet->public_enabled = (bool) $this->publicEnabled;
-        $this->spreadsheet->public_expires_at = $expiresAt;
-        $this->spreadsheet->save();
+        app(SheetSharing::class)->setLink($this->spreadsheet, (bool) $this->publicEnabled, $this->publicExpiresAt ? Carbon::parse($this->publicExpiresAt) : null);
 
         $this->flash('Public link settings saved.', 'success');
         $this->refreshData();
@@ -214,9 +190,7 @@ class SpreadsheetSharingPanel extends Component
 
     public function regeneratePublicToken(): void
     {
-        $this->spreadsheet->public_token = Str::random(40);
-        $this->spreadsheet->public_enabled = true;
-        $this->spreadsheet->save();
+        app(SheetSharing::class)->newLink($this->spreadsheet);
 
         $this->flash('Public link regenerated.', 'success');
         $this->refreshData();

@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
+use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
@@ -66,6 +67,15 @@ Route::middleware([
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
     Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->name('grid.add');
+    Route::prefix('spreadsheets/{spreadsheet}/sharing')->name('grid.sharing.')->middleware('throttle:120,1')->group(function () {
+        Route::get('/', [GridShareController::class, 'index'])->name('index');
+        Route::post('people', [GridShareController::class, 'share'])->name('share');
+        Route::patch('people/{user}', [GridShareController::class, 'change'])->name('change');
+        Route::delete('people/{user}', [GridShareController::class, 'remove'])->name('remove');
+        Route::delete('invitations/{invitation}', [GridShareController::class, 'cancel'])->name('cancel');
+        Route::post('link', [GridShareController::class, 'link'])->name('link');
+        Route::post('link/new', [GridShareController::class, 'newLink'])->name('link.new');
+    });
     Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware('throttle:1200,1')->group(function () {
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
         Route::get('cells', [GridController::class, 'cells'])->name('cells');

@@ -44,6 +44,9 @@ class Spreadsheet extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsTo<Team, $this>
+     */
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
@@ -64,6 +67,9 @@ class Spreadsheet extends Model
         return $this->sheetTabs()->orderBy('sort_order')->orderBy('id')->first();
     }
 
+    /**
+     * @return BelongsToMany<User, $this>
+     */
     public function sharedUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'spreadsheet_user')
@@ -86,6 +92,9 @@ class Spreadsheet extends Model
         return $this->hasMany(SpreadsheetVersion::class);
     }
 
+    /**
+     * @return HasMany<SpreadsheetInvitation, $this>
+     */
     public function invitations(): HasMany
     {
         return $this->hasMany(SpreadsheetInvitation::class);

@@ -322,6 +322,13 @@ not to a position: it goes with its row through a sort, a cut, and rows going in
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
 
+**Sharing.** Share, in ink, is the one solid button in the bar, for people who may manage sharing. It opens a
+panel in the same place as comments, and only one panel is open at a time, so the sheet gives up its room once.
+The panel reads like a short sheet: who has access on dotted rows, what each can do in plain words, then who has
+yet to accept, then the link for anyone. It says what it does: nothing is emailed, so an invitation is a link to
+pass on, and the public link shows the first sheet only. Making a new link asks first, because the old one cannot
+be brought back. Nobody can change their own access here, because one slip would lock them out.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

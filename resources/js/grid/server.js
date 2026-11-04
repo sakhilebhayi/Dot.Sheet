@@ -124,6 +124,10 @@ export class Server {
         return json(`${this.base}/${tab}/names`);
     }
 
+    explain(tab, row, col) {
+        return json(`${this.base}/${tab}/explain/${row}/${col}`);
+    }
+
     protections(tab) {
         return json(`${this.base}/${tab}/protections`);
     }

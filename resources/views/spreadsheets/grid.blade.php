@@ -26,6 +26,7 @@
             <button type="button" id="do-more" aria-label="More formatting" aria-expanded="false" aria-controls="formatbar">Aa</button>
         </div>
         <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
+        <button class="tool quiet" id="do-explain" type="button" hidden>Explain</button>
         <button class="tool quiet" id="do-comments" type="button" aria-expanded="false" aria-controls="notes">Comments<b id="notes-count" hidden></b></button>
         <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
         @if ($boot['canShare'])
@@ -315,6 +316,14 @@
     </aside>
 
     <div class="formula-help" id="formula-help" role="listbox" aria-label="Suggestions" hidden></div>
+
+    <aside class="dock" id="explain" aria-label="Explain this cell" hidden>
+        <div class="dock-head">
+            <h2>Explain this cell</h2>
+            <button class="tool" type="button" id="explain-close" aria-label="Close the explanation">×</button>
+        </div>
+        <div class="assistant-detail" id="explain-body"></div>
+    </aside>
 
     <aside class="dock" id="assistant" aria-label="Function assistant" hidden>
         <div class="dock-head">

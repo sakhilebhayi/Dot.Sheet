@@ -7,6 +7,7 @@ use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
 use App\Http\Controllers\GridDuplicateController;
+use App\Http\Controllers\GridFormulaController;
 use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
@@ -132,6 +133,7 @@ Route::middleware([
         Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
         Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');
+        Route::get('explain/{row}/{col}', [GridFormulaController::class, 'explain'])->whereNumber(['row', 'col'])->name('explain');
         Route::get('protections', [GridProtectionController::class, 'index'])->name('protections.index');
         Route::post('protections', [GridProtectionController::class, 'store'])->name('protections.store');
         Route::delete('protections/{protection}', [GridProtectionController::class, 'destroy'])->name('protections.destroy');

@@ -3541,4 +3541,51 @@ class DotGridEditorTest extends DuskTestCase
             $browser->assertMissing('#assistant-insert:not([hidden])');
         });
     }
+
+    public function test_a_broken_formula_is_explained_and_repaired_and_undo_takes_it_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $browser->assertMissing('#do-explain:not([hidden])');
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['=SUMM(B1:B2)', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => str_starts_with($this->cell($browser, 4, 0), '#'));
+
+            $this->clickCell($browser, 4, 0);
+            $browser->waitFor('#do-explain:not([hidden])')->click('#do-explain');
+            $browser->waitForTextIn('#explain-body', 'A misspelt function');
+            $browser->assertSeeIn('#explain-body', 'Did you mean SUM?')->assertSeeIn('#explain-body', '=SUM(B1:B2)');
+
+            $browser->click('#explain-fix');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '600');
+            $browser->waitForTextIn('#explain-body', 'The total of cells B1 to B2.')->assertMissing('#explain-fix');
+
+            $this->clickCell($browser, 1, 0);
+            $browser->waitForTextIn('#explain-body', 'holds no formula');
+
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => str_starts_with($this->cell($browser, 4, 0), '#'));
+            $this->assertSame('=SUMM(B1:B2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula'));
+        });
+    }
+
+    public function test_someone_who_can_only_read_sees_why_but_no_repair(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 0, 'value' => '=SUMM(B1:B2)']], $user->id);
+        $tab->update(['formulas_built_at' => null]);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->waitFor('#do-explain:not([hidden])')->click('#do-explain');
+            $browser->waitForTextIn('#explain-body', 'A misspelt function')->assertMissing('#explain-fix');
+        });
+    }
 }

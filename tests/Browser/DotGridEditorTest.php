@@ -3198,6 +3198,8 @@ class DotGridEditorTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
             foreach (self::shownNumbers() as $row => [, , $text]) {
+                // Only the rows in view are drawn, and the window may be short.
+                $browser->driver->executeScript("document.getElementById('sheet').scrollTop = arguments[0]", [($row + 4) * 30]);
                 $browser->waitUsing(5, 25, fn () => $this->cell($browser, $row + 4, 0) !== '');
                 $this->assertSame($text, $this->cell($browser, $row + 4, 0));
             }

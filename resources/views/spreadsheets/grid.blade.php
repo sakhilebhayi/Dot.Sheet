@@ -433,7 +433,7 @@
         </div>
     </footer>
 
-    <input id="import-file" type="file" accept=".csv,.xlsx,.xls" aria-label="Import a file" hidden>
+    <input id="import-file" type="file" accept=".csv,.tsv,.xlsx,.xls,.ods" aria-label="Import a file" hidden>
 
     <dialog id="confirm" aria-labelledby="confirm-text">
         <form method="dialog" class="confirm">

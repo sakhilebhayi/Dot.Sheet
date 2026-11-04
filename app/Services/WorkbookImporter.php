@@ -7,6 +7,7 @@ use App\Models\NamedRange;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
+use App\Services\Formula\Recalculator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -91,6 +92,46 @@ class WorkbookImporter
 
             return $spreadsheet;
         });
+    }
+
+    /**
+     * The first sheet of a file, written over a sheet from A1 with its formulas and formatting. Cells
+     * outside the file stay, as they do for any import.
+     *
+     * @return array{success: true, rows: int, cells: int, other_sheets: int, left: list<array{what: string, why: string}>}
+     */
+    public function intoSheet(string $path, string $extension, Spreadsheet $spreadsheet, SheetTab $tab): array
+    {
+        $found = $this->reader->read($path, $extension);
+        $sheet = $found['sheets'][0];
+
+        DB::transaction(function () use ($sheet, $spreadsheet, $tab) {
+            $now = now();
+            foreach (array_chunk($sheet['cells'], self::CHUNK) as $chunk) {
+                DB::table('cells')->upsert(array_map(fn (array $cell) => [
+                    'spreadsheet_id' => $spreadsheet->id,
+                    'sheet_tab_id' => $tab->id,
+                    'row_index' => $cell['r'],
+                    'col_index' => $cell['c'],
+                    'raw_value' => $cell['value'],
+                    'computed_value' => null,
+                    'formula' => $cell['formula'],
+                    'formatting' => $cell['x'] === null ? null : json_encode($cell['x']),
+                    'updated_at' => $now,
+                ], $chunk), ['spreadsheet_id', 'sheet_tab_id', 'row_index', 'col_index'], ['raw_value', 'computed_value', 'formula', 'formatting', 'updated_at']);
+            }
+            $widths = $sheet['layout']['col_widths'] ?? [];
+            SheetTab::updateLayout($tab->id, fn (array $layout) => [...$layout, 'col_widths' => array_replace($layout['col_widths'] ?? [], $widths)]);
+            app(Recalculator::class)->markWorkbookStale($spreadsheet->id);
+        });
+
+        return [
+            'success' => true,
+            'rows' => count(array_unique(array_column($sheet['cells'], 'r'))),
+            'cells' => count($sheet['cells']),
+            'other_sheets' => count($found['sheets']) - 1,
+            'left' => $this->report(1, 0, 0, 0, $found)['left'],
+        ];
     }
 
     /**

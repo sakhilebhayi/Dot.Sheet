@@ -11,6 +11,7 @@ use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
 use App\Services\IdeaStarts;
 use App\Services\ProtectionRefused;
+use App\Services\SheetPage;
 use App\Services\SheetPrint;
 use App\Services\SheetProtections;
 use App\Services\SheetVersions;
@@ -18,6 +19,9 @@ use App\Services\SpreadsheetImportExportService;
 use App\Services\TemplateCatalogue;
 use App\Services\WorkbookBuilder;
 use App\Services\WorkbookImporter;
+use App\Services\WorkbookWriter;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -317,11 +321,11 @@ class SpreadsheetController extends Controller
         $this->authorize('update', $spreadsheet);
 
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
+            'file' => 'required|file|extensions:csv,txt,tsv,xlsx,xls,ods|max:10240',
             'sheet_tab_id' => 'nullable|integer|exists:sheet_tabs,id',
         ], [
             'file.required' => 'Choose a file to import.',
-            'file.mimes' => 'Import a CSV or Excel file.',
+            'file.extensions' => 'Import a CSV or Excel file.',
             'file.max' => 'That file is larger than 10 MB.',
         ]);
 
@@ -340,8 +344,16 @@ class SpreadsheetController extends Controller
             ? app(SheetVersions::class)->snapshot($spreadsheet->id, $tab->id, (int) Auth::id(), SheetVersions::SAFETY, 'Before importing '.Str::limit($file->getClientOriginalName(), 80))
             : null;
 
-        $service = new SpreadsheetImportExportService;
-        $result = $service->importFile($spreadsheet, $file, $tab);
+        $importer = app(WorkbookImporter::class);
+        $extension = strtolower($file->getClientOriginalExtension());
+        try {
+            $result = $tab !== null && in_array($extension, ['xlsx', 'xls', 'ods'], true) && $importer->fits($file->getRealPath(), $extension)
+                ? $importer->intoSheet($file->getRealPath(), $extension, $spreadsheet, $tab)
+                : (new SpreadsheetImportExportService)->importFile($spreadsheet, $file, $tab);
+        } catch (\Exception $e) {
+            report($e);
+            $result = ['success' => false, 'error' => SpreadsheetImportExportService::UNREADABLE_MESSAGE];
+        }
 
         if (! ($result['success'] ?? false)) {
             $copy?->delete();
@@ -439,6 +451,59 @@ class SpreadsheetController extends Controller
             'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
+    }
+
+    public function exportTsv(Request $request, Spreadsheet $spreadsheet)
+    {
+        $this->authorize('view', $spreadsheet);
+
+        $text = (new SpreadsheetImportExportService)->exportCsv($spreadsheet, $this->resolveSheetTab($request, $spreadsheet), "\t");
+        $filename = \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').'.tsv';
+
+        return response($text, 200, ['Content-Type' => 'text/tab-separated-values', 'Content-Disposition' => "attachment; filename=\"{$filename}\""]);
+    }
+
+    /**
+     * The whole workbook, every sheet, with its formulas and formatting.
+     */
+    public function exportWorkbook(Spreadsheet $spreadsheet, string $format, WorkbookWriter $writer)
+    {
+        $this->authorize('view', $spreadsheet);
+
+        try {
+            $path = $writer->write($spreadsheet, $format);
+        } catch (ExportTooLargeException $e) {
+            abort(413, $e->getMessage());
+        }
+
+        return response()->download($path, \Str::slug($spreadsheet->name).'_'.now()->format('Ymd').".{$format}")->deleteFileAfterSend();
+    }
+
+    /** The open sheet laid out for paper. Printing goes through the browser. */
+    public function printSheet(Request $request, Spreadsheet $spreadsheet, SheetPage $pages)
+    {
+        $this->authorize('view', $spreadsheet);
+        $tab = $this->resolveSheetTab($request, $spreadsheet);
+
+        return view('spreadsheets.page', ['spreadsheet' => $spreadsheet, 'tab' => $tab, 'page' => $pages->of($spreadsheet, $tab), 'forPdf' => false]);
+    }
+
+    public function exportPdf(Request $request, Spreadsheet $spreadsheet, SheetPage $pages)
+    {
+        $this->authorize('view', $spreadsheet);
+        $tab = $this->resolveSheetTab($request, $spreadsheet);
+        $page = $pages->of($spreadsheet, $tab);
+        abort_if($page['too_large'], 413, 'This sheet is too large for a PDF. Download it as Excel instead.');
+
+        // Nothing it draws may reach out: the page holds what people typed.
+        $pdf = new Dompdf(new Options(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'isJavascriptEnabled' => false]));
+        $pdf->loadHtml(view('spreadsheets.page', ['spreadsheet' => $spreadsheet, 'tab' => $tab, 'page' => $page, 'forPdf' => true])->render());
+        $pdf->setPaper('A4', 'landscape');
+        $pdf->render();
+
+        $filename = \Str::slug($spreadsheet->name).'_'.\Str::slug((string) $tab->name).'.pdf';
+
+        return response((string) $pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => "attachment; filename=\"{$filename}\""]);
     }
 
     /**

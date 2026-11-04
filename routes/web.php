@@ -155,6 +155,10 @@ Route::middleware([
 
     Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->name('spreadsheets.import');
     Route::get('spreadsheets/{spreadsheet}/import/batches/{batchId}', [SpreadsheetController::class, 'importBatchStatus'])->name('spreadsheets.import.batch-status');
+    Route::get('spreadsheets/{spreadsheet}/export/workbook/{format}', [SpreadsheetController::class, 'exportWorkbook'])->whereIn('format', ['xlsx', 'ods'])->middleware('throttle:20,1')->name('spreadsheets.export.workbook');
+    Route::get('spreadsheets/{spreadsheet}/export/pdf', [SpreadsheetController::class, 'exportPdf'])->middleware('throttle:20,1')->name('spreadsheets.export.pdf');
+    Route::get('spreadsheets/{spreadsheet}/export/tsv', [SpreadsheetController::class, 'exportTsv'])->name('spreadsheets.export.tsv');
+    Route::get('spreadsheets/{spreadsheet}/print-sheet', [SpreadsheetController::class, 'printSheet'])->middleware('throttle:60,1')->name('spreadsheets.print-sheet');
     Route::get('spreadsheets/{spreadsheet}/export/csv', [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');
     Route::get('spreadsheets/{spreadsheet}/export/excel', [SpreadsheetController::class, 'exportExcel'])->name('spreadsheets.export.excel');
 

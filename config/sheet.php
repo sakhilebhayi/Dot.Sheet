@@ -42,6 +42,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Largest sheet laid out for paper
+    |--------------------------------------------------------------------------
+    |
+    | Print and PDF draw every cell as a table cell. A PDF is built in the request and the time
+    | it takes grows quickly with the size of the table. 0 turns the limit off.
+    |
+    */
+    'page_max_cells' => (int) env('SHEET_PAGE_MAX_CELLS', 5000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Largest import that runs inside the request
     |--------------------------------------------------------------------------
     |

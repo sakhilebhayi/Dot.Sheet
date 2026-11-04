@@ -134,6 +134,8 @@ class ImportCellThresholdTest extends TestCase
 
     public function test_xlsx_is_queued_by_cell_count_too(): void
     {
+        // Too large to read whole, so it comes in as values through the queue.
+        config(['sheet.import_whole_max_cells' => 1]);
         Bus::fake();
 
         $this->upload($this->xlsx($this->grid(100, 59)))->assertJson(['success' => true, 'cells' => 5900]);
@@ -275,6 +277,8 @@ class ImportCellThresholdTest extends TestCase
 
     public function test_uneven_xlsx_chunks_reproduce_the_exact_cell_grid_through_a_real_worker(): void
     {
+        // Too large to read whole, so it comes in as values through the queue.
+        config(['sheet.import_whole_max_cells' => 1]);
         config(['queue.default' => 'database', 'sheet.import_inline_max_cells' => 10, 'sheet.import_chunk_cells' => 10]);
         $grid = $this->raggedGrid();
 

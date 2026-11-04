@@ -2735,7 +2735,7 @@ async function importInto(file) {
         return;
     }
     const { cells, copied } = before.body;
-    const excel = /\.xlsx?$/i.test(file.name) ? ' Only the first sheet of an Excel file comes in, and its formulas come in as text.' : '';
+    const excel = /\.(xlsx?|ods)$/i.test(file.name) ? ' Only the first sheet of the file comes in. To bring them all, start a new spreadsheet from it.' : '';
     if (cells === 0 && !excel) {
         sendImport(file);
         return;
@@ -2765,7 +2765,9 @@ async function sendImport(file) {
     if (clip) letGo();
     if (tab === into) await reopen();
     // Last: reloading the sheet clears the note.
-    note(stopped || `Imported ${body.rows.toLocaleString('en-ZA')} ${body.rows === 1 ? 'row' : 'rows'}.${body.copied ? ' The sheet as it was is in Version history.' : ''}`);
+    const others = body.other_sheets > 0 ? ` ${body.other_sheets} other ${body.other_sheets === 1 ? 'sheet' : 'sheets'} stayed in the file.` : '';
+    const left = body.left?.length > 0 ? ` Left behind: ${body.left.map((part) => part.what).join(', ')}.` : '';
+    note(stopped || `Imported ${body.rows.toLocaleString('en-ZA')} ${body.rows === 1 ? 'row' : 'rows'}.${others}${left}${body.copied ? ' The sheet as it was is in Version history.' : ''}`);
 }
 
 /** A large file runs in the background. Answers why it stopped, or nothing when all of it landed. */
@@ -2889,8 +2891,13 @@ function choices(query) {
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         { label: 'Pivot tables', hint: 'Sum a table by what is in it', run: () => pivots.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
-        { label: 'Download as CSV', href: boot.links.csv },
-        { label: 'Download as Excel', href: boot.links.excel },
+        { label: 'Download this workbook as Excel', hint: 'Every sheet, with formulas and formats', href: boot.links.workbookExcel },
+        { label: 'Download this workbook as ODS', hint: 'Every sheet, with formulas and formats', href: boot.links.workbookOds },
+        { label: 'Download this sheet as CSV', href: `${boot.links.csv}?sheet_tab_id=${tab}` },
+        { label: 'Download this sheet as TSV', href: `${boot.links.tsv}?sheet_tab_id=${tab}` },
+        { label: 'Download this sheet as Excel', hint: 'Values only', href: `${boot.links.excel}?sheet_tab_id=${tab}` },
+        { label: 'Download this sheet as PDF', href: `${boot.links.pdf}?sheet_tab_id=${tab}` },
+        { label: 'Print this sheet', href: `${boot.links.print}?sheet_tab_id=${tab}` },
         { label: 'Open the classic editor', href: boot.links.classic },
         { label: 'All spreadsheets', href: boot.links.dashboard },
     ];

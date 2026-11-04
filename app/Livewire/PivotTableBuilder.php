@@ -6,6 +6,7 @@ use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Models\PivotTable;
 use App\Models\Spreadsheet;
+use App\Services\PivotRefused;
 use App\Services\PivotTableService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
@@ -106,16 +107,13 @@ class PivotTableBuilder extends Component
 
         $this->validate();
 
-        $pivot = PivotTable::create([
-            'spreadsheet_id' => $this->spreadsheet_id,
-            'sheet_tab_id' => $this->sheet_tab_id,
-            'title' => $this->title,
-            'source_range' => strtoupper($this->source_range),
-            'row_field' => strtoupper($this->row_field),
-            'column_field' => $this->column_field !== '' ? strtoupper($this->column_field) : null,
-            'value_field' => strtoupper($this->value_field),
-            'aggregation' => $this->aggregation,
-        ]);
+        try {
+            $pivot = app(PivotTableService::class)->add((int) $this->spreadsheet_id, (int) $this->sheet_tab_id, $this->title, $this->source_range, $this->row_field, $this->column_field, $this->value_field, $this->aggregation);
+        } catch (PivotRefused $refused) {
+            $this->addError('source_range', $refused->getMessage());
+
+            return;
+        }
 
         $this->loadPivots();
         $this->showModal = false;

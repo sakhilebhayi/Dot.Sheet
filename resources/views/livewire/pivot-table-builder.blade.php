@@ -153,11 +153,11 @@
                                         </td>
                                         @foreach ($result['columnLabels'] as $columnLabel)
                                             <td class="border border-gray-200 dark:border-gray-600 px-3 py-2 text-right text-gray-700 dark:text-gray-300">
-                                                {{ number_format($result['matrix'][$rowLabel][$columnLabel] ?? 0, 2) }}
+                                                {{ isset($result['matrix'][$rowLabel][$columnLabel]) ? number_format($result['matrix'][$rowLabel][$columnLabel], 2) : '' }}
                                             </td>
                                         @endforeach
                                         <td class="border border-gray-200 dark:border-gray-600 px-3 py-2 text-right font-semibold bg-gray-50 dark:bg-gray-700/50">
-                                            {{ number_format($result['rowTotals'][$rowLabel] ?? 0, 2) }}
+                                            {{ isset($result['rowTotals'][$rowLabel]) ? number_format($result['rowTotals'][$rowLabel], 2) : '' }}
                                         </td>
                                     </tr>
                                 @endforeach
@@ -167,11 +167,11 @@
                                     <td class="border border-gray-200 dark:border-gray-600 px-3 py-2 bg-gray-200 dark:bg-gray-600 font-bold">Total</td>
                                     @foreach ($result['columnLabels'] as $columnLabel)
                                         <td class="border border-gray-200 dark:border-gray-600 px-3 py-2 text-right font-semibold bg-gray-200 dark:bg-gray-600">
-                                            {{ number_format($result['columnTotals'][$columnLabel] ?? 0, 2) }}
+                                            {{ isset($result['columnTotals'][$columnLabel]) ? number_format($result['columnTotals'][$columnLabel], 2) : '' }}
                                         </td>
                                     @endforeach
                                     <td class="border border-gray-200 dark:border-gray-600 px-3 py-2 text-right font-bold bg-gray-300 dark:bg-gray-500">
-                                        {{ number_format($result['grandTotal'] ?? 0, 2) }}
+                                        {{ isset($result['grandTotal']) ? number_format($result['grandTotal'], 2) : '' }}
                                     </td>
                                 </tr>
                             </tfoot>

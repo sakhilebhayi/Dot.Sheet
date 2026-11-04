@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\NamedRange;
+use App\Models\PivotTable;
 use App\Models\SheetTab;
 use App\Services\Formula\Recalculator;
 use Illuminate\Database\QueryException;
@@ -135,6 +136,7 @@ class SheetStructureService
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, 1);
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, 1);
             $this->shiftCharts($sheetTabId, $axis, $index, 1);
+            $this->shiftPivots($sheetTabId, $axis, $index, 1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -154,6 +156,7 @@ class SheetStructureService
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, -1);
             app(SheetComments::class)->shift($sheetTabId, $axis, $index, -1);
             $this->shiftCharts($sheetTabId, $axis, $index, -1);
+            $this->shiftPivots($sheetTabId, $axis, $index, -1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -444,6 +447,30 @@ class SheetStructureService
                 $chart->labels_range = $this->rewriteReferences($chart->labels_range, $axis, $index, $delta);
             }
             $chart->save();
+        });
+    }
+
+    /**
+     * A pivot's source is a reference, and its columns move with the sheet's. One whose column went has
+     * lost what it was counting, and says so.
+     */
+    protected function shiftPivots(int $sheetTabId, string $axis, int $index, int $delta): void
+    {
+        $column = function (?string $field) use ($axis, $index, $delta): ?string {
+            if ($field === null || $axis !== 'col_index' || $field === self::REF_ERROR) {
+                return $field;
+            }
+            $moved = $this->shiftSpan($this->letterToIndex($field), $this->letterToIndex($field), $index, $delta);
+
+            return $moved === null ? self::REF_ERROR : $this->indexToLetter($moved[0]);
+        };
+
+        PivotTable::where('sheet_tab_id', $sheetTabId)->get()->each(function (PivotTable $pivot) use ($axis, $index, $delta, $column) {
+            $pivot->source_range = $this->rewriteReferences($pivot->source_range, $axis, $index, $delta);
+            $pivot->row_field = (string) $column($pivot->row_field);
+            $pivot->column_field = $column($pivot->column_field);
+            $pivot->value_field = (string) $column($pivot->value_field);
+            $pivot->save();
         });
     }
 

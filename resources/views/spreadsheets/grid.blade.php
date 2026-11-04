@@ -191,6 +191,42 @@
         </form>
     </aside>
 
+    <aside class="dock" id="pivots" aria-label="Pivot tables" hidden>
+        <div class="dock-head">
+            <h2>Pivot tables</h2>
+            <button class="tool" type="button" id="pivots-close" aria-label="Close pivot tables">×</button>
+        </div>
+        <div class="share-body">
+            <figure class="pivot-view" id="pivots-view" hidden>
+                <figcaption id="pivots-heading"></figcaption>
+                <div class="pivot-scroll"><table class="pivot-table" id="pivots-table"></table></div>
+                <p class="dock-note" id="pivots-said" hidden></p>
+            </figure>
+            <form class="pivot-form" id="pivots-form">
+                <label for="pivots-range">Summarise a table with headings</label>
+                <input id="pivots-range" autocomplete="off" spellcheck="false" maxlength="40">
+                <p class="pivot-sentence">
+                    <select id="pivots-aggregation" aria-label="How to summarise">
+                        <option value="sum">Sum</option>
+                        <option value="count">Count</option>
+                        <option value="average">Average</option>
+                        <option value="min">Lowest</option>
+                        <option value="max">Highest</option>
+                    </select>
+                    <span>of</span>
+                    <select id="pivots-value" aria-label="What to summarise"></select>
+                    <span>by</span>
+                    <select id="pivots-row" aria-label="What to group by"></select>
+                    <span>and</span>
+                    <select id="pivots-across" aria-label="What to group across, if anything"></select>
+                </p>
+                <p class="dock-note" id="pivots-hint" hidden>Select a table with its headings in the first row.</p>
+                <button class="button" type="submit">Add</button>
+            </form>
+            <ul class="people" id="pivots-list"></ul>
+        </div>
+    </aside>
+
     <aside class="dock" id="charts" aria-label="Charts" hidden>
         <div class="dock-head">
             <h2>Charts</h2>

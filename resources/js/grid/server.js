@@ -51,6 +51,26 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    pivots(tab) {
+        return json(`${this.base}/${tab}/pivots`);
+    }
+
+    pivotFields(tab, range) {
+        return json(`${this.base}/${tab}/pivots/fields?${new URLSearchParams({ range })}`);
+    }
+
+    pivot(tab, id) {
+        return json(`${this.base}/${tab}/pivots/${id}`);
+    }
+
+    addPivot(tab, pivot) {
+        return json(`${this.base}/${tab}/pivots`, { method: 'POST', body: JSON.stringify(pivot) });
+    }
+
+    removePivot(tab, id) {
+        return json(`${this.base}/${tab}/pivots/${id}`, { method: 'DELETE' });
+    }
+
     charts(tab) {
         return json(`${this.base}/${tab}/charts`);
     }

@@ -1210,11 +1210,15 @@ class DotGridEditorTest extends DuskTestCase
             ['=2+3', '==', '5'], ['=1/0', '==', '#DIV/0!'], ['x', 'contains', ''], ['007', '==', '7'],
         ];
 
+        // Three short columns, so every case is on screen in any window.
+        $place = fn (int $case) => [$case % 8, 1 + intdiv($case, 8)];
+
         $edits = [];
         $rules = [];
-        foreach ($cases as $row => [$value, $operator, $expected]) {
-            $edits[] = ['row' => $row, 'col' => 1, 'value' => $value];
-            $rules[] = ['id' => "r{$row}", 'target' => 'cell', 'row' => $row, 'col' => 1, 'operator' => $operator, 'value' => $expected, 'color' => $colour];
+        foreach ($cases as $i => [$value, $operator, $expected]) {
+            [$row, $col] = $place($i);
+            $edits[] = ['row' => $row, 'col' => $col, 'value' => $value];
+            $rules[] = ['id' => "r{$i}", 'target' => 'cell', 'row' => $row, 'col' => $col, 'operator' => $operator, 'value' => $expected, 'color' => $colour];
         }
         Cell::where('sheet_tab_id', $tab->id)->delete();
         app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 0, 'col' => 0, 'value' => 'Sales'], ...$edits], $user->id);
@@ -1225,19 +1229,20 @@ class DotGridEditorTest extends DuskTestCase
         $classic->conditionalFormattingRules = $rules;
         $decide = new ReflectionMethod(ShowSpreadsheet::class, 'applyConditionalFormattingRules');
         $expected = [];
-        foreach ($cases as $row => $case) {
-            $cell = Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', 1)->firstOrFail();
-            $expected[$row] = ($decide->invoke($classic, $row, 1, $cell->computed_value ?? $cell->raw_value ?? '', [])['bg_color'] ?? null) !== null;
+        foreach ($cases as $i => $case) {
+            [$row, $col] = $place($i);
+            $cell = Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', $col)->firstOrFail();
+            $expected[$i] = ($decide->invoke($classic, $row, $col, $cell->computed_value ?? $cell->raw_value ?? '', [])['bg_color'] ?? null) !== null;
         }
         $this->assertContains(true, $expected);
         $this->assertContains(false, $expected);
 
-        $this->browse(function (Browser $browser) use ($user, $sheet, $cases, $expected, $drawn) {
+        $this->browse(function (Browser $browser) use ($user, $sheet, $cases, $expected, $drawn, $place) {
             $this->open($browser, $user, $sheet);
-            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, count($cases) - 1, 1) !== null);
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, ...$place(count($cases) - 1)) !== null);
 
-            foreach ($cases as $row => [$value, $operator, $against]) {
-                $this->assertSame($expected[$row], $this->fillAt($browser, $row, 1) === $drawn, "{$value} {$operator} {$against}");
+            foreach ($cases as $i => [$value, $operator, $against]) {
+                $this->assertSame($expected[$i], $this->fillAt($browser, ...$place($i)) === $drawn, "{$value} {$operator} {$against}");
             }
             $this->assertNoConsoleErrors($browser);
         });

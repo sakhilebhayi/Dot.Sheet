@@ -3981,4 +3981,41 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    public function test_a_check_shows_its_changes_first_and_undo_takes_them_back(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 0, 'value' => 'SALES'], ['row' => 2, 'col' => 0, 'value' => 'Sales']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->runCommand($browser, 'Check this table');
+            $browser->waitForTextIn('#check-body', 'The same word written differently in Department');
+            $browser->assertSeeIn('#check-body', 'SALES becomes Sales');
+            $this->assertSame('SALES', $this->cell($browser, 3, 0));
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#check-body button')].find(b => b.textContent === 'Make this change').click()");
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 0) === 'Sales');
+            $browser->waitForTextIn('#check-body', 'Nothing stands out');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 0) === 'SALES');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_read_sees_a_check_without_its_fixes(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 0, 'value' => 'SALES'], ['row' => 2, 'col' => 0, 'value' => 'Sales']], $user->id);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Check this table');
+            $browser->waitForTextIn('#check-body', 'The same word written differently')->assertDontSeeIn('#check-body', 'Make this change');
+        });
+    }
 }

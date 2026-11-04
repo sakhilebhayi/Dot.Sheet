@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Services\DataCheck;
 use App\Services\Formula\FormulaDoctor;
 use App\Services\Formula\FormulaExplainer;
 use App\Services\Formula\FormulaFromWords;
@@ -22,6 +23,17 @@ use Illuminate\Http\Request;
 class GridFormulaController extends Controller
 {
     use AuthorizesRequests;
+
+    /** What usually goes wrong in a table. Changes nothing. */
+    public function check(Spreadsheet $spreadsheet, SheetTab $sheetTab, DataCheck $check, Recalculator $recalculator): JsonResponse
+    {
+        $this->authorize('view', $spreadsheet);
+        abort_unless($sheetTab->spreadsheet_id === $spreadsheet->id, 404);
+
+        $recalculator->ensureBuilt($spreadsheet->id, $sheetTab->id);
+
+        return response()->json(['findings' => $check->of($sheetTab->id)]);
+    }
 
     /** A sentence read against the sheet's own headings. Changes nothing: the page writes what is taken. */
     public function fromWords(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, FormulaFromWords $words, FormulaExplainer $explainer, Recalculator $recalculator): JsonResponse

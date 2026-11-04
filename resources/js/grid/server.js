@@ -147,6 +147,10 @@ export class Server {
         return json(`${this.base}/${tab}/dashboard`, { method: 'POST' });
     }
 
+    check(tab) {
+        return json(`${this.base}/${tab}/check`);
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

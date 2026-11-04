@@ -345,6 +345,14 @@
         <div class="assistant-detail" id="report-body"></div>
     </aside>
 
+    <aside class="dock" id="check" aria-label="Check this table" hidden>
+        <div class="dock-head">
+            <h2>Check this table</h2>
+            <button class="tool" type="button" id="check-close" aria-label="Close the check">×</button>
+        </div>
+        <div class="assistant-detail" id="check-body"></div>
+    </aside>
+
     <aside class="dock" id="explain" aria-label="Explain this cell" hidden>
         <div class="dock-head">
             <h2>Explain this cell</h2>

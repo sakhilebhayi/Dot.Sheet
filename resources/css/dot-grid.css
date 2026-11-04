@@ -27,6 +27,10 @@
 .c.rule { border-bottom: 1px dotted var(--dot); }
 .c.neg, .c.err { color: var(--loss); }
 .c.b { font-weight: 600; }
+.c.over { z-index: 1; overflow: visible; }
+.c.over > span { flex: none; }
+.sheet[data-edge='col'], .sheet[data-edge='col'] * { cursor: col-resize; }
+.sheet[data-edge='row'], .sheet[data-edge='row'] * { cursor: row-resize; }
 .c.read, .c.found, .c.filling { background: var(--read); }
 .c.found::before, .c.filling::before { background: var(--thread); }
 .c.read::before, .c.sel::before { background: var(--thread); }

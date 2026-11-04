@@ -212,6 +212,12 @@ so position is clear from anywhere on screen.
 **Copied cells.** Their dots grow to 6px in the thread colour until the copy is pasted or dismissed.
 A marching outline would move at rest.
 
+**Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
+to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
+
+**Long text** runs on into the empty cells beside it and stops at the first cell that holds anything.
+Figures never do: a number that does not fit is cut, because half a run of digits is a wrong number.
+
 **Fill.** A 9px thread-coloured dot on the selection's corner: drag it to fill, or double-click to fill
 down as far as the column beside it runs. It belongs to the selection, so it is a dot like every other
 mark here. Touch uses Fill down and Fill right in the palette.

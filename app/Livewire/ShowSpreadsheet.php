@@ -1361,6 +1361,10 @@ class ShowSpreadsheet extends Component
         return CellRules::refuse($this->validationRules, $row, $col, $value);
     }
 
+    /**
+     * The new editor draws these rules in the browser: `ruleFill` in resources/js/grid/format.js. Change one
+     * and change the other.
+     */
     protected function applyConditionalFormattingRules(int $row, int $col, mixed $displayValue, array $formatting): array
     {
         foreach ($this->conditionalFormattingRules as $rule) {

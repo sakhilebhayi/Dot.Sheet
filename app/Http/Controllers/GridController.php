@@ -54,6 +54,9 @@ class GridController extends Controller
 
     private const ROW_HEIGHTS = [18, 120];
 
+    /** Most colour rules one sheet may hold. */
+    private const MAX_RULES = 200;
+
     /** Most rows or columns one request may insert or delete. */
     private const MAX_STRUCTURE = 20;
 
@@ -646,6 +649,84 @@ class GridController extends Controller
         }
 
         return response()->json(['tabs' => $this->tabs($spreadsheet), 'version' => StructureVersion::current($spreadsheet->id), ...$extra]);
+    }
+
+    /**
+     * Add a colour rule to a sheet or take one off, shared with the classic editor, which can only add
+     * them. A rule put back by undo keeps its id. The answer says how to undo this.
+     */
+    public function rules(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'add' => 'required_without:remove|array',
+            'add.id' => 'sometimes|string|max:64',
+            'add.target' => 'required_with:add|in:cell,column',
+            'add.row' => 'required_with:add|integer|min:0|max:'.(SheetStructureService::GRID_ROWS - 1),
+            'add.col' => 'required_with:add|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
+            'add.operator' => 'required_with:add|in:>,>=,<,<=,==,!=,contains',
+            'add.value' => 'present_with:add|nullable|string|max:255',
+            'add.color' => ['required_with:add', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'remove' => 'required_without:add|string|max:64',
+        ]);
+
+        $add = $input['add'] ?? null;
+        if ($add !== null && in_array($add['operator'], ['>', '>=', '<', '<='], true) && ! is_numeric($add['value'] ?? null)) {
+            return response()->json(['message' => 'More and less compare numbers: give it a number.'], 422);
+        }
+
+        $list = [];
+        $undo = null;
+        $full = false;
+        $written = false;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $add, &$list, &$undo, &$full, &$written) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($sheetTab, $input, $add, &$list, &$undo, &$full) {
+                SheetTab::updateLayout($sheetTab->id, function (array $layout) use ($input, $add, &$list, &$undo, &$full) {
+                    $rules = is_array($layout['conditional_formatting_rules'] ?? null) ? array_values($layout['conditional_formatting_rules']) : [];
+
+                    if ($add !== null) {
+                        if (count($rules) >= self::MAX_RULES) {
+                            $full = true;
+
+                            return $layout;
+                        }
+                        $rule = ['id' => $add['id'] ?? (string) str()->uuid(), 'target' => $add['target'], 'row' => (int) $add['row'], 'col' => (int) $add['col'], 'operator' => $add['operator'], 'value' => (string) ($add['value'] ?? ''), 'color' => $add['color']];
+                        $rules[] = $rule;
+                        $undo = ['remove' => $rule['id']];
+                    } else {
+                        foreach ($rules as $i => $rule) {
+                            if (is_array($rule) && ($rule['id'] ?? null) === $input['remove']) {
+                                $undo = ['add' => $rule];
+                                array_splice($rules, $i, 1);
+                                break;
+                            }
+                        }
+                    }
+
+                    $list = $rules;
+                    $layout['conditional_formatting_rules'] = $rules;
+
+                    return $layout;
+                });
+            });
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+        if ($full) {
+            return response()->json(['message' => 'A sheet holds at most '.self::MAX_RULES.' colour rules.'], 422);
+        }
+
+        return response()->json(['rules' => $list, 'undo' => $undo]);
     }
 
     /**

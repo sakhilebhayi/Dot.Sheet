@@ -2135,7 +2135,7 @@ class DotGridEditorTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($user, $sheet, $path) {
             $this->open($browser, $user, $sheet);
             $browser->attach('#import-file', $path);
-            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Only the first sheet of an Excel file comes in, and its formulas come in as text.');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Only the first sheet of the file comes in');
             $browser->click('#confirm-yes');
             $browser->waitForTextIn('#note', 'That file could not be read.');
             $this->assertSame('Sales', $this->cell($browser, 0, 0));

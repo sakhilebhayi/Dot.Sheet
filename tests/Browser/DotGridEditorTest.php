@@ -2791,4 +2791,199 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    /** @return array{0: User, 1: Spreadsheet, 2: SheetTab, 3: SheetTab} */
+    private function threeSheets(): array
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $stock = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        $notes = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Notes', 'sort_order' => 3]);
+        app(CellWriter::class)->write($sheet->id, $stock->id, [['row' => 0, 'col' => 0, 'value' => 'Shelves']], $user->id);
+
+        return [$user, $sheet, $stock, $notes];
+    }
+
+    private function tabNames(Browser $browser): array
+    {
+        return $browser->driver->executeScript("return [...document.querySelectorAll('#tabs [data-tab]')].map(b => b.textContent)");
+    }
+
+    /** Drag a tab over another with the page's own pointer events, ending in the click a browser sends. */
+    private function dragTab(Browser $browser, string $name, string $over, string $pointer = 'mouse'): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const tab = (text) => [...document.querySelectorAll('#tabs [data-tab]')].find(b => b.textContent === text);
+            const from = tab(arguments[0]).getBoundingClientRect();
+            const to = tab(arguments[1]).getBoundingClientRect();
+            const y = from.top + 4;
+            const held = tab(arguments[0]);
+            held.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: from.left + 4, clientY: y, button: 0, pointerType: arguments[2] }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: to.left + 2, clientY: y }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: to.left + 2, clientY: y }));
+            held.click();
+        JS, [$name, $over, $pointer]);
+    }
+
+    public function test_a_sheet_is_dragged_along_the_foot_and_undo_puts_it_back(): void
+    {
+        [$user, $sheet] = $this->threeSheets();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser));
+
+            $this->dragTab($browser, 'Stock', 'Sheet1', 'touch');
+            $browser->pause(150)->assertSeeIn('#tabs [aria-current]', 'Stock');
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser), 'on touch the foot scrolls instead');
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Sheet1').click()");
+            $browser->waitForTextIn('#tabs [aria-current]', 'Sheet1');
+
+            $this->dragTab($browser, 'Notes', 'Sheet1');
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Notes', 'Sheet1', 'Stock']);
+            $browser->waitUsing(5, 25, fn () => SheetTab::where('spreadsheet_id', $sheet->id)->orderBy('sort_order')->pluck('name')->all() === ['Notes', 'Sheet1', 'Stock']);
+            $browser->pause(100)->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Stock', 'Notes']);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_hidden_sheet_keeps_its_place_when_the_others_move(): void
+    {
+        [$user, $sheet, $stock] = $this->threeSheets();
+        $stock->update(['hidden' => true]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->assertSame(['Sheet1', 'Notes'], $this->tabNames($browser));
+
+            $this->dragTab($browser, 'Notes', 'Sheet1');
+            $browser->waitUsing(5, 25, fn () => SheetTab::where('spreadsheet_id', $sheet->id)->orderBy('sort_order')->pluck('name')->all() === ['Notes', 'Stock', 'Sheet1']);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_move_the_workbook_has_outgrown_is_refused_and_the_tab_goes_back(): void
+    {
+        [$user, $sheet] = $this->threeSheets();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Added elsewhere', 'sort_order' => 4]);
+
+            $this->dragTab($browser, 'Notes', 'Sheet1');
+            $browser->waitForTextIn('#note', 'The sheets changed while you were moving this one');
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser));
+        });
+    }
+
+    public function test_the_palette_moves_a_sheet_and_gives_it_a_colour(): void
+    {
+        [$user, $sheet] = $this->threeSheets();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Move sheet left');
+            $browser->waitForTextIn('#note', 'This sheet is already first.');
+
+            $this->runCommand($browser, 'Move sheet right');
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Stock', 'Sheet1', 'Notes']);
+
+            $this->runCommand($browser, 'Sheet colour: Teal');
+            $browser->waitFor('#tabs .sheet-dot.teal');
+            $this->assertSame('rgb(14, 138, 160)', $browser->driver->executeScript("return getComputedStyle(document.querySelector('#tabs .sheet-dot')).backgroundColor"));
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUntilMissing('#tabs .sheet-dot');
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
+            $browser->waitFor('#tabs .sheet-dot.teal');
+
+            $this->runCommand($browser, 'No sheet colour');
+            $browser->waitUntilMissing('#tabs .sheet-dot');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_sheet_is_hidden_and_the_palette_brings_it_back(): void
+    {
+        [$user, $sheet, $stock] = $this->threeSheets();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $stock) {
+            $this->open($browser, $user, $sheet);
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Shelves');
+
+            $this->runCommand($browser, 'Hide this sheet');
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Notes']);
+            $browser->waitForTextIn('#note', 'Hid Stock.');
+            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertTrue($stock->fresh()->hidden);
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Stock', 'Notes']);
+            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'y']);
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Notes']);
+
+            $this->runCommand($browser, 'Show sheet: Stock');
+            $browser->waitUsing(5, 25, fn () => $this->tabNames($browser) === ['Sheet1', 'Stock', 'Notes']);
+            $browser->assertSeeIn('#tabs [aria-current]', 'Stock');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Shelves');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_page_opens_on_the_first_sheet_showing_and_a_link_can_reach_a_hidden_one(): void
+    {
+        [$user, $sheet, $stock, $notes] = $this->threeSheets();
+        $sheet->sheetTabs()->where('name', 'Sheet1')->update(['hidden' => true]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $browser->driver->get('about:blank');
+            $browser->driver->manage()->getLog('browser');
+            $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}");
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Shelves');
+            $this->assertSame(['Stock', 'Notes'], $this->tabNames($browser));
+
+            $hidden = SheetTab::where('spreadsheet_id', $sheet->id)->where('name', 'Sheet1')->value('id');
+            $browser->visit("/spreadsheets/{$sheet->id}?tab={$hidden}");
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser), 'it shows while someone is in it');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_last_sheet_showing_cannot_be_hidden(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Hide this sheet');
+            $browser->waitForTextIn('#note', 'keeps at least one sheet showing');
+            $this->assertSame(['Sheet1'], $this->tabNames($browser));
+        });
+    }
+
+    public function test_someone_who_can_only_view_cannot_keep_sheets(): void
+    {
+        [$user, $sheet] = $this->threeSheets();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->dragTab($browser, 'Notes', 'Sheet1');
+            $browser->pause(150);
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser));
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'sheet');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Hide this sheet')->assertDontSeeIn('#found', 'Sheet colour');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

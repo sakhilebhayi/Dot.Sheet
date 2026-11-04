@@ -24,10 +24,13 @@ class SheetTab extends Model
         'spreadsheet_id',
         'name',
         'sort_order',
+        'color',
+        'hidden',
     ];
 
     protected $casts = [
         'layout' => 'json',
+        'hidden' => 'boolean',
     ];
 
     /**

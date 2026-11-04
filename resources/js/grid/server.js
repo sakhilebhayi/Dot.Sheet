@@ -52,6 +52,12 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    /** How a sheet is kept: its colour, whether it shows, or the order of them all. */
+    sheetLook({ kind, tab, ...change }) {
+        const url = kind === 'order' ? `${this.base}/order` : `${this.base}/${tab}/look/${kind}`;
+        return json(url, { method: 'POST', body: JSON.stringify(change) });
+    }
+
     macros() {
         return json(this.macrosAt);
     }

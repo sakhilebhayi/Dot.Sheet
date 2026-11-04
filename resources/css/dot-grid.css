@@ -255,6 +255,16 @@ button.where:hover { translate: 0 -1px; }
 
 /* The foot: the sheets, and a place for one more. */
 .tabs .add { padding: 5px 9px; color: var(--soft); }
+/* A sheet's colour is a dot, like every other mark here. A tab being dragged lifts a little. */
+.sheet-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; background: var(--dot); }
+.sheet-dot.green { background: var(--chart-1); }
+.sheet-dot.plum { background: var(--chart-2); }
+.sheet-dot.olive { background: var(--chart-3); }
+.sheet-dot.teal { background: var(--chart-4); }
+.sheet-dot.amber { background: var(--chart-5); }
+.sheet-dot.pink { background: var(--chart-6); }
+.tabs .moving { translate: 0 -2px; cursor: grabbing; }
+.tabs .held-back { font-style: italic; }
 .tabs .naming { width: 16ch; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--raised); box-shadow: inset 0 0 0 1.5px var(--thread); outline: none; font: inherit; font-weight: 600; }
 .confirm { padding: 20px; }
 .confirm p { margin: 0 0 16px; max-width: 52ch; line-height: 1.5; }

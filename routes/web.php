@@ -10,6 +10,7 @@ use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
 use App\Http\Controllers\GridShareController;
+use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
@@ -72,6 +73,7 @@ Route::middleware([
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
     Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->name('grid.add');
+    Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->name('grid.tabs.order');
     Route::prefix('spreadsheets/{spreadsheet}/macros')->name('grid.macros.')->middleware('throttle:120,1')->group(function () {
         Route::get('/', [GridMacroController::class, 'index'])->name('index');
         Route::post('/', [GridMacroController::class, 'store'])->name('store');
@@ -103,6 +105,8 @@ Route::middleware([
         Route::post('sort', [GridController::class, 'sort'])->name('sort');
         Route::post('filter', [GridController::class, 'filter'])->name('filter');
         Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
+        Route::post('look/colour', [GridTabController::class, 'colour'])->name('look.colour');
+        Route::post('look/hidden', [GridTabController::class, 'hidden'])->name('look.hidden');
         Route::get('removal', [GridController::class, 'removalCost'])->name('removal');
         Route::post('remove', [GridController::class, 'removeSheet'])->name('remove');
         Route::post('structure', [GridController::class, 'structure'])->name('structure');

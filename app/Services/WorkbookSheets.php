@@ -24,6 +24,11 @@ class WorkbookSheets
 
     public const LAST_SHEET_MESSAGE = 'A workbook keeps at least one sheet.';
 
+    public const LAST_SHOWING_MESSAGE = 'A workbook keeps at least one sheet showing. Show another first.';
+
+    /** The colours a sheet can carry: the chart colours, which stay apart for colour-blind readers. */
+    public const COLOURS = ['green', 'plum', 'olive', 'teal', 'amber', 'pink'];
+
     public function __construct(private Recalculator $recalculator) {}
 
     /**
@@ -113,6 +118,58 @@ class WorkbookSheets
     }
 
     /**
+     * @return list<array{id: int, name: string, color: string|null, hidden: bool}> in the workbook's order
+     */
+    public function listOf(Spreadsheet $spreadsheet): array
+    {
+        return SheetTab::where('spreadsheet_id', $spreadsheet->id)->orderBy('sort_order')->orderBy('id')->get(['id', 'name', 'color', 'hidden'])
+            ->map(fn (SheetTab $tab) => ['id' => $tab->id, 'name' => $tab->name, 'color' => $tab->color, 'hidden' => (bool) $tab->hidden])
+            ->all();
+    }
+
+    /**
+     * Hidden is tidiness and not privacy: everyone who can open the workbook can still reach the sheet,
+     * and formulas still read it.
+     *
+     * @throws StructureChangeRefused
+     */
+    public function setHidden(SheetTab $tab, bool $hidden): void
+    {
+        if ($hidden && $this->isLastShowing($tab)) {
+            throw new StructureChangeRefused(self::LAST_SHOWING_MESSAGE);
+        }
+
+        $tab->update(['hidden' => $hidden]);
+    }
+
+    /**
+     * @param  list<int>  $order  every sheet of the workbook, once
+     *
+     * @throws StructureChangeRefused
+     */
+    public function reorder(Spreadsheet $spreadsheet, array $order): void
+    {
+        $ids = $spreadsheet->sheetTabs()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $given = $order;
+        sort($ids);
+        sort($given);
+        if ($ids !== $given) {
+            throw new StructureChangeRefused('The sheets changed while you were moving this one. Reload and try again.');
+        }
+
+        DB::transaction(function () use ($order) {
+            foreach ($order as $position => $id) {
+                SheetTab::whereKey($id)->update(['sort_order' => $position]);
+            }
+        });
+    }
+
+    private function isLastShowing(SheetTab $tab): bool
+    {
+        return ! SheetTab::where('spreadsheet_id', $tab->spreadsheet_id)->whereKeyNot($tab->id)->where('hidden', false)->exists();
+    }
+
+    /**
      * Call inside the write transaction. The sheet's copies go with it, so this cannot be taken back.
      *
      * @throws StructureChangeRefused
@@ -122,6 +179,9 @@ class WorkbookSheets
         $spreadsheetId = (int) $tab->spreadsheet_id;
         if (SheetTab::where('spreadsheet_id', $spreadsheetId)->count() <= 1) {
             throw new StructureChangeRefused(self::LAST_SHEET_MESSAGE);
+        }
+        if ($this->isLastShowing($tab)) {
+            throw new StructureChangeRefused(self::LAST_SHOWING_MESSAGE);
         }
 
         $tab->delete();

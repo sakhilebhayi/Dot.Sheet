@@ -53,6 +53,9 @@ export const TEXT_COLOURS = [
     ['Slate', '#56645D'], ['Forest', '#1E6B45'], ['Teal', '#0F6C6C'], ['Plum', '#6A2C7E'], ['Rust', '#8F4A0E'],
 ];
 
+/** The colours a sheet can carry, kept in order: they are the chart colours. See DESIGN.md. */
+export const SHEET_COLOURS = [['Green', 'green'], ['Plum', 'plum'], ['Olive', 'olive'], ['Teal', 'teal'], ['Amber', 'amber'], ['Pink', 'pink']];
+
 export const FILL_COLOURS = [
     ['Butter', '#FBF0BF'], ['Sage', '#DCEBD9'], ['Aqua', '#D5ECE7'], ['Rose', '#F7E0DA'], ['Lilac', '#EBE2F4'], ['Stone', '#E4E9E3'],
 ];

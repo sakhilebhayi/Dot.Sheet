@@ -6,6 +6,7 @@ use App\Http\Controllers\GridChartController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
+use App\Http\Controllers\GridDuplicateController;
 use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
@@ -66,6 +67,7 @@ Route::middleware([
     Route::resource('spreadsheets', SpreadsheetController::class)->except('show');
     // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
+    Route::post('spreadsheets/{spreadsheet}/duplicate', [GridDuplicateController::class, 'workbook'])->middleware('throttle:20,1')->name('spreadsheets.duplicate');
     Route::get('spreadsheets/{spreadsheet}/classic', [SpreadsheetController::class, 'classic'])->name('spreadsheets.classic');
     Route::get('spreadsheets/{spreadsheet}/print', [SpreadsheetController::class, 'printOf'])->name('spreadsheets.print');
 
@@ -105,6 +107,7 @@ Route::middleware([
         Route::post('sort', [GridController::class, 'sort'])->name('sort');
         Route::post('filter', [GridController::class, 'filter'])->name('filter');
         Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
+        Route::post('duplicate', [GridDuplicateController::class, 'sheet'])->middleware('throttle:20,1')->name('duplicate');
         Route::post('look/colour', [GridTabController::class, 'colour'])->name('look.colour');
         Route::post('look/hidden', [GridTabController::class, 'hidden'])->name('look.hidden');
         Route::get('removal', [GridController::class, 'removalCost'])->name('removal');

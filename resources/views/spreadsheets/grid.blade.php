@@ -28,6 +28,9 @@
         <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
         <button class="tool quiet" id="do-comments" type="button" aria-expanded="false" aria-controls="notes">Comments<b id="notes-count" hidden></b></button>
         <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
+        @if ($boot['canShare'])
+            <button class="button share" id="do-share" type="button" aria-expanded="false" aria-controls="sharing">Share</button>
+        @endif
     </header>
 
     <div class="formatbar" id="formatbar" role="toolbar" aria-label="Format cells" hidden>
@@ -175,8 +178,8 @@
         </div>
     </main>
 
-    <aside class="notes" id="notes" aria-label="Comments" hidden>
-        <div class="notes-head">
+    <aside class="dock" id="notes" aria-label="Comments" hidden>
+        <div class="dock-head">
             <h2>Comments</h2>
             <button class="tool" type="button" id="notes-close" aria-label="Close comments">×</button>
         </div>
@@ -187,6 +190,50 @@
             <button class="button" type="submit">Comment</button>
         </form>
     </aside>
+
+    @if ($boot['canShare'])
+        <aside class="dock" id="sharing" aria-label="Share" hidden>
+            <div class="dock-head">
+                <h2>Share</h2>
+                <button class="tool" type="button" id="sharing-close" aria-label="Close sharing">×</button>
+            </div>
+            <div class="share-body">
+                <form class="share-form" id="share-form" novalidate>
+                    <label for="share-email">Add someone by email</label>
+                    <input id="share-email" type="email" autocomplete="off" spellcheck="false" maxlength="255" placeholder="name@company.co.za">
+                    <select id="share-permission" aria-label="What they can do">
+                        <option value="view">Can read</option>
+                        <option value="comment">Can comment</option>
+                        <option value="edit">Can edit</option>
+                        <option value="admin">Can edit and share</option>
+                    </select>
+                    <button class="button" type="submit">Share</button>
+                    <p>No account yet? They get a link for you to send, good for <input id="share-days" type="number" min="1" max="90" value="7" aria-label="Days the link lasts"> days. Nothing is emailed.</p>
+                </form>
+
+                <h3>Who has access</h3>
+                <ul class="people" id="share-people"></ul>
+
+                <div id="share-waiting-block" hidden>
+                    <h3>Waiting to accept</h3>
+                    <ul class="people" id="share-waiting"></ul>
+                </div>
+
+                <h3>Link for anyone</h3>
+                <label class="tick"><input type="checkbox" id="share-link-on">Anyone with the link can read the first sheet, without signing in</label>
+                <div class="share-link" id="share-link-rest" hidden>
+                    <p class="share-gone" id="share-link-state" hidden>This link has expired. Choose a later time or clear it.</p>
+                    <div class="share-url">
+                        <input id="share-link-url" readonly aria-label="The link">
+                        <button class="tool" type="button" id="share-link-copy">Copy</button>
+                    </div>
+                    <label for="share-link-expiry">Stops working on, if you want it to</label>
+                    <input id="share-link-expiry" type="datetime-local">
+                    <div class="deeds"><button type="button" id="share-link-new">Make a new link</button></div>
+                </div>
+            </div>
+        </aside>
+    @endif
     </div>
 
     <footer class="foot">

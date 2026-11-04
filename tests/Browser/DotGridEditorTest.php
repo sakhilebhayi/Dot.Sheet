@@ -6,6 +6,7 @@ use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
+use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
 use App\Services\SheetComments;
@@ -864,8 +865,8 @@ class DotGridEditorTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'share');
-            $browser->waitForTextIn('#found', 'Share this sheet')->assertSeeIn('#found', 'In the classic editor');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'charts');
+            $browser->waitForTextIn('#found', 'Charts')->assertSeeIn('#found', 'In the classic editor');
 
             $browser->keys('#find', WebDriverKeys::ENTER);
             $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
@@ -1845,6 +1846,138 @@ class DotGridEditorTest extends DuskTestCase
             $this->runCommand($browser, 'Comments');
             $browser->waitForTextIn('#notes-list', 'Worth a look');
             $browser->assertMissing('#notes-form')->assertMissing('#notes-list .deeds');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_sheet_is_shared_from_the_panel_and_what_someone_can_do_changes(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Thandi', 'email' => 'thandi@example.test']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $friend) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-share')->waitForTextIn('#share-people', $user->name);
+            $browser->assertSeeIn('#share-people', '(You)')->assertSeeIn('#share-people', 'Owner');
+            $this->assertSame('share-email', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $browser->type('#share-email', 'nonsense')->keys('#share-email', '{enter}');
+            $browser->waitForTextIn('#note', 'does not look like an email address');
+            $browser->assertValue('#share-email', 'nonsense');
+
+            $browser->type('#share-email', 'thandi@example.test')->select('#share-permission', 'comment')->keys('#share-email', '{enter}');
+            $browser->waitForTextIn('#share-people', 'Thandi');
+            $browser->assertSeeIn('#note', 'Shared with thandi@example.test')->assertValue('#share-email', '');
+            $this->assertSame('comment', $sheet->sharedUsers()->whereKey($friend->id)->first()->pivot->permission);
+
+            $browser->select('#share-people select', 'edit');
+            $browser->waitForTextIn('#note', 'Changed what Thandi can do');
+            $this->assertSame('edit', $sheet->sharedUsers()->whereKey($friend->id)->first()->pivot->permission);
+
+            $this->pressIn($browser, '#share-people', 'Remove');
+            $browser->waitForTextIn('#note', 'Removed Thandi');
+            // The refused address above logs an error by itself, so the console is not checked here.
+            $browser->assertDontSeeIn('#share-people', 'Thandi');
+        });
+    }
+
+    public function test_someone_with_no_account_gets_a_link_to_pass_on(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Share this sheet');
+            $browser->waitForTextIn('#share-people', $user->name)->assertMissing('#share-waiting-block');
+
+            $browser->type('#share-email', 'new@example.test')->keys('#share-email', '{enter}');
+            $browser->waitForTextIn('#share-waiting', 'new@example.test');
+            $browser->assertSeeIn('#note', 'has no account here yet')->assertSeeIn('#share-waiting', 'Can read')->assertSeeIn('#share-waiting', 'Copy link');
+
+            $this->pressIn($browser, '#share-waiting', 'Cancel');
+            $browser->waitUntilMissing('#share-waiting-block');
+            $this->assertSame(0, SpreadsheetInvitation::where('spreadsheet_id', $sheet->id)->count());
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_link_for_anyone_goes_on_off_and_changes_after_asking(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-share')->waitForTextIn('#share-people', $user->name)->assertMissing('#share-link-rest');
+            $browser->assertSeeIn('#sharing', 'can read the first sheet');
+
+            $browser->click('#share-link-on')->waitFor('#share-link-rest');
+            $browser->waitUsing(10, 25, fn () => $browser->value('#share-link-url') !== '');
+            $first = $browser->value('#share-link-url');
+            $this->assertStringContainsString('/shared/s/', $first);
+
+            $browser->click('#share-link-new')->waitFor('#confirm[open]')->assertSeeIn('#confirm-yes', 'Make a new link');
+            $browser->click('#confirm [value=cancel]')->pause(100);
+            $this->assertSame($first, $browser->value('#share-link-url'), 'keeping it is the default');
+
+            $browser->click('#share-link-new')->waitFor('#confirm[open]')->click('#confirm-yes');
+            $browser->waitUsing(10, 25, fn () => $browser->value('#share-link-url') !== $first);
+            $browser->assertSeeIn('#note', 'The old one no longer works');
+
+            $browser->click('#share-link-on')->waitUntilMissing('#share-link-rest');
+            $this->assertFalse($sheet->fresh()->public_enabled);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_an_end_time_is_read_on_the_person_s_own_clock(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $sheet->update(['public_enabled' => true, 'public_token' => 'tok']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-share')->waitFor('#share-link-rest');
+
+            $at = now()->addDays(2)->startOfMinute();
+            $browser->driver->executeScript(<<<'JS'
+                const at = new Date(arguments[0]);
+                const field = document.getElementById('share-link-expiry');
+                field.value = new Date(at.getTime() - at.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                field.dispatchEvent(new Event('change', { bubbles: true }));
+            JS, [$at->toIso8601String()]);
+            $browser->waitForTextIn('#note', 'The link is on');
+
+            $this->assertTrue($at->equalTo($sheet->fresh()->public_expires_at));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_one_panel_is_open_at_a_time(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-comments')->waitFor('#notes');
+            $browser->click('#do-share')->waitFor('#sharing')->assertMissing('#notes');
+            $this->assertSame('false', $browser->attribute('#do-comments', 'aria-expanded'));
+
+            $browser->click('#do-comments')->waitFor('#notes')->assertMissing('#sharing');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_cannot_manage_sharing_gets_no_way_to_it(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        $editor = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($editor->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($editor, $sheet) {
+            $this->open($browser, $editor, $sheet);
+            $browser->assertMissing('#do-share')->assertMissing('#sharing');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'share this');
+            $browser->pause(100)->assertDontSeeIn('#found', 'Share this sheet');
             $this->assertNoConsoleErrors($browser);
         });
     }

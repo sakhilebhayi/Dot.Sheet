@@ -55,42 +55,6 @@ parameters:
 			path: app/Livewire/ShowSpreadsheet.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$expires_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$permission\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
-			message: '#^Parameter \#1 \$callback of method Illuminate\\Database\\Eloquent\\Collection\<int,Illuminate\\Database\\Eloquent\\Model\>\:\:map\(\) contains unresolvable type\.$#'
-			identifier: argument.unresolvableType
-			count: 1
-			path: app/Livewire/SpreadsheetSharingPanel.php
-
-		-
 			message: '#^Ternary operator condition is always true\.$#'
 			identifier: ternary.alwaysTrue
 			count: 1

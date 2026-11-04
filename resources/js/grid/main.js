@@ -4,6 +4,7 @@ import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COL
 import { Grid } from './grid';
 import { Notes } from './notes';
 import { Server } from './server';
+import { Sharing } from './sharing';
 import { hasContent, Store } from './store';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
@@ -76,16 +77,26 @@ const notes = new Notes({
     name: cellName,
     go: goToComment,
     back: () => sheet.focus({ preventScroll: true }),
-    resized: () => {
-        grid.measure();
-        grid.reveal(grid.active.r, grid.active.c);
-        grid.paint();
+    resized: panelMoved,
+    opening: () => {
+        if (sharing && !sharing.closed) sharing.toggle(false);
     },
     marks: showMarks,
     note,
     refused,
     ask,
 });
+const sharing = boot.canShare ? new Sharing({
+    server,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => {
+        if (!notes.closed) notes.toggle(false);
+    },
+    note,
+    refused,
+    ask,
+}) : null;
 const store = new Store(server, () => {
     grid.paint();
     selected();
@@ -110,6 +121,13 @@ function showMarks(marks) {
     notes.tally(marks);
     grid.paint();
     placeNoted();
+}
+
+/** A panel took room from the sheet, or gave it back. */
+function panelMoved() {
+    grid.measure();
+    grid.reveal(grid.active.r, grid.active.c);
+    grid.paint();
 }
 
 function goToComment(r, c) {
@@ -2184,7 +2202,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Share this sheet', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
+    'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
     'Scripts',
     'Ask AI',
 ];
@@ -2251,6 +2269,7 @@ function choices(query) {
         ] : []),
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
+        ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },
         { label: 'Open the classic editor', href: boot.links.classic },
@@ -2390,6 +2409,7 @@ const askedCell = GO_TO.exec(asked.get('cell') ?? '');
 if (tab !== null) {
     open(askedTab ?? tab).then(() => {
         sheet.focus({ preventScroll: true });
+        if (boot.told) note(boot.told);
         if (askedCell) {
             select(Number(askedCell[2]) - 1, columnIndex(askedCell[1]));
             notes.toggle(true);

@@ -3,6 +3,7 @@ import { fromText, toText } from './clipboard';
 import { Copies } from './copies';
 import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
+import { Names } from './names';
 import { Notes } from './notes';
 import { Server } from './server';
 import { Sharing } from './sharing';
@@ -97,6 +98,20 @@ const sharing = boot.canShare ? new Sharing({
     refused,
     ask,
 }) : null;
+const names = new Names({
+    server,
+    canEdit: boot.canEdit,
+    tab: () => tab,
+    selection: selectionText,
+    goTo: goToName,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(names),
+    changed: reopen,
+    note,
+    refused,
+    ask,
+});
 const copies = new Copies({
     server,
     canEdit: boot.canEdit,
@@ -138,9 +153,20 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies]) {
+    for (const panel of [notes, sharing, copies, names]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
+}
+
+function selectionText() {
+    const { r1, c1, r2, c2 } = grid.area();
+    return r1 === r2 && c1 === c2 ? cellName(r1, c1) : `${cellName(r1, c1)}:${cellName(r2, c2)}`;
+}
+
+function goToName({ row, col, row2, col2 }) {
+    grid.reveal(row, col);
+    selectArea(row, col, row2, col2);
+    sheet.focus({ preventScroll: true });
 }
 
 async function putBackCopy(copy) {
@@ -211,6 +237,7 @@ async function open(id) {
     markFound();
     if (!notes.closed) notes.load();
     if (!copies.closed) copies.load();
+    if (!names.closed) names.load();
 }
 
 function drawTabs() {
@@ -361,6 +388,7 @@ function selected() {
     placePick();
     placeNoted();
     notes.follow();
+    names.follow();
 }
 
 function afterMove() {
@@ -741,6 +769,7 @@ async function reopen() {
     select(r, c);
     if (!notes.closed) notes.load();
     if (!copies.closed) copies.load();
+    if (!names.closed) names.load();
 }
 
 /** The selection, cut down to where the sheet holds anything. */
@@ -2304,7 +2333,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Charts', 'Pivot tables', 'Named ranges',
+    'Charts', 'Pivot tables',
     'Scripts',
     'Ask AI',
 ];
@@ -2373,6 +2402,7 @@ function choices(query) {
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
+        { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         ...(sharing ? [{ label: 'Share this sheet', run: () => sharing.toggle(true) }] : []),
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },

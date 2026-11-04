@@ -322,6 +322,10 @@ not to a position: it goes with its row through a sort, a cut, and rows going in
 When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
 back. Resolved threads leave no mark and fold away at the foot of the list.
 
+**Named ranges.** The palette opens them in the same place. The form follows the selection, so naming cells is
+selecting them and typing a word. The list goes to each name's cells. Deleting a name that formulas use says how
+many first, because they will show #NAME?.
+
 **Import.** The palette picks a file. On a sheet with data it asks first and says what happens: the file writes
 from A1, cells outside it stay, and a copy of the sheet is kept, or it says when a sheet is too large for that. It
 says what an Excel file will lose before anything is written. Progress and the result are in the note at the foot,

@@ -10,6 +10,7 @@ use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
 use App\Services\SheetComments;
+use App\Services\SheetNames;
 use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -2179,6 +2180,99 @@ class DotGridEditorTest extends DuskTestCase
             $this->open($browser, $reader, $sheet);
             $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'import');
             $browser->pause(100)->assertDontSeeIn('#found', 'Import a file');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_selection_is_named_a_formula_uses_it_and_deleting_it_says_what_breaks(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 1, 'value' => '=SUM(Figures)']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '#NAME?');
+            $this->runCommand($browser, 'Named ranges');
+            $browser->waitFor('#names')->waitForTextIn('#names-list', 'No names on this sheet yet');
+            $this->assertSame('names-name', $browser->driver->executeScript('return document.activeElement.id'));
+            $browser->assertValue('#names-range', 'A1');
+
+            $this->clickCell($browser, 0, 1);
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::SHIFT, WebDriverKeys::ARROW_DOWN]);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#names-range') === 'B1:B2');
+
+            $browser->type('#names-name', 'Figures')->keys('#names-name', '{enter}');
+            $browser->waitForTextIn('#names-list', 'Figures');
+            $browser->assertSeeIn('#names-list', 'B1:B2')->assertSeeIn('#note', 'Figures now stands for B1:B2')->assertValue('#names-name', '');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '600');
+
+            $this->clickCell($browser, 2, 0);
+            $browser->driver->executeScript("document.getElementById('names-name').focus()");
+            $this->pressIn($browser, '#names-list', 'Go to');
+            $browser->waitUsing(5, 25, fn () => $browser->text('#ref') === 'B1');
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $this->pressIn($browser, '#names-list', 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Delete Figures? 1 formula uses it and will show #NAME?.')->assertSeeIn('#confirm-yes', 'Delete name');
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'Deleted Figures.');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 3, 1) === '#NAME?');
+            $browser->assertSeeIn('#names-list', 'No names on this sheet yet');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_range_someone_typed_stays_while_the_selection_moves(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Named ranges');
+            $browser->waitFor('#names')->type('#names-range', 'C1:C9');
+            $this->clickCell($browser, 2, 1);
+            $browser->pause(100)->assertValue('#names-range', 'C1:C9');
+
+            $browser->type('#names-name', 'sum')->keys('#names-name', '{enter}');
+            $browser->waitForTextIn('#note', 'function name')->assertValue('#names-name', 'sum');
+        });
+    }
+
+    public function test_the_names_follow_the_sheet_in_view_and_one_panel_opens(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(SheetNames::class)->add($sheet->id, $tab->id, 'Sales', 'A1');
+        app(SheetNames::class)->add($sheet->id, $extra->id, 'Shelf', 'B2');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-comments')->waitFor('#notes');
+            $this->runCommand($browser, 'Named ranges');
+            $browser->waitForTextIn('#names-list', 'Sales')->assertMissing('#notes');
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#names-list', 'Shelf')->assertDontSeeIn('#names-list', 'Sales');
+
+            $browser->click('#do-share')->waitFor('#sharing')->assertMissing('#names');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_reads_names_and_goes_to_them(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(SheetNames::class)->add($sheet->id, $tab->id, 'Figures', 'B2');
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Named ranges');
+            $browser->waitForTextIn('#names-list', 'Figures')->assertMissing('#names-form')->assertDontSeeIn('#names-list', 'Delete');
+            $this->pressIn($browser, '#names-list', 'Go to');
+            $browser->waitUsing(5, 25, fn () => $browser->text('#ref') === 'B2');
             $this->assertNoConsoleErrors($browser);
         });
     }

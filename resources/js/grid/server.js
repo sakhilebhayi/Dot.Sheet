@@ -51,6 +51,22 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    names(tab) {
+        return json(`${this.base}/${tab}/names`);
+    }
+
+    addName(tab, name, range) {
+        return json(`${this.base}/${tab}/names`, { method: 'POST', body: JSON.stringify({ name, range }) });
+    }
+
+    nameUses(tab, id) {
+        return json(`${this.base}/${tab}/names/${id}/uses`);
+    }
+
+    removeName(tab, id) {
+        return json(`${this.base}/${tab}/names/${id}`, { method: 'DELETE' });
+    }
+
     beforeImport(tab) {
         return json(`${this.base}/${tab}/before-import`);
     }

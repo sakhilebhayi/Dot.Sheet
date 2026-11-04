@@ -191,18 +191,33 @@
         </form>
     </aside>
 
+    <aside class="dock" id="names" aria-label="Named ranges" hidden>
+        <div class="dock-head">
+            <h2>Named ranges</h2>
+            <button class="tool" type="button" id="names-close" aria-label="Close named ranges">×</button>
+        </div>
+        <p class="dock-note">A name stands for cells in a formula, on this sheet only.</p>
+        <form class="dock-form names-form" id="names-form">
+            <label for="names-name">Name the selection</label>
+            <input id="names-name" autocomplete="off" spellcheck="false" maxlength="64" placeholder="Revenue">
+            <input id="names-range" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Which cells">
+            <button class="button" type="submit">Add</button>
+        </form>
+        <ul class="people dock-list" id="names-list"></ul>
+    </aside>
+
     <aside class="dock" id="copies" aria-label="Version history" hidden>
         <div class="dock-head">
             <h2>History</h2>
             <button class="tool" type="button" id="copies-close" aria-label="Close history">×</button>
         </div>
-        <p class="copies-whose" id="copies-whose"></p>
-        <form class="copies-form" id="copies-form">
+        <p class="dock-note" id="copies-whose"></p>
+        <form class="dock-form" id="copies-form">
             <label for="copies-label">Save a copy as it is now</label>
             <input id="copies-label" autocomplete="off" maxlength="120" placeholder="Give it a name, if you like">
             <button class="button" type="submit">Save</button>
         </form>
-        <ul class="people copies-list" id="copies-list"></ul>
+        <ul class="people dock-list" id="copies-list"></ul>
     </aside>
 
     @if ($boot['canShare'])

@@ -3,19 +3,19 @@
     <!-- Header -->
     <div class="bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-4 text-white rounded-t-lg flex justify-between items-center">
         <div>
-            <h2 class="text-xl font-bold">💬 Ask AI</h2>
+            <h2 class="text-xl font-bold">Ask a question</h2>
             <p class="text-indigo-100 text-sm">Query your spreadsheet data naturally</p>
         </div>
-        <button type="button" class="text-indigo-200 hover:text-white" wire:click="clearConversation" title="Clear conversation">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
+        <button type="button" class="text-indigo-200 hover:text-white" wire:click="clearConversation" title="Start again" aria-label="Start again">Start again</button>
+        <button type="button" class="text-indigo-200 hover:text-white" aria-label="Close" onclick="document.getElementById('nlqModal').classList.add('hidden')">
+            ×
         </button>
     </div>
 
     <!-- Conversation Area -->
     <div class="flex-1 overflow-y-auto p-4 space-y-4" id="conversationArea">
         @foreach ($conversation as $index => $msg)
+            @continue(trim((string) ($msg['message'] ?? '')) === '')
             @if ($msg['role'] === 'user')
                 <!-- User Message -->
                 <div class="flex justify-end">
@@ -33,7 +33,7 @@
                         <!-- Show action indicator if present -->
                         @if (isset($msg['action']) && $msg['action'])
                             <div class="mt-2 text-xs bg-white/20 dark:bg-white/10 px-2 py-1 rounded">
-                                💡 Action: {{ ucfirst(str_replace('_', ' ', $msg['action']['type'])) }}
+                                Action: {{ ucfirst(str_replace('_', ' ', $msg['action']['type'])) }}
                             </div>
                         @endif
                         
@@ -44,13 +44,13 @@
                             <div class="flex gap-1">
                                 @if (!isset($msg['feedback']))
                                     <button wire:click="provideFeedback({{ $index }}, true)" class="text-xs text-gray-400 hover:text-green-600 dark:hover:text-green-400" title="Helpful">
-                                        👍
+                                        Helpful
                                     </button>
                                     <button wire:click="provideFeedback({{ $index }}, false)" class="text-xs text-gray-400 hover:text-red-600 dark:hover:text-red-400" title="Not helpful">
-                                        👎
+                                        Not helpful
                                     </button>
                                 @else
-                                    <span class="text-xs">{{ $msg['feedback'] === 'positive' ? '👍' : '👎' }}</span>
+                                    <span class="text-xs">{{ $msg['feedback'] === 'positive' ? 'Marked helpful' : 'Marked not helpful' }}</span>
                                 @endif
                             </div>
                         </div>
@@ -86,7 +86,7 @@
     <!-- Suggestions (shown when no conversation yet) -->
     @if (count($conversation) <= 1 && !$loading)
         <div class="px-4 pb-4">
-            <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">💡 Try asking:</p>
+            <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">Try asking:</p>
             <div class="space-y-2">
                 @foreach ($suggestions as $suggestion)
                     <button wire:click="useSuggestion('{{ $suggestion }}')"

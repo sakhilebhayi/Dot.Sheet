@@ -1,5 +1,5 @@
 {{-- Formatting Toolbar --}}
-<div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-1 flex items-center gap-1 flex-wrap text-sm select-none">
+<div id="formatToolbar" class="select-none">
 
     <!-- Font Size -->
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
@@ -93,7 +93,7 @@
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
         <button wire:click="captureFormatPainter"
                 class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
-            Pick Format
+            Copy format
         </button>
         <button wire:click="applyFormatPainter"
                 class="px-2 py-1 text-xs rounded border {{ $formatPainterActive ? 'border-blue-500 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300' }} hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -101,28 +101,35 @@
         </button>
     </div>
 
+    <details class="more-tools" wire:ignore.self>
+        <summary>More tools</summary>
+        <div>
     <!-- Rows / Columns -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
+        <span class="tool-label">Rows and columns</span>
         @if (config('sheet.structure_ops_enabled'))
         <button wire:click="insertRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">+Row</button>
         <button wire:click="deleteRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">-Row</button>
         <button wire:click="insertColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">+Col</button>
         <button wire:click="deleteColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">-Col</button>
         @endif
-        <button wire:click="toggleHideRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide Row</button>
-        <button wire:click="toggleHideColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide Col</button>
+        <button wire:click="toggleHideRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide row</button>
+        <button wire:click="toggleHideColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Hide column</button>
     </div>
 
     <!-- Resize -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
-        <input aria-label="RowH" type="number" wire:model="row_height_input" min="18" max="120" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="RowH">
-        <button wire:click="resizeRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set Row</button>
-        <input aria-label="ColW" type="number" wire:model="col_width_input" min="48" max="420" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="ColW">
-        <button wire:click="resizeColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set Col</button>
+        <span class="tool-label">Row height</span>
+        <input aria-label="Row height" type="number" wire:model="row_height_input" min="18" max="120" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="RowH">
+        <button wire:click="resizeRow" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set</button>
+        <span class="tool-label">Column width</span>
+        <input aria-label="Column width" type="number" wire:model="col_width_input" min="48" max="420" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="ColW">
+        <button wire:click="resizeColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Set</button>
     </div>
 
     <!-- Validation -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
+        <span class="tool-label">Allowed values</span>
         <select aria-label="Validation type" wire:model="validation_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="number">Number</option>
             <option value="text_length">Text Length</option>
@@ -131,11 +138,12 @@
         <input aria-label="Min" type="text" wire:model="validation_min" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Min">
         <input aria-label="Max" type="text" wire:model="validation_max" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Max">
         <input aria-label="a,b,c" type="text" wire:model="validation_items" class="w-24 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="a,b,c">
-        <button wire:click="addValidationRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Validation</button>
+        <button wire:click="addValidationRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add validation</button>
     </div>
 
     <!-- Conditional Formatting -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
+        <span class="tool-label">Highlight when</span>
         <select aria-label="Conditional target" wire:model="conditional_target" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="cell">Cell</option>
             <option value="column">Column</option>
@@ -150,16 +158,17 @@
         </select>
         <input aria-label="Value" type="text" wire:model="conditional_value" class="w-14 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value">
         <input aria-label="Conditional color" type="color" wire:model="conditional_color" class="w-8 h-6 rounded border-0 p-0">
-        <button wire:click="addConditionalRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Rule</button>
+        <button wire:click="addConditionalRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add rule</button>
     </div>
 
     <!-- Sort & Filter -->
     <div class="flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-600">
+        <span class="tool-label">Sort and filter</span>
         <select aria-label="Sort direction" wire:model="sort_direction" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
             <option value="asc">Sort Asc</option>
             <option value="desc">Sort Desc</option>
         </select>
-        <button wire:click="sortSelectedColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Sort Col</button>
+        <button wire:click="sortSelectedColumn" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Sort column</button>
 
         <input aria-label="A" type="text" wire:model="filter_column" class="w-10 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="A">
         <select aria-label="Filter type" wire:model="filter_type" class="text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5">
@@ -181,8 +190,9 @@
         <input aria-label="Value 1" type="text" wire:model="filter_value" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 1">
         <input aria-label="Value 2" type="text" wire:model="filter_value2" class="w-16 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-1 py-0.5" placeholder="Value 2">
         <input aria-label="Filter color" type="color" wire:model="filter_color" class="w-8 h-6 rounded border-0 p-0">
-        <button wire:click="addFilterRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add Filter</button>
-        <button wire:click="clearFilters" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Clear Filters</button>
+        <button wire:click="addFilterRule" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Add filter</button>
+        <button wire:click="clearFilters" class="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Clear filters</button>
     </div>
+        </div>
+    </details>
 </div>
-

@@ -1,6 +1,4 @@
 <div class="space-y-3">
-    <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Sharing</h3>
-
     @if($statusMessage)
         <div class="text-xs rounded px-2 py-1 {{ $statusType === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200' }}">
             {{ $statusMessage }}

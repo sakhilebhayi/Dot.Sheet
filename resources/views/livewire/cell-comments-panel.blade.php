@@ -1,6 +1,6 @@
 <div class="space-y-3">
     <div class="flex items-center justify-between">
-        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Comments</h3>
+        <span class="text-xs text-gray-500">On this cell</span>
         <span class="text-xs font-mono text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
             {{ \App\Livewire\ShowSpreadsheet::colIndexToLetter($selectedCol) }}{{ $selectedRow + 1 }}
         </span>
@@ -77,7 +77,7 @@
         <div class="flex justify-end">
             <button wire:click="addComment"
                     class="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded">
-                Add Comment
+                Add comment
             </button>
         </div>
     </div>

@@ -6,12 +6,12 @@
                 <div class="flex items-center gap-1 px-2 py-1 bg-teal-50 dark:bg-teal-900/20
                             border border-teal-200 dark:border-teal-700 rounded-full text-xs">
                     <span class="text-teal-800 dark:text-teal-200 font-medium" title="{{ $range['reference'] }}">
-                        🏷️ {{ $range['name'] }}
+                        {{ $range['name'] }}
                     </span>
                     <span class="text-teal-500 dark:text-teal-400 font-mono">{{ $range['reference'] }}</span>
                     @if ($canEdit)
                         <button wire:click="deleteRange({{ $range['id'] }})"
-                                class="text-teal-400 hover:text-red-500 ml-1">✕</button>
+                                class="text-teal-400 hover:text-red-500 ml-1">×</button>
                     @endif
                 </div>
             @endforeach

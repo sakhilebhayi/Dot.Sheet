@@ -4,7 +4,7 @@
     @if ($scriptsEnabled)
     <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="mb-2 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900">Scripts</h3>
+            <span class="text-xs text-gray-500">Your scripts</span>
             <button
                 type="button"
                 wire:click="newScript"

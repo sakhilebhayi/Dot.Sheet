@@ -1,5 +1,5 @@
-{{-- AI Analysis Panel Sidebar --}}
-<div class="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-screen overflow-hidden">
+{{-- AI Analysis panel Sidebar --}}
+<div class="w-full bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col h-screen overflow-hidden">
     
     <!-- Header -->
     <div class="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 text-white">
@@ -13,6 +13,7 @@
             @if ($selected_range)
                 <span class="text-sm bg-white/20 px-2 py-1 rounded">{{ $selected_range }}</span>
             @endif
+            <button type="button" aria-label="Close analysis" onclick="document.getElementById('analysisPanel').classList.add('hidden')">×</button>
         </div>
         <p class="text-green-100 text-xs">Data insights, cleaning, OCR, sentiment, and workflows</p>
     </div>
@@ -30,7 +31,7 @@
                 wire:click="analyzeSelectedRange"
                 class="rounded bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1.5"
             >
-                Analyze
+                Analyse
             </button>
         </div>
     </div>
@@ -61,32 +62,32 @@
         <button wire:click="switchTab('insights')" 
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'insights' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
-            💡 Insights
+            Insights
         </button>
         <button wire:click="switchTab('cleaning')"
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'cleaning' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
-            🧹 Cleaning
+            Cleaning
         </button>
         <button wire:click="switchTab('charts')"
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'charts' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300">
-            📊 Charts
+            Charts
         </button>
         <button wire:click="switchTab('sentiment')"
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'sentiment' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
-            🙂 Sentiment
+            Sentiment
         </button>
         <button wire:click="switchTab('ocr')"
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'ocr' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
-            🖼 OCR
+            OCR
         </button>
         <button wire:click="switchTab('workflows')"
                 :class="{ 'text-green-600 dark:text-green-400 border-b-2 border-green-600 dark:border-green-400' : $wire.active_tab === 'workflows' }"
                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-900 dark:hover:text-gray-300 whitespace-nowrap">
-            ⚙ Workflows
+            Workflows
         </button>
     </div>
 
@@ -115,7 +116,7 @@
                 </div>
             @else
                 <div class="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-4 text-center">
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a data range to analyze</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a data range to analyse</p>
                 </div>
             @endif
         @endif
@@ -198,7 +199,7 @@
                     wire:click="runSentimentAnalysis"
                     class="w-full rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2"
                 >
-                    Analyze Sentiment For Range
+                    Analyse sentiment for this range
                 </button>
 
                 @if (!empty($sentiment_result))

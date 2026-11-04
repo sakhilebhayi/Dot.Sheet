@@ -221,7 +221,7 @@
                     <select id="pivots-across" aria-label="What to group across, if anything"></select>
                 </p>
                 <p class="dock-note" id="pivots-hint" hidden>Select a table with its headings in the first row.</p>
-                <button class="button" type="submit">Add</button>
+                <button class="button" type="submit" disabled>Add</button>
             </form>
             <ul class="people" id="pivots-list"></ul>
         </div>

@@ -2498,7 +2498,8 @@ class DotGridEditorTest extends DuskTestCase
             $this->openSales($browser, $user, $sheet);
             $this->runCommand($browser, 'Pivot tables');
             $browser->waitFor('#pivots')->waitForTextIn('#pivots-list', 'No pivot tables on this sheet yet');
-            $browser->assertVisible('#pivots-hint')->assertDisabled('#pivots-form button');
+            $browser->assertDisabled('#pivots-form button');
+            $browser->waitFor('#pivots-hint')->assertDisabled('#pivots-form button');
 
             $browser->driver->executeScript(<<<'JS'
                 const box = document.getElementById('pivots-range');

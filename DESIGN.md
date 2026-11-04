@@ -322,7 +322,9 @@ sheet showing. Duplicating keeps the work and leaves the conversation and the re
 charts and pivots, and comments and history stay with the original. A workbook's duplicate is a private copy for the
 person who made it, with no people and no public link. Protection is set by the owner and admins and stops everyone
 else on the server. A protected sheet shows a small square after its name, and protected cells carry a faint diagonal
-rule. It guards against changes and not against reading.
+rule. It guards against changes and not against reading. How a number shows is chosen from a plain list in the format bar,
+with the decimal places beside it, and every choice is in the palette too. Dates and times are day serials, as in
+every spreadsheet: text that only looks like a date stays text.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

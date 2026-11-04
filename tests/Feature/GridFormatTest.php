@@ -6,10 +6,12 @@ use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
+use App\Services\CellFormat;
 use App\Services\CellWriter;
 use App\Services\StructureVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class GridFormatTest extends TestCase
@@ -165,5 +167,54 @@ class GridFormatTest extends TestCase
         $this->format(['italic' => true, 'version' => 999])->assertStatus(409);
 
         $this->assertNull($this->style());
+    }
+
+    public function test_the_new_number_formats_are_kept(): void
+    {
+        foreach ([['number_format' => 'time'], ['number_format' => 'datetime'], ['number_format' => 'scientific'], ['number_format' => 'text']] as $patch) {
+            $this->format($patch)->assertOk();
+            $this->assertSame($patch['number_format'], Cell::where('sheet_tab_id', $this->tab->id)->where('row_index', 0)->value('formatting')['number_format']);
+        }
+    }
+
+    public function test_a_currency_a_date_style_and_decimal_places_are_kept_and_undone(): void
+    {
+        $this->format(['number_format' => 'currency', 'currency' => 'USD', 'decimals' => 0])->assertOk();
+        $this->format(['number_format' => 'date', 'date_style' => 'long'])->assertOk();
+
+        $format = Cell::where('sheet_tab_id', $this->tab->id)->where('row_index', 0)->value('formatting');
+        $this->assertSame(['number_format' => 'date', 'currency' => 'USD', 'decimals' => 0, 'date_style' => 'long'], $format);
+
+        $this->format(['decimals' => null])->assertOk();
+        $this->assertArrayNotHasKey('decimals', Cell::where('sheet_tab_id', $this->tab->id)->where('row_index', 0)->value('formatting'));
+    }
+
+    /** @return array<string, array{0: array<string, mixed>}> */
+    public static function refusedFormats(): array
+    {
+        return [
+            'an unknown format' => [['number_format' => 'roman']],
+            'an unknown currency' => [['currency' => 'BTC']],
+            'an unknown date style' => [['date_style' => 'mdy']],
+            'too many places' => [['decimals' => 7]],
+            'negative places' => [['decimals' => -1]],
+        ];
+    }
+
+    /** @param array<string, mixed> $patch */
+    #[DataProvider('refusedFormats')]
+    public function test_only_known_formats_are_taken(array $patch): void
+    {
+        $this->format($patch)->assertUnprocessable();
+    }
+
+    public function test_formats_that_arrive_with_a_paste_are_cleaned_too(): void
+    {
+        $clean = CellFormat::clean(['number_format' => 'time', 'currency' => 'BTC', 'date_style' => 'dmy', 'decimals' => 3, 'evil' => 'x']);
+        $this->assertSame(['number_format' => 'time', 'date_style' => 'dmy', 'decimals' => 3], $clean);
+
+        $this->assertNull(CellFormat::clean(['decimals' => 9]));
+        $this->assertNull(CellFormat::clean(['date_style' => 'mdy']));
+        $this->assertNull(CellFormat::clean(['decimals' => '3']));
     }
 }

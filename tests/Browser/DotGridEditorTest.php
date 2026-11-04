@@ -3157,4 +3157,109 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#tabs [aria-current]', 'Open one')->waitUntilMissing('.c.held');
         });
     }
+
+    /** @return list<array{0: string, 1: array<string, mixed>, 2: string}> value, format and what it must read */
+    private static function shownNumbers(): array
+    {
+        return [
+            ['1234.5', ['number_format' => 'number'], '1 234.50'],
+            ['1234.5', ['number_format' => 'number', 'decimals' => 0], '1 235'],
+            ['0.1234', ['number_format' => 'percent'], '12.3%'],
+            ['0.1234', ['number_format' => 'percent', 'decimals' => 2], '12.34%'],
+            ['1234.5', ['number_format' => 'currency'], 'R 1 234.50'],
+            ['1234.5', ['number_format' => 'currency', 'currency' => 'USD'], '$ 1 234.50'],
+            ['1234.5', ['number_format' => 'currency', 'currency' => 'EUR', 'decimals' => 0], '€ 1 235'],
+            ['1234.5', ['number_format' => 'currency', 'currency' => 'GBP'], '£ 1 234.50'],
+            ['46330', ['number_format' => 'date'], '2026-11-04'],
+            ['46330', ['number_format' => 'date', 'date_style' => 'long'], '4 Nov 2026'],
+            ['46330', ['number_format' => 'date', 'date_style' => 'dmy'], '04/11/2026'],
+            ['46330.75', ['number_format' => 'date'], '2026-11-04'],
+            ['0.75', ['number_format' => 'time'], '18:00'],
+            ['46330.5', ['number_format' => 'datetime'], '2026-11-04 12:00'],
+            ['46330.5', ['number_format' => 'datetime', 'date_style' => 'long'], '4 Nov 2026 12:00'],
+            ['123456', ['number_format' => 'scientific'], '1.23E+5'],
+            ['0.00123', ['number_format' => 'scientific', 'decimals' => 1], '1.2E-3'],
+            ['1234.5', ['number_format' => 'text'], '1234.5'],
+            ['1234.5678', ['decimals' => 2], '1 234.57'],
+            ['-1234.5', ['number_format' => 'currency'], '−R 1 234.50'],
+        ];
+    }
+
+    public function test_every_number_format_reads_as_it_should(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        foreach (self::shownNumbers() as $row => [$value]) {
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => $row + 4, 'col' => 0, 'value' => $value]], $user->id);
+        }
+        foreach (self::shownNumbers() as $row => [, $format]) {
+            Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row + 4)->update(['formatting' => $format]);
+        }
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            foreach (self::shownNumbers() as $row => [, , $text]) {
+                $browser->waitUsing(5, 25, fn () => $this->cell($browser, $row + 4, 0) !== '');
+                $this->assertSame($text, $this->cell($browser, $row + 4, 0));
+            }
+        });
+    }
+
+    public function test_a_format_is_chosen_from_the_list_and_decimal_places_step_from_what_shows(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 0, 'value' => '1234.5']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->pause(100);
+            $this->clickCell($browser, 4, 0);
+            $browser->click('#do-more')->waitFor('#number-kind');
+            $this->assertSame('general', $browser->value('#number-kind'));
+
+            $browser->select('#number-kind', 'currency:USD');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '$ 1 234.50');
+
+            $browser->click('#do-fewer');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '$ 1 234.5');
+            $browser->click('#do-more-places')->click('#do-more-places');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '$ 1 234.500');
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '$ 1 234.50');
+
+            $this->clickCell($browser, 5, 0);
+            $browser->pause(50);
+            $this->assertSame('general', $browser->value('#number-kind'));
+            $this->clickCell($browser, 4, 0);
+            $browser->waitUsing(5, 25, fn () => $browser->value('#number-kind') === 'currency:USD');
+
+            $this->runCommand($browser, 'Fewer decimal places');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === '$ 1 234.5');
+            $this->runCommand($browser, 'Show as a long date');
+            $browser->waitUsing(5, 25, fn () => $browser->value('#number-kind') === 'date:long');
+
+            $this->clickCell($browser, 6, 0);
+            $browser->driver->getKeyboard()->sendKeys(['123456', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 6, 0) === '123 456');
+            $this->clickCell($browser, 6, 0);
+            $this->runCommand($browser, 'Show in scientific notation');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 6, 0) === '1.23E+5');
+            $this->runCommand($browser, 'More decimal places');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 6, 0) === '1.235E+5');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_reader_cannot_reach_the_number_controls(): void
+    {
+        [, $sheet] = $this->sheet();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->assertTrue($browser->driver->executeScript("return ['number-kind', 'do-fewer', 'do-more-places'].every(id => document.getElementById(id).disabled)"));
+        });
+    }
 }

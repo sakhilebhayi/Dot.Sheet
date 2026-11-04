@@ -51,6 +51,24 @@ export class Server {
         return result;
     }
 
+    fill(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/fill`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    find(tab, query) {
+        return json(`${this.base}/${tab}/find?${new URLSearchParams(query)}`);
+    }
+
+    replace(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/replace`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     format(tab, version, area, patch) {
         const send = () => json(`${this.base}/${tab}/format`, { method: 'POST', body: JSON.stringify({ version: version(), ...area, ...patch }) });
         const result = this.queue.then(send, send);

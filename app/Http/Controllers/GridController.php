@@ -10,6 +10,8 @@ use App\Services\CellWriter;
 use App\Services\Formula\FunctionCatalogue;
 use App\Services\Formula\Recalculator;
 use App\Services\RangeCopy;
+use App\Services\RangeFill;
+use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\StructureVersion;
@@ -165,6 +167,100 @@ class GridController extends Controller
             $writer,
             ['area' => $target],
         );
+    }
+
+    /**
+     * Take a selection out to a larger area, continuing what it starts.
+     */
+    public function fill(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer, RangeFill $fill): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'r1' => 'required|integer|min:0',
+            'r2' => 'required|integer|gte:r1',
+            'c1' => 'required|integer|min:0',
+            'c2' => 'required|integer|gte:c1',
+            'to_r1' => 'required|integer|min:0',
+            'to_r2' => 'required|integer|gte:to_r1|max:'.(SheetStructureService::GRID_ROWS - 1),
+            'to_c1' => 'required|integer|min:0',
+            'to_c2' => 'required|integer|gte:to_c1|max:'.(SheetStructureService::GRID_COLS - 1),
+        ]);
+
+        $area = ['r1' => (int) $input['r1'], 'r2' => (int) $input['r2'], 'c1' => (int) $input['c1'], 'c2' => (int) $input['c2']];
+        $target = ['r1' => (int) $input['to_r1'], 'r2' => (int) $input['to_r2'], 'c1' => (int) $input['to_c1'], 'c2' => (int) $input['to_c2']];
+
+        $contains = $target['r1'] <= $area['r1'] && $target['r2'] >= $area['r2'] && $target['c1'] <= $area['c1'] && $target['c2'] >= $area['c2'];
+        $sameRows = $target['r1'] === $area['r1'] && $target['r2'] === $area['r2'];
+        $sameCols = $target['c1'] === $area['c1'] && $target['c2'] === $area['c2'];
+        if (! $contains || ($sameRows === $sameCols)) {
+            return response()->json(['message' => 'Fill goes one way from the selection: down, up, left or right.'], 422);
+        }
+        if (($target['r2'] - $target['r1'] + 1) * ($target['c2'] - $target['c1'] + 1) > RangeCopy::MAX_CELLS) {
+            return response()->json(['message' => 'Fill fewer cells at a time: '.number_format(RangeCopy::MAX_CELLS).' at most.'], 422);
+        }
+
+        return $this->commit(
+            $spreadsheet,
+            $sheetTab,
+            (int) $input['version'],
+            fn () => [$sheetTab->id => $fill->plan($sheetTab->id, $area, $target)],
+            $writer,
+            ['area' => $target],
+        );
+    }
+
+    public function find(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetSearch $search): JsonResponse
+    {
+        $this->authorizeTab('view', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['q' => 'required|string|max:255', 'case' => 'sometimes|boolean', 'whole' => 'sometimes|boolean', 'all' => 'sometimes|boolean']);
+
+        return response()->json($search->find(
+            $this->searchedTabs($spreadsheet, $sheetTab, $request->boolean('all')),
+            $input['q'],
+            $request->boolean('case'),
+            $request->boolean('whole'),
+        ));
+    }
+
+    public function replace(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer, SheetSearch $search): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate([
+            'version' => 'required|integer',
+            'q' => 'required|string|max:255',
+            'with' => 'present|nullable|string|max:255',
+            'case' => 'sometimes|boolean',
+            'whole' => 'sometimes|boolean',
+            'all' => 'sometimes|boolean',
+            'only' => 'sometimes|array',
+            'only.tab' => 'required_with:only|integer',
+            'only.r' => 'required_with:only|integer|min:0',
+            'only.c' => 'required_with:only|integer|min:0',
+        ]);
+
+        $tabs = $this->searchedTabs($spreadsheet, $sheetTab, $request->boolean('all'));
+        $only = isset($input['only']) ? ['tab' => (int) $input['only']['tab'], 'r' => (int) $input['only']['r'], 'c' => (int) $input['only']['c']] : null;
+
+        $edits = $search->replacements($tabs, $input['q'], (string) ($input['with'] ?? ''), $request->boolean('case'), $request->boolean('whole'), $only);
+        if (array_sum(array_map('count', $edits)) > RangeCopy::MAX_CELLS) {
+            return response()->json(['message' => 'That would change too many cells at once: '.number_format(RangeCopy::MAX_CELLS).' at most.'], 422);
+        }
+
+        return $this->commit($spreadsheet, $sheetTab, (int) $input['version'], fn () => $edits, $writer, [
+            'replaced' => array_sum(array_map('count', $edits)),
+        ]);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function searchedTabs(Spreadsheet $spreadsheet, SheetTab $sheetTab, bool $all): array
+    {
+        return $all ? $spreadsheet->sheetTabs()->orderBy('sort_order')->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all() : [$sheetTab->id];
     }
 
     public function format(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, CellWriter $writer): JsonResponse

@@ -10,6 +10,7 @@
 <body class="shell">
     <a class="skip" href="#sheet">Skip to the sheet</a>
 
+    <div class="top">
     <header class="bar">
         <a class="mark" href="{{ route('dashboard') }}" aria-label="All spreadsheets"></a>
         <h1>{{ $spreadsheet->name }}</h1>
@@ -27,6 +28,26 @@
         <a class="tool quiet" href="{{ route('spreadsheets.show', $spreadsheet) }}">Classic editor</a>
     </header>
 
+    <form class="findbar" id="findbar" role="search" hidden>
+        <label><span class="sr">Find</span><input id="find-text" placeholder="Find" autocomplete="off" spellcheck="false"></label>
+        @if ($boot['canEdit'])
+            <label><span class="sr">Replace with</span><input id="replace-text" placeholder="Replace with" autocomplete="off" spellcheck="false"></label>
+        @endif
+        <label class="tick"><input type="checkbox" id="find-case">Match case</label>
+        <label class="tick"><input type="checkbox" id="find-whole">Whole cell</label>
+        <label class="tick"><input type="checkbox" id="find-all">All sheets</label>
+        <span class="find-count" id="find-count" role="status"></span>
+        <span class="grow"></span>
+        <button class="tool" type="button" id="find-prev">Previous</button>
+        <button class="tool" type="button" id="find-next">Next</button>
+        @if ($boot['canEdit'])
+            <button class="tool" type="button" id="replace-one">Replace</button>
+            <button class="tool" type="button" id="replace-all">Replace all</button>
+        @endif
+        <button class="tool" type="button" id="find-close" aria-label="Close find">×</button>
+    </form>
+    </div>
+
     <main class="sheet" id="sheet" tabindex="0" role="application" aria-roledescription="spreadsheet" aria-label="{{ $spreadsheet->name }}">
         <div class="canvas" id="canvas">
             <div class="head" id="head">
@@ -36,6 +57,7 @@
             <div class="body" id="body">
                 <div class="layer" id="cells"></div>
                 <svg class="threads" id="threads" aria-hidden="true"></svg>
+                <div class="handle" id="handle" title="Drag to fill, or double-click to fill down" hidden></div>
                 <div class="frozen" id="frozen"></div>
             </div>
         </div>

@@ -158,6 +158,10 @@ Colour carries meaning, and each colour has one job.
 
 Error values such as `#DIV/0!` use loss. Their explanation is the cell's tooltip.
 
+**The logo** keeps its own yellow and green, and they appear nowhere else. The bar carries its circle and
+chevron, cut from the master artwork at `public/dot_sheet.png`, because the wordmark cannot be read at
+that size. Never redraw or recolour it. The full logo goes where it has room: sign-in and error pages.
+
 ## Typography
 
 One family, Hanken Grotesk, self-hosted. Tabular figures everywhere in the grid and status line, so

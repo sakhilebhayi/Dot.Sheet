@@ -89,6 +89,10 @@ export class Grid {
         this.lines = [];
         this.fresh = new Set();
         this.copied = null;
+        this.filling = null;
+        this.foundCells = new Set();
+        this.editable = size.editable;
+        this.handle = byId('handle');
         this.onView = () => {};
 
         this.sheet.addEventListener('scroll', () => {
@@ -243,6 +247,16 @@ export class Grid {
         this.stuck.end();
         this.columns.end();
         this.numbers.end();
+        this.placeHandle(area);
+    }
+
+    /** The fill dot sits on the selection's bottom right corner, when that corner can be seen. */
+    placeHandle(area) {
+        const whole = area.r2 - area.r1 + 1 === this.size.rows || area.c2 - area.c1 + 1 === this.size.cols;
+        const x = (area.c2 === 0 ? this.gutter + this.sheet.scrollLeft : this.gutter + this.cols.offset(area.c2)) + this.cols.sizeOf(area.c2);
+        const y = this.y(area.r2) + this.rows.sizeOf(area.r2);
+        this.handle.hidden = !this.editable || whole || (area.c2 > 0 && x < this.sheet.scrollLeft + this.stuckWidth);
+        this.handle.style.transform = `translate(${x}px,${y}px)`;
     }
 
     paintColumn(el, c, area) {
@@ -283,6 +297,8 @@ export class Grid {
         if (r === this.active.r && c === this.active.c) names += ' now';
         if (this.fresh.has(`${r}:${c}`)) names += ' moved';
         if (this.isCopied(r, c)) names += ' copied';
+        if (this.foundCells.has(`${r}:${c}`)) names += ' found';
+        if (this.isFilling(r, c)) names += ' filling';
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;
 
@@ -305,6 +321,11 @@ export class Grid {
         el.style.fontSize = x.font_size ? `${Number(x.font_size)}px` : '';
         el.title = cell?.e ?? '';
         el.firstChild.textContent = shown.text;
+    }
+
+    isFilling(r, c) {
+        const area = this.filling;
+        return Boolean(area) && r >= area.r1 && r <= area.r2 && c >= area.c1 && c <= area.c2;
     }
 
     isCopied(r, c) {

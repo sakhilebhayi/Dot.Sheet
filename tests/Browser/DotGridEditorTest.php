@@ -89,6 +89,23 @@ class DotGridEditorTest extends DuskTestCase
         JS, [$type, $text]);
     }
 
+    /** Drag the fill dot to a cell, with the page's own pointer events. */
+    private function dragFillTo(Browser $browser, int $row, int $col): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const handle = document.getElementById('handle');
+            const from = handle.getBoundingClientRect();
+            const x = sheet.left + px('--gutter') + (arguments[1] === 0 ? 20 : px('--label') + (arguments[1] - 1) * px('--col') + 20);
+            const y = sheet.top + px('--head') + arguments[0] * px('--row') + 10;
+            handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: from.left, clientY: from.top, button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y }));
+        JS, [$row, $col]);
+    }
+
     private function assertNoConsoleErrors(Browser $browser): void
     {
         $errors = collect($browser->driver->manage()->getLog('browser'))
@@ -374,6 +391,111 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitUsing(10, 25, fn () => $this->cell($browser, 4, 1) === '600');
             $this->assertSame('=B2+B1', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formula'));
             $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_dragging_the_fill_dot_carries_formulas_on_and_undo_takes_them_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 1);
+            $browser->waitFor('#handle');
+
+            $this->dragFillTo($browser, 2, 3);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 3)->exists());
+
+            $this->assertSame('=SUM(D1:D2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 3)->value('formula'));
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 3)->doesntExist());
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_double_clicking_the_fill_dot_runs_down_beside_the_data(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 2);
+            $browser->keys('#sheet', 'Q1', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 2) === 'Q1');
+            $this->clickCell($browser, 0, 2);
+
+            $browser->waitFor('#handle');
+            $browser->script("document.getElementById('handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))");
+
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 2) === 'Q3');
+            $this->assertSame('Q2', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 1)->where('col_index', 2)->value('raw_value'));
+        });
+    }
+
+    public function test_the_fill_keys_work(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 2, 2);
+
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'r']);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->exists());
+
+            $this->assertSame('=SUM(C1:C2)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 2)->where('col_index', 2)->value('formula'));
+        });
+    }
+
+    public function test_find_steps_through_matches_and_replace_can_be_undone(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 0, 'value' => 'Rent due']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::CONTROL, 'f']);
+            $browser->waitFor('#find-text')->type('#find-text', 'rent');
+            $browser->waitForTextIn('#find-count', '2');
+            $this->assertSame(2, $browser->driver->executeScript("return document.querySelectorAll('.c.found').length"));
+
+            $browser->keys('#find-text', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#ref', 'A2');
+            $browser->assertSeeIn('#find-count', '1 of 2');
+            $browser->keys('#find-text', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#ref', 'A5');
+
+            $browser->type('#replace-text', 'Lease')->click('#replace-all');
+            $browser->waitForTextIn('#note', 'Replaced 2 cells');
+            $this->assertSame('Lease due', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('raw_value'));
+
+            $browser->keys('#find-text', WebDriverKeys::ESCAPE);
+            $browser->waitUntilMissing('#find-text');
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('raw_value') === 'Rent due');
+
+            $this->assertSame(0, $browser->driver->executeScript("return document.querySelectorAll('.c.found').length"));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_can_find_but_has_no_fill_dot(): void
+    {
+        [, $sheet] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $this->clickCell($browser, 0, 1);
+            $browser->assertMissing('#handle');
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::CONTROL, 'f']);
+            $browser->waitFor('#find-text')->type('#find-text', 'sales');
+            $browser->waitForTextIn('#find-count', '1');
+            $browser->assertMissing('#replace-all');
         });
     }
 }

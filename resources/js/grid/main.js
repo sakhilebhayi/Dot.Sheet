@@ -28,7 +28,7 @@ const store = new Store(server, () => {
     grid.paint();
     selected();
 });
-const grid = new Grid(store, { rows: boot.rows, cols: boot.cols });
+const grid = new Grid(store, { rows: boot.rows, cols: boot.cols, editable: boot.canEdit });
 
 let version = boot.version;
 let tab = boot.tabs[0]?.id ?? null;
@@ -71,6 +71,7 @@ async function open(id) {
     grid.setLayout(body.layout);
     drawTabs();
     selected();
+    markFound();
 }
 
 function drawTabs() {
@@ -132,7 +133,7 @@ function figure(n) {
 }
 
 function setStats(sum, average, count) {
-    byId('s-sum').textContent = figure(count ? sum : null);
+    byId('s-sum').textContent = figure(average === null ? null : sum);
     byId('s-avg').textContent = figure(average);
     byId('s-count').textContent = show({ v: String(count) }).text;
 }
@@ -590,6 +591,181 @@ function toggleNumber(format) {
     applyFormat({ number_format: cell?.x?.number_format === format ? 'general' : format });
 }
 
+/* Fill */
+
+async function fillTo(area, target) {
+    if (!boot.canEdit) return;
+    const { ok, status, body } = await server.fill(tab, () => version, {
+        ...area,
+        to_r1: target.r1,
+        to_r2: target.r2,
+        to_c1: target.c1,
+        to_c2: target.c2,
+    });
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+
+    if (body.refused[0]) note(body.refused[0].message);
+    remember(body.undo);
+    await absorb(body, new Set(body.cells.map((c) => `${c.r}:${c.c}`)));
+    store.reach(body.area.r2, body.area.c2);
+    grid.fit();
+    selectArea(body.area.r1, body.area.c1, body.area.r2, body.area.c2);
+}
+
+/** Ctrl and D or R: one line chosen takes its contents from the line before it. */
+function fillDown() {
+    const area = usedArea();
+    if (area.r1 === area.r2) {
+        if (area.r1 > 0) fillTo({ ...area, r1: area.r1 - 1, r2: area.r1 - 1 }, { ...area, r1: area.r1 - 1 });
+    } else {
+        fillTo({ ...area, r2: area.r1 }, area);
+    }
+}
+
+function fillRight() {
+    const area = usedArea();
+    if (area.c1 === area.c2) {
+        if (area.c1 > 0) fillTo({ ...area, c1: area.c1 - 1, c2: area.c1 - 1 }, { ...area, c1: area.c1 - 1 });
+    } else {
+        fillTo({ ...area, c2: area.c1 }, area);
+    }
+}
+
+/** Double-click on the dot: down as far as the column beside the selection runs. */
+async function fillToEdge() {
+    const area = grid.area();
+    await store.ensure(area.r2, area.r2 + 3000);
+    const beside = (r) => hasContent(store.get(r, area.c1 - 1)) || hasContent(store.get(r, area.c2 + 1));
+    let end = area.r2;
+    while (beside(end + 1)) end++;
+    if (end > area.r2) fillTo(area, { ...area, r2: end });
+    else note('Nothing beside this selection to fill down to.');
+}
+
+/* Find and replace */
+
+const findbar = byId('findbar');
+const findText = byId('find-text');
+const replaceText = byId('replace-text');
+const findCount = byId('find-count');
+let matched = [];
+let foundAt = -1;
+let foundMore = false;
+let searching;
+let searchTurn = 0;
+
+function searchTerms() {
+    const terms = { q: findText.value };
+    if (byId('find-case').checked) terms.case = 1;
+    if (byId('find-whole').checked) terms.whole = 1;
+    if (byId('find-all').checked) terms.all = 1;
+    return terms;
+}
+
+function markFound() {
+    grid.foundCells = new Set(matched.filter((match) => match.tab === tab).map((match) => `${match.r}:${match.c}`));
+    grid.paint();
+}
+
+function countFound() {
+    if (findText.value === '') findCount.textContent = '';
+    else if (matched.length === 0) findCount.textContent = 'No matches';
+    else findCount.textContent = `${foundAt < 0 ? matched.length : `${foundAt + 1} of ${matched.length}`}${foundMore ? '+' : ''}`;
+}
+
+async function search() {
+    const turn = ++searchTurn;
+    if (findText.value === '') {
+        matched = [];
+        foundAt = -1;
+        foundMore = false;
+    } else {
+        const { ok, body } = await server.find(tab, searchTerms());
+        if (!ok || turn !== searchTurn) return;
+        matched = body.matches;
+        foundMore = body.more;
+        foundAt = -1;
+    }
+    markFound();
+    countFound();
+}
+
+async function stepFound(by) {
+    if (matched.length === 0) return;
+    foundAt = foundAt < 0 && by < 0 ? matched.length - 1 : (foundAt + by + matched.length) % matched.length;
+    const match = matched[foundAt];
+    if (match.tab !== tab) await open(match.tab);
+    select(match.r, match.c);
+    countFound();
+}
+
+function openFind(field = findText) {
+    closeEdit(true);
+    findbar.hidden = false;
+    grid.soon();
+    (field ?? findText).focus();
+    (field ?? findText).select();
+}
+
+function closeFind() {
+    findbar.hidden = true;
+    findText.value = '';
+    search();
+    sheet.focus({ preventScroll: true });
+}
+
+async function replaceFound(only) {
+    if (!boot.canEdit || findText.value === '') return;
+    const { ok, status, body } = await server.replace(tab, () => version, { ...searchTerms(), with: replaceText.value, ...(only ? { only } : {}) });
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+
+    const place = foundAt;
+    if (body.replaced > 0) remember(body.undo.filter((group) => group.edits.length));
+    await absorb(body, new Set(body.cells.map((c) => `${c.r}:${c.c}`)));
+    if (!only) note(body.replaced === 1 ? 'Replaced 1 cell.' : `Replaced ${body.replaced} cells.`);
+    await search();
+    if (only && matched.length) {
+        foundAt = Math.min(place, matched.length - 1) - 1;
+        stepFound(1);
+    }
+}
+
+async function replaceThis() {
+    if (foundAt < 0) {
+        await stepFound(1);
+        return;
+    }
+    replaceFound(matched[foundAt]);
+}
+
+findbar.addEventListener('submit', (e) => e.preventDefault());
+findText.addEventListener('input', () => {
+    clearTimeout(searching);
+    searching = setTimeout(search, 200);
+});
+for (const id of ['find-case', 'find-whole', 'find-all']) byId(id).addEventListener('change', search);
+byId('find-next').addEventListener('click', () => stepFound(1));
+byId('find-prev').addEventListener('click', () => stepFound(-1));
+byId('find-close').addEventListener('click', closeFind);
+byId('replace-one')?.addEventListener('click', replaceThis);
+byId('replace-all')?.addEventListener('click', () => replaceFound(null));
+findbar.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFind();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (e.target === replaceText) replaceThis();
+        else stepFound(e.shiftKey ? -1 : 1);
+    }
+});
+
 /* Typing in a cell */
 
 const box = document.createElement('input');
@@ -756,6 +932,10 @@ sheet.addEventListener('keydown', (e) => {
         else undo();
     } else if (command && e.key.toLowerCase() === 'y') {
         redo();
+    } else if (command && e.key.toLowerCase() === 'd') {
+        fillDown();
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+        fillRight();   // Ctrl only: Cmd+R stays the browser's reload
     } else if (command && e.key.toLowerCase() === 'a') {
         selectArea(0, 0, boot.rows - 1, boot.cols - 1);
     } else if (command && e.key.toLowerCase() === 'b') {
@@ -776,6 +956,8 @@ sheet.addEventListener('keydown', (e) => {
 /* The pointer */
 
 let dragging = null;
+let fillFrom = null;
+let fillArea = null;
 
 function pick(e) {
     const { r, c } = grid.hit(e.clientX, e.clientY);
@@ -810,6 +992,14 @@ sheet.addEventListener('mousedown', (e) => {
 
 sheet.addEventListener('pointerdown', (e) => {
     if (e.target === sheet || e.target === box || e.button !== 0) return;
+    if (e.target === grid.handle) {
+        e.preventDefault();
+        closeEdit(true);
+        dragging = 'fill';
+        fillFrom = grid.area();
+        fillArea = null;
+        return;
+    }
     if (canPoint()) {
         const { r, c } = grid.hit(e.clientX, e.clientY);
         if (e.pointerType === 'touch' || r < 0 || c < 0) return;
@@ -834,6 +1024,17 @@ window.addEventListener('pointermove', (e) => {
     else if (e.clientX < edge.left + grid.stuckWidth + 8) sheet.scrollLeft -= grid.cols.size;
 
     const { r, c } = grid.hit(Math.min(e.clientX, edge.right - 1), Math.min(e.clientY, edge.bottom - 1));
+    if (dragging === 'fill') {
+        const from = fillFrom;
+        const down = r > from.r2 ? r - from.r2 : r < from.r1 ? from.r1 - r : 0;
+        const across = c > from.c2 ? c - from.c2 : c < from.c1 ? from.c1 - c : 0;
+        fillArea = null;
+        if (down * grid.rows.size >= across * grid.cols.size && down > 0) fillArea = { ...from, r1: Math.min(from.r1, Math.max(0, r)), r2: Math.max(from.r2, r) };
+        else if (across > 0) fillArea = { ...from, c1: Math.min(from.c1, Math.max(0, c)), c2: Math.max(from.c2, c) };
+        grid.filling = fillArea;
+        grid.paint();
+        return;
+    }
     if (dragging.r !== undefined) {
         point(dragging.r, dragging.c, Math.max(0, r), Math.max(0, c));
         return;
@@ -849,6 +1050,13 @@ window.addEventListener('pointermove', (e) => {
 
 window.addEventListener('pointerup', () => {
     if (!dragging) return;
+    if (dragging === 'fill') {
+        dragging = null;
+        grid.filling = null;
+        grid.paint();
+        if (fillArea) fillTo(fillFrom, fillArea);
+        return;
+    }
     const pointing = dragging.r !== undefined;
     dragging = null;
     if (!pointing) afterMove();
@@ -872,6 +1080,10 @@ sheet.addEventListener('click', (e) => {
 
 sheet.addEventListener('dblclick', (e) => {
     if (e.target === box) return;
+    if (e.target === grid.handle) {
+        fillToEdge();
+        return;
+    }
     const { r, c } = grid.hit(e.clientX, e.clientY);
     if (r >= 0 && c >= 0) beginEdit(contents(store.get(r, c)));
 });
@@ -891,12 +1103,16 @@ function choices(query) {
 
     const commands = [
         ...(boot.canEdit ? [
+            { label: 'Find and replace', run: () => openFind() },
+            { label: 'Fill down', run: fillDown },
+            { label: 'Fill right', run: fillRight },
             { label: 'Undo', run: undo },
             { label: 'Redo', run: redo },
             { label: 'Bold', run: toggleBold },
             { label: 'Show as a percentage', run: () => toggleNumber('percent') },
             { label: 'Show in rand', run: () => toggleNumber('currency') },
         ] : []),
+        ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },
         { label: 'Open the classic editor', href: boot.links.classic },
@@ -980,6 +1196,13 @@ palette.addEventListener('click', (e) => {
 });
 byId('open-palette').addEventListener('click', openPalette);
 document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        openFind();
+    } else if (e.ctrlKey && e.key.toLowerCase() === 'h' && replaceText) {
+        e.preventDefault();
+        openFind(replaceText);
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         if (palette.open) palette.close();

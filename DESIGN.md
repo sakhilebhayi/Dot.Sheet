@@ -212,6 +212,13 @@ so position is clear from anywhere on screen.
 **Copied cells.** Their dots grow to 6px in the thread colour until the copy is pasted or dismissed.
 A marching outline would move at rest.
 
+**Fill.** A 9px thread-coloured dot on the selection's corner: drag it to fill, or double-click to fill
+down as far as the column beside it runs. It belongs to the selection, so it is a dot like every other
+mark here. Touch uses Fill down and Fill right in the palette.
+
+**Find.** A bar docked under the bar, so it pushes the sheet down and never covers figures. Matches take
+the read wash and a blue dot, because finding is tracing.
+
 **Palette.** Commands and the function catalogue in one search. Each function shows its plain summary.
 Choosing a function puts it in the cell.
 

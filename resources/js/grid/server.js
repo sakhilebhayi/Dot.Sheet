@@ -124,6 +124,10 @@ export class Server {
         return json(`${this.base}/${tab}/names`);
     }
 
+    fromWords(tab, sentence) {
+        return json(`${this.base}/${tab}/from-words?sentence=${encodeURIComponent(sentence)}`);
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

@@ -333,7 +333,9 @@ offers functions, names and sheets as a word is typed, and inside brackets it sh
 current one in bold. Tab takes the top suggestion, and Enter still finishes the formula unless an arrow key chose one.
 The function assistant finds a function by what it does and gives each argument a field that takes the selection. A cell
 with a formula offers Explain in the bar: the formula in plain words, and for an error what went wrong, in terms of this
-sheet's own cells, with a repair shown before it is made when one is certain.
+sheet's own cells, with a repair shown before it is made when one is certain. The assistant also reads a sentence against
+the sheet's own headings, and shows the formula before putting it in. A new formula beside a column of data offers to
+fill down, in the foot, and changes nothing until pressed.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

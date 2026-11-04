@@ -133,6 +133,7 @@ Route::middleware([
         Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
         Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');
+        Route::get('from-words', [GridFormulaController::class, 'fromWords'])->name('from-words');
         Route::get('explain/{row}/{col}', [GridFormulaController::class, 'explain'])->whereNumber(['row', 'col'])->name('explain');
         Route::get('protections', [GridProtectionController::class, 'index'])->name('protections.index');
         Route::post('protections', [GridProtectionController::class, 'store'])->name('protections.store');

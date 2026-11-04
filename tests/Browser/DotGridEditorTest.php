@@ -3588,4 +3588,103 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#explain-body', 'A misspelt function')->assertMissing('#explain-fix');
         });
     }
+
+    /** @return array{0: User, 1: Spreadsheet, 2: SheetTab} */
+    private function expenseSheet(): array
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        $rows = [['Department', 'Expense'], ['Sales', '100'], ['Mining', '200'], ['Sales', '300']];
+        $edits = [];
+        foreach ($rows as $row => $cells) {
+            foreach ($cells as $col => $value) {
+                $edits[] = ['row' => $row, 'col' => $col, 'value' => $value];
+            }
+        }
+        app(CellWriter::class)->write($sheet->id, $tab->id, $edits, $user->id);
+
+        return [$user, $sheet, $tab];
+    }
+
+    private function openWithoutWaitingForSales(Browser $browser, User $user, Spreadsheet $sheet): void
+    {
+        $browser->driver->get('about:blank');
+        $browser->driver->manage()->getLog('browser');
+        $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}");
+        $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Department');
+    }
+
+    public function test_a_sentence_becomes_a_table_of_formulas_from_the_sheet_s_own_headings(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 6, 0);
+            $this->runCommand($browser, 'Function assistant');
+            $browser->waitFor('#assistant:not([hidden])')->type('#assistant-words', 'Calculate the total expenses for each department');
+            $browser->click('#assistant-ask button');
+            $browser->waitForTextIn('#assistant-answer', '2 lines from the selected cell down.');
+            $browser->click('#assistant-put');
+
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 7, 1) === '400');
+            $this->assertSame('Department', $this->cell($browser, 6, 0));
+            $this->assertSame('Expense', $this->cell($browser, 6, 1));
+            $this->assertSame('Mining', $this->cell($browser, 8, 0));
+            $this->assertSame('200', $this->cell($browser, 8, 1));
+            $this->assertSame('=SUMIFS($B$2:$B$4,$A$2:$A$4,$A8)', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 7)->where('col_index', 1)->value('formula'));
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 7, 1) === '');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_formula_beside_a_column_offers_to_fill_down_and_changes_nothing_until_pressed(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 2);
+            $browser->driver->getKeyboard()->sendKeys(['=B2*2', WebDriverKeys::ENTER]);
+            $browser->waitFor('#fill-offer:not([hidden])')->assertSeeIn('#fill-offer', 'Fill down to row 4');
+            $this->assertSame(1, Cell::where('sheet_tab_id', $tab->id)->where('col_index', 2)->count());
+
+            $browser->click('#fill-offer');
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('col_index', 2)->count() === 3);
+            $this->assertSame('=B4*2', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 3)->where('col_index', 2)->value('formula'));
+            $browser->assertMissing('#fill-offer:not([hidden])');
+        });
+    }
+
+    public function test_the_offer_stops_short_of_what_is_already_in_the_column(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 3, 'col' => 2, 'value' => 'Keep me']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 2);
+            $browser->driver->getKeyboard()->sendKeys(['=B2*2', WebDriverKeys::ENTER]);
+            $browser->waitFor('#fill-offer:not([hidden])')->assertSeeIn('#fill-offer', 'Fill down to row 3');
+
+            $this->clickCell($browser, 2, 2);
+            $browser->driver->getKeyboard()->sendKeys(['=B3*2', WebDriverKeys::ENTER]);
+            $browser->pause(200)->assertMissing('#fill-offer:not([hidden])');
+        });
+    }
+
+    public function test_plain_text_makes_no_offer(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 2);
+            $browser->driver->getKeyboard()->sendKeys(['words', WebDriverKeys::ENTER]);
+            $browser->pause(150)->assertMissing('#fill-offer:not([hidden])');
+        });
+    }
 }

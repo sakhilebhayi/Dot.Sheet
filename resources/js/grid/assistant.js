@@ -20,6 +20,15 @@ export class Assistant {
         this.fields = [];
         this.field = null;
 
+        this.ask = byId('assistant-ask');
+        this.words = byId('assistant-words');
+        this.answer = byId('assistant-answer');
+        this.ask.hidden = !editor.canEdit();
+        this.ask.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.workOut();
+        });
+
         byId('assistant-close').addEventListener('click', () => this.toggle(false));
         this.search.addEventListener('input', () => this.drawList());
         this.panel.addEventListener('keydown', (e) => {
@@ -41,6 +50,40 @@ export class Assistant {
         }
         this.showList();
         if (!matchMedia('(pointer: coarse)').matches) this.search.focus({ preventScroll: true });
+    }
+
+    /** Read the sentence against this sheet's headings, and show what it would put in before it does. */
+    async workOut() {
+        const { ok, status, body } = await this.editor.server.fromWords(this.editor.tab(), this.words.value.trim());
+        if (!ok) {
+            this.editor.refused(status, body);
+            return;
+        }
+
+        const parts = [];
+        if (body.says) parts.push(make('p', 'dock-note', body.says));
+        if (body.formula) {
+            parts.push(make('code', 'assistant-preview', body.formula), make('p', 'dock-note', body.plain));
+            parts.push(this.putButton(() => this.editor.insert(body.formula)));
+        }
+        if (body.group) {
+            parts.push(make('code', 'assistant-preview', body.group.formula.replace('{key}', body.group.heading)));
+            parts.push(make('p', 'dock-note', `${body.group.keys.length} lines from the selected cell down.`));
+            parts.push(this.putButton(() => this.editor.insertGroup(body.heading, body.group)));
+        }
+        this.answer.replaceChildren(...parts);
+        this.answer.hidden = false;
+    }
+
+    putButton(run) {
+        const put = deed('Put it in the sheet', () => {
+            run();
+            this.answer.hidden = true;
+            this.words.value = '';
+        });
+        put.className = 'button';
+        put.id = 'assistant-put';
+        return put;
     }
 
     showList() {

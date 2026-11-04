@@ -33,6 +33,7 @@ const bold = byId('do-bold');
 const percent = byId('do-percent');
 const rand = byId('do-rand');
 const numberKind = byId('number-kind');
+const fillOffer = byId('fill-offer');
 const fewerPlaces = byId('do-fewer');
 const morePlaces = byId('do-more-places');
 const formatbar = byId('formatbar');
@@ -147,6 +148,19 @@ const assistant = new Assistant({
         write([{ row: r, col: c, value: formula }]);
         note(`Put ${formula} in ${cellName(r, c)}.`);
     },
+    insertGroup: (heading, group) => {
+        const { r, c } = grid.active;
+        const edits = [{ row: r, col: c, value: group.heading }, { row: r, col: c + 1, value: heading }];
+        group.keys.forEach((key, i) => {
+            edits.push({ row: r + 1 + i, col: c, value: key });
+            edits.push({ row: r + 1 + i, col: c + 1, value: group.formula.replace('{key}', `$${columnName(c)}${r + 2 + i}`) });
+        });
+        write(edits);
+        note(`Put ${group.keys.length} lines in from ${cellName(r, c)}. A new ${group.heading} will need a new line.`);
+    },
+    server,
+    tab: () => tab,
+    refused,
 });
 const explain = new Explain({
     server,
@@ -2205,6 +2219,7 @@ function fit() {
 }
 
 function beginEdit(text, typing = false, inLine = false) {
+    fillOffer.hidden = true;
     if (!boot.canKeep && boot.canEdit && grid.heldAt(grid.active.r, grid.active.c)) {
         note('This cell is protected. Ask the workbook\'s owner to change it.');
         return;
@@ -2237,9 +2252,27 @@ function placeBox() {
     grid.layerOf(r, c).append(box);
 }
 
+/** A formula beside a column of data probably belongs on every row. Offer it, and change nothing yet. */
+async function offerFill(r, c) {
+    await store.ensure(r, r + 3000);
+    const beside = (row) => hasContent(store.get(row, c - 1)) || hasContent(store.get(row, c + 1));
+    let end = r;
+    while (beside(end + 1) && !hasContent(store.get(end + 1, c))) end++;
+    if (end === r) return;
+
+    fillOffer.textContent = `Fill down to row ${end + 1}`;
+    fillOffer.hidden = false;
+    fillOffer.onclick = () => {
+        fillOffer.hidden = true;
+        const area = { r1: r, r2: r, c1: c, c2: c };
+        fillTo(area, { ...area, r2: end });
+    };
+}
+
 function closeEdit(save) {
     if (!editing) return;
     formulaHelp.close();
+    fillOffer.hidden = true;
     if (away) {
         comeHome(save);
         return;
@@ -2255,7 +2288,10 @@ function closeEdit(save) {
         grid.paint();
     }
 
-    if (save && value !== contents(store.get(r, c))) write([{ row: r, col: c, value }]);
+    if (save && value !== contents(store.get(r, c))) {
+        write([{ row: r, col: c, value }]);
+        if (value.startsWith('=')) offerFill(r, c);
+    }
     line.value = contents(store.get(grid.active.r, grid.active.c));
 }
 

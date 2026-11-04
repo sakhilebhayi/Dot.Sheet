@@ -46,7 +46,7 @@ class DotGridEditorTest extends DuskTestCase
         $browser->driver->get('about:blank');
         $browser->driver->manage()->getLog('browser');
 
-        return $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}/grid")
+        return $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}")
             ->waitUsing(10, 25, fn () => $browser->driver->executeScript("return [...document.querySelectorAll('.c')].some(c => c.textContent === 'Sales')"));
     }
 
@@ -627,7 +627,7 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
 
             // It survives a reload, and undo takes it away.
-            $browser->visit("/spreadsheets/{$sheet->id}/grid");
+            $browser->visit("/spreadsheets/{$sheet->id}");
             $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return document.getElementById('sheet').classList.contains('freeze-rows')"));
             $this->runCommand($browser, 'Unfreeze');
             $browser->waitUsing(10, 25, fn () => ($tab->fresh()->layout['frozen_rows'] ?? null) === 0);
@@ -770,6 +770,23 @@ class DotGridEditorTest extends DuskTestCase
             $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Merge cells');
             $browser->pause(100)->assertDontSeeIn('#found', 'Merge cells');
             $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_looking_for_something_still_in_the_classic_editor_finds_the_way_there(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'share');
+            $browser->waitForTextIn('#found', 'Share this sheet')->assertSeeIn('#found', 'In the classic editor');
+
+            $browser->keys('#find', WebDriverKeys::ENTER);
+            $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
+            $browser->assertSee('New editor');
+
+            $browser->clickLink('New editor')->waitForLocation("/spreadsheets/{$sheet->id}")->waitFor('#sheet');
         });
     }
 }

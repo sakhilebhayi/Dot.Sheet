@@ -118,7 +118,7 @@ class SpreadsheetController extends Controller
     /**
      * Display the specified spreadsheet
      */
-    public function show(Spreadsheet $spreadsheet)
+    public function classic(Spreadsheet $spreadsheet)
     {
         $this->authorize('view', $spreadsheet);
 

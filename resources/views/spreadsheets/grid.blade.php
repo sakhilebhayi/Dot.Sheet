@@ -25,7 +25,7 @@
             <button type="button" id="do-rand" aria-label="Rand">R</button>
         </div>
         <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
-        <a class="tool quiet" href="{{ route('spreadsheets.show', $spreadsheet) }}">Classic editor</a>
+        <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
     </header>
 
     <form class="findbar" id="findbar" role="search" hidden>

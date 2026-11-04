@@ -74,7 +74,7 @@ class SignedInLayoutAssetsTest extends TestCase
         ]);
 
         $html = $this->withHotFile(fn () => $this->actingAs($user)
-            ->get(route('spreadsheets.show', $spreadsheet))
+            ->get(route('spreadsheets.classic', $spreadsheet))
             ->assertOk()
             ->getContent());
 

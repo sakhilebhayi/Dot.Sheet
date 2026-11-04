@@ -5,7 +5,6 @@
     $facts = fn ($sheet) => [
         'name' => $sheet->name,
         'open' => route('spreadsheets.show', $sheet),
-        'grid' => route('spreadsheets.grid', $sheet),
         'sheets' => $sheet->sheetTabs->sortBy('sort_order')->pluck('name')->implode(', '),
         'sheetCount' => $sheet->sheetTabs->count(),
         'errors' => $sheet->errors_count === 0 ? 'None' : $grouped($sheet->errors_count).($sheet->errors_count === 1 ? ' formula' : ' formulas'),
@@ -67,7 +66,6 @@
                 </dl>
                 <div class="deeds">
                     <a class="button" id="stage-open" href="{{ route('spreadsheets.show', $first) }}">Open</a>
-                    <a class="link soft" id="stage-grid" href="{{ route('spreadsheets.grid', $first) }}">Preview the new editor</a>
                     <button class="button quiet away" id="stage-delete" type="button" hidden>Delete</button>
                 </div>
             </aside>

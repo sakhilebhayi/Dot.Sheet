@@ -55,12 +55,15 @@ Route::middleware([
     Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');
 
     // Spreadsheet routes
-    Route::resource('spreadsheets', SpreadsheetController::class);
+    Route::resource('spreadsheets', SpreadsheetController::class)->except('show');
+    // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
+    Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
+    Route::get('spreadsheets/{spreadsheet}/classic', [SpreadsheetController::class, 'classic'])->name('spreadsheets.classic');
     Route::get('spreadsheets/{spreadsheet}/print', [SpreadsheetController::class, 'printOf'])->name('spreadsheets.print');
 
     // Import / Export
     // The browser-drawn editor and the API it works through.
-    Route::get('spreadsheets/{spreadsheet}/grid', [GridController::class, 'show'])->name('spreadsheets.grid');
+    Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
     Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware('throttle:1200,1')->group(function () {
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
         Route::get('cells', [GridController::class, 'cells'])->name('cells');

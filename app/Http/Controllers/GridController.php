@@ -78,7 +78,7 @@ class GridController extends Controller
                 'functions' => array_map(fn (array $f) => ['name' => $f['name'], 'summary' => $f['summary'], 'syntax' => $f['syntax']], FunctionCatalogue::all()),
                 'links' => [
                     'dashboard' => route('dashboard'),
-                    'classic' => route('spreadsheets.show', $spreadsheet),
+                    'classic' => route('spreadsheets.classic', $spreadsheet),
                     'csv' => route('spreadsheets.export.csv', $spreadsheet),
                     'excel' => route('spreadsheets.export.excel', $spreadsheet),
                 ],

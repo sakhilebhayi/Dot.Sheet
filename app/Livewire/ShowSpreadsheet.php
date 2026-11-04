@@ -20,6 +20,7 @@ use App\Services\SheetWorkflows;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
+use App\Services\WorkbookSheets;
 use App\Services\WriteLock;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -257,14 +258,19 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         $name = trim($name);
-        if ($name === '' || ! $this->findOwnTab((int) $sheetTabId)) {
+        $tab = SheetTab::where('spreadsheet_id', $this->spreadsheet_id)->whereKey((int) $sheetTabId)->first();
+        if ($name === '' || $tab === null) {
             return;
         }
 
-        SheetTab::where('spreadsheet_id', $this->spreadsheet_id)
-            ->where('id', $sheetTabId)
-            ->update(['name' => $name]);
-        app(Recalculator::class)->markWorkbookStale((int) $this->spreadsheet_id);
+        // Formulas name sheets by their text, so they follow the rename.
+        if (! $this->guardedWrite(fn () => app(WorkbookSheets::class)->rename($tab, $name))) {
+            return;
+        }
+        $this->structureVersion = StructureVersion::current((int) $this->spreadsheet_id);
+        $this->undoStack = [];
+        $this->redoStack = [];
+        $this->dispatch('structure-synced');
 
         $this->loadSheetTabs();
         $this->loadedWindows = [];

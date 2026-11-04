@@ -929,4 +929,102 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    public function test_sheets_can_be_added_and_renamed_from_the_tabs_and_formulas_follow(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(CellWriter::class)->write($sheet->id, $extra->id, [['row' => 0, 'col' => 0, 'value' => '7']], $user->id);
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 0, 'value' => '=Stock!A1+1']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $extra) {
+            $this->open($browser, $user, $sheet);
+
+            $browser->click('#tabs .add');
+            $browser->waitForTextIn('#note', 'Added Sheet3');
+            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet3');
+
+            // Back on the first sheet, rename the other one on its tab.
+            $browser->script("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Sheet1').click()");
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, 'Sales') !== null);
+            $browser->script("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))");
+            $browser->waitFor('#tabs .naming');
+            $browser->keys('#tabs .naming', [WebDriverKeys::CONTROL, 'a'], 'Goods in', WebDriverKeys::ENTER);
+
+            $browser->waitForTextIn('#note', 'Renamed to Goods in');
+            $this->assertSame('Goods in', $extra->fresh()->name);
+            $this->assertSame("='Goods in'!A1+1", Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula'));
+            $this->assertSame('8', $this->cell($browser, 4, 0));
+
+            // Undo puts the name and the formula back.
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $extra->fresh()->name === 'Stock');
+            $this->assertSame('=Stock!A1+1', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('formula'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_taken_name_is_refused_and_the_tab_keeps_its_own(): void
+    {
+        [$user, $sheet] = $this->sheet();
+        SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Rename this sheet');
+            $browser->waitFor('#tabs .naming');
+            $browser->keys('#tabs .naming', [WebDriverKeys::CONTROL, 'a'], 'stock', WebDriverKeys::ENTER);
+
+            $browser->waitForTextIn('#note', 'Another sheet already has that name');
+            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+        });
+    }
+
+    public function test_deleting_a_sheet_says_what_it_costs_and_keeping_it_is_the_default(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(CellWriter::class)->write($sheet->id, $extra->id, [['row' => 0, 'col' => 0, 'value' => '7']], $user->id);
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 4, 'col' => 0, 'value' => '=Stock!A1+1']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $extra) {
+            $this->open($browser, $user, $sheet);
+            $browser->script("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return document.querySelector('#tabs [aria-current]').textContent") === 'Stock');
+
+            $this->runCommand($browser, 'Delete this sheet');
+            $browser->waitForTextIn('#confirm-text', 'Delete Stock? It holds 1 cell. 1 formula on other sheets will show #REF!. This cannot be undone.');
+
+            // Enter, Escape or a slip of the hand keeps it.
+            $this->assertSame('Keep it', $browser->driver->executeScript('return document.activeElement.textContent'));
+            $browser->driver->getKeyboard()->sendKeys(WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => ! $browser->driver->executeScript("return document.getElementById('confirm').open"));
+            $browser->pause(200);
+            $this->assertNotNull($extra->fresh());
+
+            $this->runCommand($browser, 'Delete this sheet');
+            $browser->waitUsing(10, 25, fn () => $browser->driver->executeScript("return document.getElementById('confirm').open"));
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#note', 'Deleted Stock');
+            $this->assertNull($extra->fresh());
+            $browser->assertSeeIn('#tabs [aria-current]', 'Sheet1');
+            $browser->waitUsing(10, 25, fn () => $this->placeOf($browser, '#REF!') !== null);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_gets_no_way_to_change_sheets(): void
+    {
+        [, $sheet] = $this->sheet();
+        $viewer = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($viewer->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($viewer, $sheet) {
+            $this->open($browser, $viewer, $sheet);
+            $browser->assertMissing('#tabs .add');
+            $browser->script("document.querySelector('#tabs [aria-current]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))");
+            $browser->pause(100)->assertMissing('#tabs .naming');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
 }

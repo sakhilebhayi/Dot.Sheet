@@ -90,6 +90,31 @@ export class Server {
         return result;
     }
 
+    addSheet(name) {
+        const send = () => json(this.base, { method: 'POST', body: JSON.stringify({ name }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    renameSheet(tab, version, name) {
+        const send = () => json(`${this.base}/${tab}/rename`, { method: 'POST', body: JSON.stringify({ version: version(), name }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    removalCost(tab) {
+        return json(`${this.base}/${tab}/removal`);
+    }
+
+    removeSheet(tab, version) {
+        const send = () => json(`${this.base}/${tab}/remove`, { method: 'POST', body: JSON.stringify({ version: version() }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     structure(tab, version, request) {
         const send = () => json(`${this.base}/${tab}/structure`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
         const result = this.queue.then(send, send);

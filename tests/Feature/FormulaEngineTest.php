@@ -202,7 +202,7 @@ class FormulaEngineTest extends TestCase
         $this->assertSame('43', $this->answer('B1'));
     }
 
-    public function test_renaming_or_adding_a_sheet_changes_what_a_name_means(): void
+    public function test_adding_a_sheet_gives_a_name_meaning_and_renaming_it_keeps_the_answer(): void
     {
         $editor = $this->editor();
         $this->type($editor, 'A1', '=Costs!A1');
@@ -215,7 +215,8 @@ class FormulaEngineTest extends TestCase
         $this->assertSame('9', $this->answer('A1'));
 
         $editor->call('renameTab', $costs->id, 'Spend');
-        $this->assertSame('#REF!', $this->answer('A1'));
+        $this->assertSame('9', $this->answer('A1'));
+        $this->assertSame('=Spend!A1', $this->cell('A1')->formula);
     }
 
     public function test_error_values_say_what_went_wrong_and_pass_along(): void

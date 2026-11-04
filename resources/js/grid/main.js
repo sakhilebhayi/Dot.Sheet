@@ -16,6 +16,8 @@ const say = byId('say');
 const palette = byId('palette');
 const find = byId('find');
 const found = byId('found');
+const confirmBox = byId('confirm');
+const confirmText = byId('confirm-text');
 const bold = byId('do-bold');
 const percent = byId('do-percent');
 const rand = byId('do-rand');
@@ -70,6 +72,7 @@ async function open(id) {
         return;
     }
     version = body.version;
+    boot.tabs = body.tabs;
     store.reset(id, body.lastRow, body.lastCol);
     grid.active = { r: 0, c: 0 };
     grid.extent = { r: 0, c: 0 };
@@ -84,7 +87,7 @@ async function open(id) {
 
 function drawTabs() {
     const nav = byId('tabs');
-    nav.replaceChildren(...boot.tabs.map((t) => {
+    const buttons = boot.tabs.map((t) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = t.name;
@@ -93,8 +96,116 @@ function drawTabs() {
             if (t.id !== tab) open(t.id);
             sheet.focus({ preventScroll: true });
         });
+        if (boot.canEdit) button.addEventListener('dblclick', () => nameSheet(button, t));
         return button;
-    }));
+    });
+    if (boot.canEdit) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'add';
+        add.textContent = '+';
+        add.setAttribute('aria-label', 'Add a sheet');
+        add.title = 'Add a sheet';
+        add.addEventListener('click', addSheet);
+        buttons.push(add);
+    }
+    nav.replaceChildren(...buttons);
+}
+
+/* Sheets */
+
+async function addSheet() {
+    closeEdit(true);
+    const { ok, status, body } = await server.addSheet(null);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    boot.tabs = body.tabs;
+    await open(body.tab);
+    sheet.focus({ preventScroll: true });
+    note(`Added ${boot.tabs.find((t) => t.id === body.tab)?.name}.`);
+}
+
+/** Type a new name where the old one was. */
+function nameSheet(button, sheetTab) {
+    const input = document.createElement('input');
+    input.className = 'naming';
+    input.value = sheetTab.name;
+    input.setAttribute('aria-label', `New name for ${sheetTab.name}`);
+    let done = false;
+    const finish = (save) => {
+        if (done) return;
+        done = true;
+        const name = input.value.trim();
+        if (save && name !== '' && name !== sheetTab.name) saveSheetName(sheetTab.id, name);
+        else drawTabs();
+        sheet.focus({ preventScroll: true });
+    };
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') finish(true);
+        else if (e.key === 'Escape') finish(false);
+        e.stopPropagation();
+    });
+    input.addEventListener('blur', () => finish(true));
+    button.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+async function saveSheetName(id, name, { remember: keep = true } = {}) {
+    const { ok, status, body } = await server.renameSheet(id, () => version, name);
+    if (!ok) {
+        drawTabs();
+        refused(status, body);
+        return null;
+    }
+    boot.tabs = body.tabs;
+    version = body.version;
+    drawTabs();
+    await reopen();
+    if (keep) {
+        undoSteps.push({ version, renamed: { tab: id, name: body.undo.name } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    note(`Renamed to ${name}.`);
+    return body;
+}
+
+async function removeSheet() {
+    if (boot.tabs.length <= 1) {
+        note('A workbook keeps at least one sheet.');
+        return;
+    }
+    const sheetName = boot.tabs.find((t) => t.id === tab)?.name;
+    const cost = await server.removalCost(tab);
+    if (!cost.ok) {
+        refused(cost.status, cost.body);
+        return;
+    }
+    const { cells, readers } = cost.body;
+    const holds = cells === 0 ? 'It is empty.' : `It holds ${cells.toLocaleString('en-ZA')} ${cells === 1 ? 'cell' : 'cells'}.`;
+    const breaks = readers === 0 ? '' : ` ${readers.toLocaleString('en-ZA')} ${readers === 1 ? 'formula' : 'formulas'} on other sheets will show #REF!.`;
+    confirmText.textContent = `Delete ${sheetName}? ${holds}${breaks} This cannot be undone.`;
+    confirmBox.returnValue = 'cancel';
+    confirmBox.showModal();
+    confirmBox.addEventListener('close', async () => {
+        if (confirmBox.returnValue !== 'yes') {
+            sheet.focus({ preventScroll: true });
+            return;
+        }
+        const { ok, status, body } = await server.removeSheet(tab, () => version);
+        if (!ok) {
+            refused(status, body);
+            return;
+        }
+        if (clip?.tab === tab) letGo();
+        boot.tabs = body.tabs;
+        await open(boot.tabs[0].id);
+        sheet.focus({ preventScroll: true });
+        note(`Deleted ${sheetName}.`);
+    }, { once: true });
 }
 
 /* What follows the selection */
@@ -367,6 +478,14 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.renamed) {
+        if (step.renamed.tab !== tab) await open(step.renamed.tab);
+        const answer = await saveSheetName(step.renamed.tab, step.renamed.name, { remember: false });
+        if (!answer) return;
+        to.push({ version, renamed: { tab: step.renamed.tab, name: answer.undo.name } });
+        return;
+    }
+
     if (step.structure) {
         if (step.structure.tab !== tab) await open(step.structure.tab);
         const { action, axis, at, count } = step.structure;
@@ -442,6 +561,8 @@ async function reopen() {
     const { ok, body } = await server.sheet(tab);
     if (!ok) return;
     version = body.version;
+    boot.tabs = body.tabs;
+    drawTabs();
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
     select(r, c);
@@ -1443,7 +1564,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
-    'Scripts', 'Sort', 'Filter', 'Add, rename or delete a sheet',
+    'Scripts', 'Sort', 'Filter',
     'Text and fill colours', 'Validation rules', 'Conditional formatting', 'Ask AI',
 ];
 
@@ -1461,6 +1582,9 @@ function choices(query) {
             { label: 'Find and replace', run: () => openFind() },
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
+            { label: 'Add a sheet', run: addSheet },
+            { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
+            { label: 'Delete this sheet', run: removeSheet },
             ...(boot.structure ? [
                 { label: 'Insert rows above', run: () => insertLines('row', false) },
                 { label: 'Insert rows below', run: () => insertLines('row', true) },
@@ -1567,7 +1691,8 @@ find.addEventListener('keydown', (e) => {
     }
 });
 palette.addEventListener('close', () => {
-    if (!editing) sheet.focus({ preventScroll: true });
+    // A command may have put the cursor in a field of its own: leave it there.
+    if (!editing && !(document.activeElement instanceof HTMLInputElement)) sheet.focus({ preventScroll: true });
 });
 palette.addEventListener('click', (e) => {
     if (e.target === palette) palette.close();

@@ -23,6 +23,7 @@ use App\Services\SheetWorkflows;
 use App\Services\StaleStructure;
 use App\Services\StructureChangeRefused;
 use App\Services\StructureVersion;
+use App\Services\WorkbookSheets;
 use App\Services\WriteLock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -87,7 +88,7 @@ class GridController extends Controller
                 'version' => StructureVersion::current($spreadsheet->id),
                 'rows' => SheetStructureService::GRID_ROWS,
                 'cols' => SheetStructureService::GRID_COLS,
-                'tabs' => $spreadsheet->sheetTabs()->orderBy('sort_order')->orderBy('id')->get(['id', 'name'])->toArray(),
+                'tabs' => $this->tabs($spreadsheet),
                 'functions' => array_map(fn (array $f) => ['name' => $f['name'], 'summary' => $f['summary'], 'syntax' => $f['syntax']], FunctionCatalogue::all()),
                 'links' => [
                     'dashboard' => route('dashboard'),
@@ -109,6 +110,7 @@ class GridController extends Controller
 
         return response()->json([
             'layout' => $sheetTab->fresh()->layout ?? (object) [],
+            'tabs' => $this->tabs($spreadsheet),
             'version' => StructureVersion::current($spreadsheet->id),
             'lastRow' => Cell::where('sheet_tab_id', $sheetTab->id)->max('row_index'),
             'lastCol' => Cell::where('sheet_tab_id', $sheetTab->id)->max('col_index'),
@@ -546,6 +548,104 @@ class GridController extends Controller
     private function areas(array $rows): array
     {
         return array_values(array_map(fn (array $a) => ['r1' => (int) $a['r1'], 'r2' => (int) $a['r2'], 'c1' => (int) $a['c1'], 'c2' => (int) $a['c2']], $rows));
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    private function tabs(Spreadsheet $spreadsheet): array
+    {
+        return $spreadsheet->sheetTabs()->orderBy('sort_order')->orderBy('id')->get(['id', 'name'])->toArray();
+    }
+
+    public function addSheet(Request $request, Spreadsheet $spreadsheet, WorkbookSheets $sheets): JsonResponse
+    {
+        $this->authorize('update', $spreadsheet);
+
+        $name = $request->validate(['name' => 'sometimes|nullable|string|max:255'])['name'] ?? null;
+        $name = $name === null ? null : trim($name);
+        if ($name !== null && ($reason = $sheets->refusal($spreadsheet->id, $name)) !== null) {
+            return response()->json(['message' => $reason], 422);
+        }
+
+        $tab = null;
+        $busy = false;
+        WriteLock::guard(function () use ($spreadsheet, $sheets, $name, &$tab) {
+            $tab = DB::transaction(fn () => $sheets->add($spreadsheet, $name));
+        }, function () use (&$busy) {
+            $busy = true;
+        });
+
+        if ($busy || $tab === null) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+
+        return response()->json(['tab' => $tab->id, 'tabs' => $this->tabs($spreadsheet)]);
+    }
+
+    /**
+     * Rename a sheet and the formulas that name it. The answer says how to put it back.
+     */
+    public function renameSheet(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, WorkbookSheets $sheets): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['version' => 'required|integer', 'name' => 'required|string|max:255']);
+        $name = trim($input['name']);
+        $from = (string) $sheetTab->name;
+
+        if (($reason = $sheets->refusal($spreadsheet->id, $name, $sheetTab->id)) !== null) {
+            return response()->json(['message' => $reason], 422);
+        }
+
+        return $this->changeSheets($spreadsheet, (int) $input['version'], fn () => $sheets->rename($sheetTab, $name), ['undo' => ['name' => $from]]);
+    }
+
+    /**
+     * What deleting a sheet would cost, for the person to weigh first: it cannot be undone.
+     */
+    public function removalCost(Spreadsheet $spreadsheet, SheetTab $sheetTab, WorkbookSheets $sheets): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        return response()->json($sheets->cost($sheetTab));
+    }
+
+    public function removeSheet(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, WorkbookSheets $sheets): JsonResponse
+    {
+        $this->authorizeTab('update', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['version' => 'required|integer']);
+
+        return $this->changeSheets($spreadsheet, (int) $input['version'], fn () => $sheets->remove($sheetTab));
+    }
+
+    /**
+     * @param  callable(): void  $change
+     * @param  array<string, mixed>  $extra
+     */
+    private function changeSheets(Spreadsheet $spreadsheet, int $version, callable $change, array $extra = []): JsonResponse
+    {
+        $written = false;
+        $busy = false;
+        try {
+            WriteLock::guard(function () use ($spreadsheet, $version, $change, &$written) {
+                $written = StructureVersion::writeIfCurrent($spreadsheet->id, $version, $change);
+            }, function () use (&$busy) {
+                $busy = true;
+            });
+        } catch (StructureChangeRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], 422);
+        }
+
+        if ($busy) {
+            return response()->json(['message' => WriteLock::BUSY_MESSAGE], 503);
+        }
+        if (! $written) {
+            return response()->json(['stale' => true, 'message' => StructureVersion::STALE_MESSAGE], 409);
+        }
+
+        return response()->json(['tabs' => $this->tabs($spreadsheet), 'version' => StructureVersion::current($spreadsheet->id), ...$extra]);
     }
 
     /**

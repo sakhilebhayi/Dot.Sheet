@@ -64,6 +64,7 @@ Route::middleware([
     // Import / Export
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
+    Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->name('grid.add');
     Route::prefix('spreadsheets/{spreadsheet}/tabs/{sheetTab}')->name('grid.')->middleware('throttle:1200,1')->group(function () {
         Route::get('sheet', [GridController::class, 'sheet'])->name('sheet');
         Route::get('cells', [GridController::class, 'cells'])->name('cells');
@@ -76,6 +77,9 @@ Route::middleware([
         Route::post('layout', [GridController::class, 'layout'])->name('layout');
         Route::post('freeze', [GridController::class, 'freeze'])->name('freeze');
         Route::post('hidden', [GridController::class, 'hidden'])->name('hidden');
+        Route::post('rename', [GridController::class, 'renameSheet'])->name('rename');
+        Route::get('removal', [GridController::class, 'removalCost'])->name('removal');
+        Route::post('remove', [GridController::class, 'removeSheet'])->name('remove');
         Route::post('structure', [GridController::class, 'structure'])->name('structure');
         Route::post('restore', [GridController::class, 'restoreCopy'])->name('restore');
         Route::post('merge', [GridController::class, 'merge'])->name('merge');

@@ -15,12 +15,12 @@ The order is what blocks daily work first, not what is largest.
 | Workflow rules | One service for both editors. Edited cells only, as before |
 | Hide and show rows and columns | First parity item |
 | Insert and delete rows and columns | Built, and off until the host switch below is set |
+| Add, rename and delete sheets | Rename now rewrites formulas in both editors. Delete asks first and cannot be undone |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P2 | Add, rename and delete sheets | Grid routes, tab bar | |
 | P3 | Formatting: italic, underline, strike, colours, size, alignment, clear | Extend `format`, add bar or palette controls | The grid already draws all of these. Needed for a centred merged title |
 | P4 | Conditional formatting | Draw the stored rules, then a way to set them | Today the rules are kept but not drawn, so sheets look plainer. Highest visual gap |
 | P5 | Validation | Set rules, list cells get a picker | Rules are already enforced on write |

@@ -88,6 +88,27 @@ final class FormulaText
     }
 
     /**
+     * The formula after a sheet is renamed: every reference to it follows, and the rest stay as written.
+     */
+    public static function withSheetRenamed(string $formula, string $from, string $to): string
+    {
+        $written = self::sheetName($to);
+
+        return self::withSheetAliases($formula, fn (string $sheet) => mb_strtolower($sheet) === mb_strtolower($from) ? $written : null);
+    }
+
+    /**
+     * A sheet's name as a formula writes it: quoted unless it could stand alone, and never so it reads as
+     * a cell.
+     */
+    private static function sheetName(string $name): string
+    {
+        $plain = preg_match('/^[A-Za-z_][A-Za-z0-9_.]*$/', $name) === 1 && preg_match('/^[A-Za-z]{1,3}\d+$/', $name) !== 1;
+
+        return $plain ? $name : "'".str_replace("'", "''", $name)."'";
+    }
+
+    /**
      * The formula with named ranges replaced by the reference each stands for, outside string literals.
      * Longer names first, so one name is never matched inside a longer one.
      *

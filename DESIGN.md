@@ -232,6 +232,10 @@ keys step over what is hidden.
 **Inserting and deleting.** The palette inserts as many rows or columns as are selected, before or after
 them, and deletes the ones selected. Undo takes it back, and when it cannot, the note says so at once.
 
+**Sheets.** The tabs along the foot end in a plus that adds a sheet. Double-click a tab to rename it, and
+formulas that name it follow. Deleting a sheet asks first and says what it costs: the cells it holds and
+the formulas on other sheets that will break. Keeping it is the default, because this cannot be undone.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

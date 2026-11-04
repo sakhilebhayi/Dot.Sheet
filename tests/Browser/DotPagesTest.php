@@ -159,4 +159,30 @@ class DotPagesTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    public function test_a_template_opens_as_a_working_workbook(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+
+        $this->browse(function (Browser $browser) use ($user) {
+            $this->signIn($browser, $user)->visit('/spreadsheets/create');
+            $browser->assertSee('Mining')->assertSee('Equipment operating-hours report');
+
+            $browser->press('Stock inventory register');
+            $browser->waitUsing(10, 50, fn () => Spreadsheet::where('name', 'Stock inventory register')->exists() && str_contains($browser->driver->getCurrentURL(), '/spreadsheets/'));
+            $browser->waitForTextIn('#tabs', 'Stock')->assertSeeIn('#tabs', 'Summary');
+            $browser->waitForText('Reorder at');
+        });
+    }
+
+    public function test_a_blank_spreadsheet_still_needs_a_name(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+
+        $this->browse(function (Browser $browser) use ($user) {
+            $this->signIn($browser, $user)->visit('/spreadsheets/create');
+            $browser->press('Create spreadsheet')->pause(200)->assertPathIs('/spreadsheets/create');
+            $this->assertSame(0, Spreadsheet::count());
+        });
+    }
 }

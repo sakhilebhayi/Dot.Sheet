@@ -14,6 +14,8 @@ use App\Services\SheetPrint;
 use App\Services\SheetProtections;
 use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
+use App\Services\TemplateCatalogue;
+use App\Services\WorkbookBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -83,9 +85,40 @@ class SpreadsheetController extends Controller
     /**
      * Show the form for creating a new spreadsheet
      */
-    public function create()
+    public function create(TemplateCatalogue $templates)
     {
-        return view('spreadsheets.create');
+        return view('spreadsheets.create', ['groups' => $templates->grouped()]);
+    }
+
+    /**
+     * Start from a template: a real workbook with its formulas in place and no figures in it.
+     */
+    public function fromTemplate(Request $request, TemplateCatalogue $templates, WorkbookBuilder $builder)
+    {
+        $validated = $request->validate([
+            'template' => ['required', 'string', Rule::in(array_keys($templates->all()))],
+            'name' => 'nullable|string|max:255',
+            'team_id' => 'nullable|integer|exists:teams,id',
+        ]);
+
+        $template = $templates->find($validated['template']);
+        $teamId = $this->teamToAddTo($validated['team_id'] ?? null);
+        $name = trim((string) ($validated['name'] ?? '')) ?: $template['title'];
+
+        return redirect()->route('spreadsheets.show', $builder->build($template, $name, $request->user(), $teamId));
+    }
+
+    /** A read-only member (viewer) may belong to a team but not add sheets to it. */
+    private function teamToAddTo(?int $teamId): ?int
+    {
+        if ($teamId === null) {
+            return null;
+        }
+        $team = auth()->user()->allTeams()->firstWhere('id', $teamId);
+        abort_if($team === null, 404);
+        $this->authorize('createSpreadsheet', $team);
+
+        return $team->id;
     }
 
     /**
@@ -99,19 +132,12 @@ class SpreadsheetController extends Controller
         ]);
 
         $user = auth()->user();
-
-        // Verify team ownership if team_id provided
-        if (! empty($validated['team_id'])) {
-            $team = $user->teams()->findOrFail($validated['team_id']);
-
-            // A read-only member (viewer) may belong to the team but not add sheets to it.
-            $this->authorize('createSpreadsheet', $team);
-        }
+        $teamId = $this->teamToAddTo($validated['team_id'] ?? null);
 
         $spreadsheet = Spreadsheet::create([
             'uuid' => (string) Str::uuid(),
             'owner_id' => $user->id,
-            'team_id' => $validated['team_id'] ?? null,
+            'team_id' => $teamId,
             'name' => $validated['name'],
             'settings' => [],
         ]);

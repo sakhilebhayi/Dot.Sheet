@@ -99,6 +99,22 @@
 .rule-list button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--soft); cursor: pointer; }
 .rule-list button:hover { background: var(--sheet); color: var(--ink); }
 
+.allow-range { display: inline-flex; align-items: center; gap: 10px; }
+.allow-range[hidden], .allow-range [hidden], .rulebar input[hidden] { display: none; }
+.allow-range input { width: 8ch; }
+.rulebar .allow-items { width: 30ch; max-width: 100%; }
+.rulebar input::placeholder { color: var(--soft); opacity: 1; }
+
+/* A cell with a list keeps a small way into it while it is active. */
+.pick { position: absolute; left: 0; top: 0; z-index: 2; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--raised); color: var(--ink); cursor: pointer; transition: scale .15s var(--ease); }
+.pick:hover { scale: 1.12; }
+.pick[hidden], .picks[hidden] { display: none; }
+.pick svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.picks { position: absolute; left: 0; top: 0; z-index: 7; min-width: 160px; max-height: 240px; margin: 0; padding: 4px; overflow: auto; list-style: none; background: var(--sheet); border-radius: 10px; box-shadow: 0 6px 24px rgb(21 32 27 / .18); }
+.picks button { display: block; width: 100%; padding: 7px 10px; border: 0; border-radius: 3px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.picks button:hover, .picks button:focus-visible { background: var(--wash); outline: none; }
+.picks button[aria-selected='true'] { font-weight: 600; }
+
 .findbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 0 20px 10px; }
 .findbar input:not([type]) { width: 200px; padding: 6px 0; border: 0; border-bottom: 1.5px solid var(--ink); background: none; outline: none; }
 .findbar input:not([type]):focus { border-bottom-color: var(--thread); }
@@ -123,6 +139,7 @@
     .formatbar .tool { display: inline-block; margin-left: 0; }
     .formatbar .grow { display: none; }
     .rulebar { padding: 0 12px 8px; }
+    .pick { width: 30px; height: 30px; }
     .findbar input:not([type]) { width: 100%; }
     .findbar label:not(.tick) { flex: 1 1 100%; }
 }

@@ -87,6 +87,17 @@ export function ruleFill(rules, r, c, cell) {
     return fill;
 }
 
+/** What a list rule lets a cell hold. Matches CellRules::items. */
+export function listAt(rules, r, c) {
+    for (const rule of rules ?? []) {
+        if (rule?.type !== 'list') continue;
+        const inRows = r >= Number(rule.row) && r <= Number(rule.row2 ?? rule.row);
+        const inCols = c >= Number(rule.col) && c <= Number(rule.col2 ?? rule.col);
+        if (inRows && inCols) return String(rule.items ?? '').split(',').map((item) => item.trim()).filter((item) => item !== '');
+    }
+    return [];
+}
+
 /** Stops at the tallest text that still fits a row. */
 export const TEXT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24];
 

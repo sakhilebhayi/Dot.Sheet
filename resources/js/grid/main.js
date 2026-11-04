@@ -1,6 +1,6 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
 import { fromText, toText } from './clipboard';
-import { cellName, columnIndex, columnName, FILL_COLOURS, show, TEXT_COLOURS, TEXT_SIZES } from './format';
+import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
 import { Server } from './server';
 import { hasContent, Store } from './store';
@@ -33,6 +33,14 @@ const ruleTarget = byId('rule-target');
 const ruleOperator = byId('rule-operator');
 const ruleValue = byId('rule-value');
 const ruleList = byId('rule-list');
+const allowedbar = byId('allowedbar');
+const allowType = byId('allow-type');
+const allowMin = byId('allow-min');
+const allowMax = byId('allow-max');
+const allowItems = byId('allow-items');
+const allowedList = byId('allowed-list');
+const pickButton = byId('pick');
+const pickList = byId('picks');
 const smaller = byId('do-smaller');
 const larger = byId('do-larger');
 
@@ -97,6 +105,7 @@ async function open(id) {
     sheet.scrollTo(0, 0);
     grid.setLayout(body.layout);
     drawRules();
+    drawAllowed();
     drawTabs();
     selected();
     markFound();
@@ -240,10 +249,12 @@ function selected() {
     percent.setAttribute('aria-pressed', String(cell?.x?.number_format === 'percent'));
     rand.setAttribute('aria-pressed', String(cell?.x?.number_format === 'currency'));
     if (!formatbar.hidden) showFormat(cell);
+    placePick();
 }
 
 function afterMove() {
     told = '';
+    if (!allowedbar.hidden) showAllowedWhere();
     selected();
     grid.paint();
     grid.clearThreads();
@@ -528,6 +539,14 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.allowed) {
+        if (step.allowed.tab !== tab) await open(step.allowed.tab);
+        const answer = await changeAllowed(step.allowed.request, { remember: false });
+        if (!answer) return;
+        to.push({ version, allowed: { tab, request: answer.undo } });
+        return;
+    }
+
     if (step.rule) {
         if (step.rule.tab !== tab) await open(step.rule.tab);
         const answer = await changeRules(step.rule.request, { remember: false });
@@ -592,6 +611,7 @@ async function reopen() {
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
     drawRules();
+    drawAllowed();
     select(r, c);
 }
 
@@ -977,6 +997,184 @@ rulebar.addEventListener('keydown', (e) => {
 });
 byId('rule-close').addEventListener('click', () => toggleRulebar(false));
 byId('do-rules').addEventListener('click', () => toggleRulebar());
+
+/* Allowed values */
+
+const allowedRules = () => (grid.layout.validation_rules ?? []).filter((rule) => rule && typeof rule === 'object');
+
+function allowedWords(rule) {
+    const first = cellName(Number(rule.row), Number(rule.col));
+    const wide = (rule.row2 ?? rule.row) !== rule.row || (rule.col2 ?? rule.col) !== rule.col;
+    const where = wide ? `${first}:${cellName(Number(rule.row2 ?? rule.row), Number(rule.col2 ?? rule.col))}` : first;
+    const span = (from, to) => (from != null && to != null ? `from ${from} to ${to}` : from != null ? `at least ${from}` : to != null ? `at most ${to}` : '');
+    if (rule.type === 'list') return `${where}, one of ${listAt([rule], Number(rule.row), Number(rule.col)).join(', ')}`;
+    if (rule.type === 'text_length') return `${where}, text ${span(rule.min, rule.max)} characters`;
+    return `${where}, numbers ${span(rule.min, rule.max)}`.trim();
+}
+
+function drawAllowed() {
+    if (allowedbar.hidden) return;
+    const rules = allowedRules();
+    if (rules.length === 0) {
+        const empty = document.createElement('li');
+        empty.textContent = 'Any value can go anywhere on this sheet.';
+        allowedList.replaceChildren(empty);
+        return;
+    }
+    allowedList.replaceChildren(...rules.map((rule) => {
+        const item = document.createElement('li');
+        item.className = 'rule';
+        const words = document.createElement('span');
+        words.textContent = allowedWords(rule);
+        item.append(words);
+        if (rule.id) {
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = '×';
+            remove.setAttribute('aria-label', `Remove rule: ${words.textContent}`);
+            remove.addEventListener('click', () => changeAllowed({ remove: rule.id }));
+            item.append(remove);
+        }
+        return item;
+    }));
+}
+
+async function changeAllowed(request, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.allowed(tab, () => version, request);
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    grid.layout = { ...grid.layout, validation_rules: body.rules };
+    drawAllowed();
+    placePick();
+    if (keep && body.undo) {
+        undoSteps.push({ version, allowed: { tab, request: body.undo } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+function showAllowedWhere() {
+    const area = grid.area();
+    const many = area.r1 !== area.r2 || area.c1 !== area.c2;
+    byId('allow-where').textContent = many ? `Let ${cellName(area.r1, area.c1)}:${cellName(area.r2, area.c2)} hold` : 'Let this cell hold';
+}
+
+function showAllowType() {
+    const list = allowType.value === 'list';
+    byId('allow-range').hidden = list;
+    allowItems.hidden = !list;
+    byId('allow-unit').hidden = allowType.value !== 'text_length';
+}
+
+function toggleAllowedbar(show = allowedbar.hidden) {
+    allowedbar.hidden = !show;
+    grid.soon();
+    if (show) {
+        showAllowedWhere();
+        showAllowType();
+        drawAllowed();
+        (allowType.value === 'list' ? allowItems : allowMin).focus();
+    } else {
+        sheet.focus({ preventScroll: true });
+    }
+}
+
+allowType.addEventListener('change', showAllowType);
+allowedbar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const area = grid.area();
+    const type = allowType.value;
+    const add = { row: area.r1, col: area.c1, type };
+    if (area.r2 !== area.r1 || area.c2 !== area.c1) Object.assign(add, { row2: area.r2, col2: area.c2 });
+    if (type === 'list') add.items = allowItems.value;
+    else Object.assign(add, { min: allowMin.value.trim() || null, max: allowMax.value.trim() || null });
+    if (await changeAllowed({ add })) {
+        allowMin.value = '';
+        allowMax.value = '';
+        allowItems.value = '';
+        told = '';
+        note('Added. Values already in these cells stay as they are.');
+    }
+});
+allowedbar.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleAllowedbar(false);
+});
+byId('allow-close').addEventListener('click', () => toggleAllowedbar(false));
+byId('do-allowed').addEventListener('click', () => toggleAllowedbar());
+
+/* Choosing from a list */
+
+function closePicks() {
+    pickList.hidden = true;
+    pickButton.setAttribute('aria-expanded', 'false');
+}
+
+/** The way into a list follows the active cell, in whichever layer draws it. */
+function placePick() {
+    closePicks();
+    const { r, c } = grid.active;
+    const show = boot.canEdit && grid.rows && !editing && listAt(grid.layout.validation_rules, r, c).length > 0;
+    pickButton.hidden = !show;
+    if (!show) return;
+    const { width, height } = grid.spanOf(r, c);
+    const size = pickButton.offsetWidth || 22;
+    pickButton.style.transform = `translate(${grid.gutter + grid.cols.offset(c) + width - size - 4}px,${grid.rowTop(r) + (height - size) / 2}px)`;
+    const layer = grid.layerOf(r, c);
+    if (pickButton.parentElement !== layer) layer.append(pickButton, pickList);
+}
+
+function openPicks() {
+    const { r, c } = grid.active;
+    const items = listAt(grid.layout.validation_rules, r, c);
+    if (!boot.canEdit || items.length === 0) return;
+    const now = contents(store.get(r, c));
+    pickList.replaceChildren(...items.map((item) => {
+        const row = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'option');
+        button.setAttribute('aria-selected', String(item === now));
+        button.textContent = item;
+        button.addEventListener('click', () => {
+            closePicks();
+            sheet.focus({ preventScroll: true });
+            if (item !== now) write([{ row: r, col: c, value: item }]);
+        });
+        row.append(button);
+        return row;
+    }));
+    pickList.hidden = false;
+    pickButton.setAttribute('aria-expanded', 'true');
+
+    // Under the cell, or over it when there is no room below.
+    const { height } = grid.spanOf(r, c);
+    const top = grid.rowTop(r);
+    const below = pickButton.getBoundingClientRect().top + height + pickList.offsetHeight < sheet.getBoundingClientRect().bottom;
+    pickList.style.transform = `translate(${grid.gutter + grid.cols.offset(c)}px,${below || top < pickList.offsetHeight ? top + height + 2 : top - pickList.offsetHeight - 2}px)`;
+    (pickList.querySelector('[aria-selected="true"]') ?? pickList.querySelector('button')).focus({ preventScroll: true });
+}
+
+pickButton.addEventListener('click', () => (pickList.hidden ? openPicks() : closePicks()));
+pickList.addEventListener('focusout', (e) => {
+    if (!pickList.contains(e.relatedTarget) && e.relatedTarget !== pickButton) closePicks();
+});
+pickList.addEventListener('keydown', (e) => {
+    const buttons = [...pickList.querySelectorAll('button')];
+    const at = buttons.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        buttons[(at + (e.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length].focus({ preventScroll: true });
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+        e.preventDefault();
+        closePicks();
+        sheet.focus({ preventScroll: true });
+    }
+    e.stopPropagation();
+});
 
 function toggleNumber(format) {
     const cell = store.get(grid.active.r, grid.active.c);
@@ -1415,6 +1613,7 @@ function beginEdit(text, typing = false, inLine = false) {
     grid.paint();
 
     editing = { r, c, typing };
+    placePick();
     box.value = text;
     line.value = text;
     box.style.left = `${grid.gutter + grid.cols.offset(c)}px`;
@@ -1434,6 +1633,7 @@ function closeEdit(save) {
     const value = box.value;
     editing = null;
     box.remove();
+    placePick();
     if (pointed) {
         pointed = null;
         grid.clearThreads();
@@ -1535,7 +1735,9 @@ sheet.addEventListener('keydown', (e) => {
     const from = e.shiftKey ? grid.extent : grid.active;
     const steps = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
 
-    if (steps[e.key]) {
+    if (e.altKey && e.key === 'ArrowDown') {
+        openPicks();
+    } else if (steps[e.key]) {
         const [dr, dc] = steps[e.key];
         if (command) jump(dr, dc, e.shiftKey);
         else {
@@ -1630,7 +1832,7 @@ sheet.addEventListener('mousedown', (e) => {
 });
 
 sheet.addEventListener('pointerdown', (e) => {
-    if (e.target === sheet || e.target === box || e.button !== 0) return;
+    if (e.target === sheet || e.target === box || e.button !== 0 || e.target.closest('.pick, .picks')) return;
     const gap = boot.canEdit && e.pointerType !== 'touch' ? grid.gapAt(e.clientX, e.clientY) : null;
     if (gap) {
         e.preventDefault();
@@ -1736,7 +1938,7 @@ window.addEventListener('pointerup', () => {
 
 let lastTap = { at: 0, r: -1, c: -1 };
 sheet.addEventListener('click', (e) => {
-    if (e.target === box || e.pointerType !== 'touch') return;
+    if (e.target === box || e.pointerType !== 'touch' || e.target.closest('.pick, .picks')) return;
     const { r, c } = grid.hit(e.clientX, e.clientY);
     if (canPoint()) {
         if (r >= 0 && c >= 0) point(r, c);
@@ -1751,7 +1953,7 @@ sheet.addEventListener('click', (e) => {
 });
 
 sheet.addEventListener('dblclick', (e) => {
-    if (e.target === box) return;
+    if (e.target === box || e.target.closest('.pick, .picks')) return;
     const edge = boot.canEdit ? grid.edgeAt(e.clientX, e.clientY) : null;
     if (edge) {
         fitToContents(edge);
@@ -1773,7 +1975,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
     'Scripts', 'Sort', 'Filter',
-    'Validation rules', 'Ask AI',
+    'Ask AI',
 ];
 
 function choices(query) {
@@ -1813,6 +2015,7 @@ function choices(query) {
             { label: 'Redo', run: redo },
             { label: 'Format cells', run: () => toggleFormatbar(true) },
             { label: 'Colour rules (conditional formatting)', run: () => toggleRulebar(true) },
+            { label: 'Allowed values (validation)', run: () => toggleAllowedbar(true) },
             { label: 'Bold', run: toggleBold },
             { label: 'Italic', run: () => toggleStyle('italic') },
             { label: 'Underline', run: () => toggleStyle('underline') },

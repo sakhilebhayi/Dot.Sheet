@@ -349,7 +349,13 @@ class SheetStructureService
             foreach ($ruleKeys as $key) {
                 $rules = [];
                 foreach (is_array($settings[$key] ?? null) ? $settings[$key] : [] as $rule) {
-                    if (is_array($rule) && array_key_exists($field, $rule)) {
+                    if (is_array($rule) && array_key_exists($field.'2', $rule)) {
+                        // A rule over a range grows and shrinks with what goes in and comes out of it.
+                        if (($span = $this->shiftSpan((int) $rule[$field], (int) $rule[$field.'2'], $index, $delta)) === null) {
+                            continue;
+                        }
+                        [$rule[$field], $rule[$field.'2']] = $span;
+                    } elseif (is_array($rule) && array_key_exists($field, $rule)) {
                         if (($moved = $move($rule[$field])) === null) {
                             continue;
                         }

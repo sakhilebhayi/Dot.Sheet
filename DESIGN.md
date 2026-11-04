@@ -16,6 +16,17 @@ colors:
   loss: "#C62A12"
   on-primary: "#F7F9F6"
   on-tertiary: "#FFFFFF"
+  cell-text-slate: "#56645D"
+  cell-text-forest: "#1E6B45"
+  cell-text-teal: "#0F6C6C"
+  cell-text-plum: "#6A2C7E"
+  cell-text-rust: "#8F4A0E"
+  cell-fill-butter: "#FBF0BF"
+  cell-fill-sage: "#DCEBD9"
+  cell-fill-aqua: "#D5ECE7"
+  cell-fill-rose: "#F7E0DA"
+  cell-fill-lilac: "#EBE2F4"
+  cell-fill-stone: "#E4E9E3"
 typography:
   title:
     fontFamily: Hanken Grotesk
@@ -70,6 +81,39 @@ spacing:
   row-page: 40px
   row-print: 52px
 components:
+  cell-text-slate:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.cell-text-slate}"
+  cell-text-forest:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.cell-text-forest}"
+  cell-text-teal:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.cell-text-teal}"
+  cell-text-plum:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.cell-text-plum}"
+  cell-text-rust:
+    backgroundColor: "{colors.neutral}"
+    textColor: "{colors.cell-text-rust}"
+  cell-fill-butter:
+    backgroundColor: "{colors.cell-fill-butter}"
+    textColor: "{colors.primary}"
+  cell-fill-sage:
+    backgroundColor: "{colors.cell-fill-sage}"
+    textColor: "{colors.primary}"
+  cell-fill-aqua:
+    backgroundColor: "{colors.cell-fill-aqua}"
+    textColor: "{colors.primary}"
+  cell-fill-rose:
+    backgroundColor: "{colors.cell-fill-rose}"
+    textColor: "{colors.primary}"
+  cell-fill-lilac:
+    backgroundColor: "{colors.cell-fill-lilac}"
+    textColor: "{colors.primary}"
+  cell-fill-stone:
+    backgroundColor: "{colors.cell-fill-stone}"
+    textColor: "{colors.primary}"
   bar:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.primary}"
@@ -158,6 +202,11 @@ Colour carries meaning, and each colour has one job.
 
 Error values such as `#DIV/0!` use loss. Their explanation is the cell's tooltip.
 
+**Cell colours** are the person's own, kept to `cell-text-*` and `cell-fill-*`. There is no blue and no red
+among them, because a sheet that lets anyone paint a profit red has lost its signal. Every text colour
+keeps 4.5:1 on the sheet and on every fill. Colours a sheet already has, from an import or the classic
+editor, are drawn as they are.
+
 **The logo** keeps its own yellow and green, and they appear nowhere else. The bar carries its circle and
 chevron, cut from the master artwork at `public/dot_sheet.png`, because the wordmark cannot be read at
 that size. Never redraw or recolour it. The full logo goes where it has room: sign-in and error pages.
@@ -179,7 +228,7 @@ From top to bottom: the bar, the sheet, then the foot with sheet tabs on the lef
 and count of the selection on the right.
 
 On a phone the bar wraps so the cell and its contents get their own line, the formatting tools move
-into the palette, and the frozen label column stays. Leave part of the next column showing, which
+into the palette, where Format cells opens the tray, and the frozen label column stays. Leave part of the next column showing, which
 tells people there is more.
 
 ## Elevation & Depth
@@ -235,6 +284,12 @@ them, and deletes the ones selected. Undo takes it back, and when it cannot, the
 **Sheets.** The tabs along the foot end in a plus that adds a sheet. Double-click a tab to rename it, and
 formulas that name it follow. Deleting a sheet asks first and says what it costs: the cells it holds and
 the formulas on other sheets that will break. Keeping it is the default, because this cannot be undone.
+
+**Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
+tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open
+while the selection moves. Pressing a tool leaves the cursor on the sheet. Colours are dots, as everything
+that marks a place is here, and text sizes stop at 24, the tallest that fits a row. A selected or found
+cell keeps its fill, with the mark laid over it.
 
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.

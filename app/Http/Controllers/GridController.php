@@ -816,7 +816,15 @@ class GridController extends Controller
             'c1' => 'required|integer|min:0',
             'c2' => 'required|integer|gte:c1',
             'bold' => 'sometimes|boolean',
+            'italic' => 'sometimes|boolean',
+            'underline' => 'sometimes|boolean',
+            'strike' => 'sometimes|boolean',
             'number_format' => 'sometimes|in:general,percent,currency,number,date',
+            'align' => 'sometimes|nullable|in:left,center,right',
+            'font_color' => ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'bg_color' => ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'font_size' => 'sometimes|nullable|integer|min:6|max:96',
+            'clear' => 'sometimes|accepted',
         ]);
 
         $count = ($input['r2'] - $input['r1'] + 1) * ($input['c2'] - $input['c1'] + 1);
@@ -824,13 +832,15 @@ class GridController extends Controller
             return response()->json(['message' => 'Select fewer cells to format: '.number_format(self::MAX_FORMATTED).' at most.'], 422);
         }
 
-        $patch = array_intersect_key($input, array_flip(['bold', 'number_format']));
+        // Clearing is a patch of nothing that starts from nothing; a null takes one key off.
+        $clear = isset($input['clear']);
+        $patch = array_diff_key($input, array_flip(['version', 'r1', 'r2', 'c1', 'c2', 'clear']));
         $undo = [];
         $written = false;
         $busy = false;
-        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $patch, $writer, &$written, &$undo) {
-            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($spreadsheet, $sheetTab, $input, $patch, $writer, &$undo) {
-                $undo = $writer->format($spreadsheet->id, $sheetTab->id, $input, $patch);
+        WriteLock::guard(function () use ($spreadsheet, $sheetTab, $input, $patch, $clear, $writer, &$written, &$undo) {
+            $written = StructureVersion::writeIfCurrent($spreadsheet->id, (int) $input['version'], function () use ($spreadsheet, $sheetTab, $input, $patch, $clear, $writer, &$undo) {
+                $undo = $writer->format($spreadsheet->id, $sheetTab->id, $input, $patch, $clear);
             });
         }, function () use (&$busy) {
             $busy = true;

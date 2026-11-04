@@ -1,6 +1,6 @@
 /** The editor: selection, typing, the formula line, the status line and the palette. */
 import { fromText, toText } from './clipboard';
-import { cellName, columnIndex, columnName, show } from './format';
+import { cellName, columnIndex, columnName, FILL_COLOURS, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
 import { Server } from './server';
 import { hasContent, Store } from './store';
@@ -21,6 +21,15 @@ const confirmText = byId('confirm-text');
 const bold = byId('do-bold');
 const percent = byId('do-percent');
 const rand = byId('do-rand');
+const formatbar = byId('formatbar');
+const moreFormat = byId('do-more');
+const italic = byId('do-italic');
+const underline = byId('do-underline');
+const strike = byId('do-strike');
+const alignments = { left: byId('do-left'), center: byId('do-center'), right: byId('do-right') };
+const sizeNow = byId('size-now');
+const smaller = byId('do-smaller');
+const larger = byId('do-larger');
 
 const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
@@ -30,6 +39,8 @@ const MAX_FROZEN_ROWS = 50;
 const MAX_FROZEN_COLS = 20;
 const MAX_HIDDEN = 1000;
 const MAX_STRUCTURE = 20;
+const MAX_FORMATTED = 5000;
+const DEFAULT_SIZE = 14;
 const MIN_ROW = 18;
 const MAX_ROW = 120;
 
@@ -222,6 +233,7 @@ function selected() {
     bold.setAttribute('aria-pressed', String(Boolean(cell?.x?.bold)));
     percent.setAttribute('aria-pressed', String(cell?.x?.number_format === 'percent'));
     rand.setAttribute('aria-pressed', String(cell?.x?.number_format === 'currency'));
+    if (!formatbar.hidden) showFormat(cell);
 }
 
 function afterMove() {
@@ -599,23 +611,30 @@ async function clearSelection() {
     write(edits);
 }
 
-async function applyFormat(patch) {
+async function applyFormat(patch, { clear = false } = {}) {
     if (!boot.canEdit) return;
+    // Empty cells can be coloured too. Only a selection too large to send is cut down to the data.
     const area = grid.area();
-    const target = { ...area, r2: Math.max(area.r1, Math.min(area.r2, store.lastRow ?? area.r1)), c2: Math.max(area.c1, Math.min(area.c2, store.lastCol ?? area.c1)) };
+    const target = cellCount(area) > MAX_FORMATTED ? usedArea() : area;
+    if (cellCount(target) > MAX_FORMATTED) {
+        note(`Select fewer cells to format: ${MAX_FORMATTED.toLocaleString('en-ZA')} at most.`);
+        return;
+    }
 
     const held = [];
     for (let r = target.r1; r <= Math.min(target.r2, target.r1 + 200); r++) {
         for (let c = target.c1; c <= Math.min(target.c2, target.c1 + 40); c++) {
             const cell = store.get(r, c);
             held.push([r, c, cell ?? null]);
-            store.put({ ...(cell ?? {}), r, c, x: { ...(cell?.x ?? {}), ...patch } });
+            const x = Object.fromEntries(Object.entries({ ...(clear ? {} : cell?.x), ...patch }).filter(([, value]) => value !== null));
+            if (hasContent(cell) || Object.keys(x).length) store.put({ ...(cell ?? {}), r, c, x });
+            else store.remove(r, c);
         }
     }
     grid.paint();
     selected();
 
-    const { ok, status, body } = await server.format(tab, () => version, target, patch);
+    const { ok, status, body } = await server.format(tab, () => version, target, clear ? { ...patch, clear: true } : patch);
     if (ok) {
         remember(body.undo);
         await store.refresh();
@@ -773,6 +792,72 @@ function toggleBold() {
     const cell = store.get(grid.active.r, grid.active.c);
     applyFormat({ bold: !cell?.x?.bold });
 }
+
+function toggleStyle(key) {
+    const cell = store.get(grid.active.r, grid.active.c);
+    applyFormat({ [key]: !cell?.x?.[key] });
+}
+
+/** Pressing the alignment in use goes back to the default: text left, figures right. */
+function toggleAlign(align) {
+    const cell = store.get(grid.active.r, grid.active.c);
+    applyFormat({ align: cell?.x?.align === align ? null : align });
+}
+
+function stepSize(by) {
+    const now = Number(store.get(grid.active.r, grid.active.c)?.x?.font_size ?? DEFAULT_SIZE);
+    const next = by > 0 ? TEXT_SIZES.find((size) => size > now) : TEXT_SIZES.findLast((size) => size < now);
+    if (next) applyFormat({ font_size: next === DEFAULT_SIZE ? null : next });
+}
+
+/** The tray shows what the active cell has. */
+function showFormat(cell) {
+    const x = cell?.x ?? {};
+    italic.setAttribute('aria-pressed', String(Boolean(x.italic)));
+    underline.setAttribute('aria-pressed', String(Boolean(x.underline)));
+    strike.setAttribute('aria-pressed', String(Boolean(x.strike)));
+    for (const [align, button] of Object.entries(alignments)) button.setAttribute('aria-pressed', String(x.align === align));
+    const size = Number(x.font_size ?? DEFAULT_SIZE);
+    sizeNow.textContent = size;
+    smaller.disabled = !TEXT_SIZES.some((step) => step < size);
+    larger.disabled = !TEXT_SIZES.some((step) => step > size);
+    for (const [key, id] of [['font_color', 'text-swatches'], ['bg_color', 'fill-swatches']]) {
+        for (const swatch of byId(id).children) {
+            const on = swatch.dataset.colour === '' ? !x[key] : swatch.dataset.colour.toLowerCase() === String(x[key]).toLowerCase();
+            swatch.setAttribute('aria-pressed', String(on));
+        }
+    }
+}
+
+function toggleFormatbar(show = formatbar.hidden) {
+    formatbar.hidden = !show;
+    moreFormat.setAttribute('aria-expanded', String(show));
+    moreFormat.setAttribute('aria-pressed', String(show));
+    if (show) showFormat(store.get(grid.active.r, grid.active.c));
+    grid.soon();
+    sheet.focus({ preventScroll: true });
+}
+
+function drawSwatches(id, key, colours, noneLabel) {
+    const swatch = (name, colour) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.colour = colour;
+        button.setAttribute('aria-label', name);
+        button.title = name;
+        button.setAttribute('aria-pressed', 'false');
+        if (!colour) button.className = 'none';
+        const dot = document.createElement('i');
+        dot.style.background = colour;
+        button.append(dot);
+        button.addEventListener('click', () => applyFormat({ [key]: colour || null }));
+        return button;
+    };
+    byId(id).replaceChildren(swatch(noneLabel, ''), ...colours.map(([name, colour]) => swatch(name, colour)));
+}
+
+drawSwatches('text-swatches', 'font_color', TEXT_COLOURS, 'Ink, the default');
+drawSwatches('fill-swatches', 'bg_color', FILL_COLOURS, 'No fill');
 
 function toggleNumber(format) {
     const cell = store.get(grid.active.r, grid.active.c);
@@ -1370,6 +1455,10 @@ sheet.addEventListener('keydown', (e) => {
         selectArea(0, 0, boot.rows - 1, boot.cols - 1);
     } else if (command && e.key.toLowerCase() === 'b') {
         toggleBold();
+    } else if (command && e.key.toLowerCase() === 'i') {
+        toggleStyle('italic');
+    } else if (command && e.key.toLowerCase() === 'u') {
+        toggleStyle('underline');
     } else if (command && ['c', 'x', 'v'].includes(e.key.toLowerCase())) {
         readyClipboard();
         return;
@@ -1565,7 +1654,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
     'Scripts', 'Sort', 'Filter',
-    'Text and fill colours', 'Validation rules', 'Conditional formatting', 'Ask AI',
+    'Validation rules', 'Conditional formatting', 'Ask AI',
 ];
 
 function choices(query) {
@@ -1603,9 +1692,23 @@ function choices(query) {
             { label: 'Fill right', run: fillRight },
             { label: 'Undo', run: undo },
             { label: 'Redo', run: redo },
+            { label: 'Format cells', run: () => toggleFormatbar(true) },
             { label: 'Bold', run: toggleBold },
+            { label: 'Italic', run: () => toggleStyle('italic') },
+            { label: 'Underline', run: () => toggleStyle('underline') },
+            { label: 'Strikethrough', run: () => toggleStyle('strike') },
+            { label: 'Align left', run: () => toggleAlign('left') },
+            { label: 'Align centre', run: () => toggleAlign('center') },
+            { label: 'Align right', run: () => toggleAlign('right') },
+            { label: 'Larger text', run: () => stepSize(1) },
+            { label: 'Smaller text', run: () => stepSize(-1) },
+            { label: 'Clear formatting', run: () => applyFormat({}, { clear: true }) },
+            ...TEXT_COLOURS.map(([name, colour]) => ({ label: `Text colour: ${name}`, run: () => applyFormat({ font_color: colour }) })),
+            ...FILL_COLOURS.map(([name, colour]) => ({ label: `Fill: ${name}`, run: () => applyFormat({ bg_color: colour }) })),
             { label: 'Show as a percentage', run: () => toggleNumber('percent') },
             { label: 'Show in rand', run: () => toggleNumber('currency') },
+            { label: 'Show as a number', run: () => toggleNumber('number') },
+            { label: 'Show as a date', run: () => toggleNumber('date') },
         ] : []),
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Download as CSV', href: boot.links.csv },
@@ -1716,9 +1819,20 @@ document.addEventListener('keydown', (e) => {
 /* The rest of the bar */
 
 bold.addEventListener('click', toggleBold);
+moreFormat.addEventListener('click', () => toggleFormatbar());
+italic.addEventListener('click', () => toggleStyle('italic'));
+underline.addEventListener('click', () => toggleStyle('underline'));
+strike.addEventListener('click', () => toggleStyle('strike'));
+for (const [align, button] of Object.entries(alignments)) button.addEventListener('click', () => toggleAlign(align));
+smaller.addEventListener('click', () => stepSize(-1));
+larger.addEventListener('click', () => stepSize(1));
+byId('do-clear').addEventListener('click', () => applyFormat({}, { clear: true }));
+byId('format-close').addEventListener('click', () => toggleFormatbar(false));
+// Formatting works on the selection, so pressing a tool leaves the cursor on the sheet.
+formatbar.addEventListener('mousedown', (e) => e.preventDefault());
 percent.addEventListener('click', () => toggleNumber('percent'));
 rand.addEventListener('click', () => toggleNumber('currency'));
-for (const button of [bold, percent, rand]) button.disabled = !boot.canEdit;
+for (const button of [bold, percent, rand, moreFormat]) button.disabled = !boot.canEdit;
 
 window.addEventListener('beforeunload', (e) => {
     if (sending > 0) e.preventDefault();

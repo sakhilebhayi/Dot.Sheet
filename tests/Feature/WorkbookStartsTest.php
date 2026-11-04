@@ -284,7 +284,7 @@ class WorkbookStartsTest extends TestCase
     {
         $file = UploadedFile::fake()->createWithContent('run.exe', 'MZ');
 
-        $this->post(route('spreadsheets.from-file'), ['file' => $file])->assertSessionHasErrors(['file' => 'Import a CSV or Excel file.']);
+        $this->post(route('spreadsheets.from-file'), ['file' => $file])->assertSessionHasErrors(['file' => 'Import a CSV, TSV, Excel or ODS file.']);
         $this->post(route('spreadsheets.from-file'), [])->assertSessionHasErrors(['file' => 'Choose a file to start from.']);
     }
 }

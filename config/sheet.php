@@ -30,6 +30,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Largest workbook read whole, with its formulas and formatting
+    |--------------------------------------------------------------------------
+    |
+    | Reading a file with its formatting holds every cell in memory, at about 1.2 KB each, and a
+    | shared host allows 128 MB or less per request. This counts the cells its sheets span. A
+    | larger file comes in as values, one sheet, and is told so. 0 turns the limit off.
+    |
+    */
+    'import_whole_max_cells' => (int) env('SHEET_IMPORT_WHOLE_MAX_CELLS', 60000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Largest import that runs inside the request
     |--------------------------------------------------------------------------
     |

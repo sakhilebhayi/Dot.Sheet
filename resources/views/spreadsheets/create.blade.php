@@ -54,10 +54,10 @@
 
         <section class="starts" aria-labelledby="file-title">
             <h2 id="file-title">Start from a file</h2>
-            <p>A CSV or Excel file up to 10 MB. You will land on its first sheet.</p>
+            <p>An Excel, ODS, CSV or TSV file up to 10 MB. Every sheet comes across, and you will be told about anything that could not.</p>
             <div class="start-line">
                 <label class="sr" for="file">The file to start from</label>
-                <input id="file" type="file" name="file" accept=".csv,.txt,.xlsx,.xls">
+                <input id="file" type="file" name="file" accept=".csv,.tsv,.xlsx,.xls,.ods">
                 <button class="button" type="submit" formaction="{{ route('spreadsheets.from-file') }}" formnovalidate>Import it</button>
             </div>
             @error('file')<p class="error">{{ $message }}</p>@enderror

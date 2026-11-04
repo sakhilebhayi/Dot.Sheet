@@ -106,6 +106,8 @@ class GridController extends Controller
                 'canKeep' => app(SheetProtections::class)->isKeeper(Auth::user(), $spreadsheet),
                 'scripts' => (bool) config('sheet.scripts_enabled'),
                 'told' => session('success'),
+                'importReport' => $spreadsheet->settings['import_report'] ?? null,
+                'showReport' => session('import_report', false),
                 'structure' => (bool) config('sheet.structure_ops_enabled'),
                 'version' => StructureVersion::current($spreadsheet->id),
                 'rows' => SheetStructureService::GRID_ROWS,

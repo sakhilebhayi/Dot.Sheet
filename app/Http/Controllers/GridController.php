@@ -1067,7 +1067,7 @@ class GridController extends Controller
     }
 
     /**
-     * Put back the safety copy a delete took.
+     * Put back a copy of this sheet: the safety copy a delete took, or one chosen from its history.
      */
     public function restoreCopy(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetVersions $versions): JsonResponse
     {
@@ -1076,8 +1076,7 @@ class GridController extends Controller
         $input = $request->validate(['version' => 'required|integer', 'copy' => 'required|integer']);
 
         $copy = SpreadsheetVersion::whereKey($input['copy'])
-            ->where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab->id)
-            ->where('kind', SheetVersions::SAFETY)->first();
+            ->where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab->id)->first();
         abort_if($copy === null, 404);
 
         $written = false;

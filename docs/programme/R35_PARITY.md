@@ -21,13 +21,13 @@ The order is what blocks daily work first, not what is largest.
 | Conditional formatting | Rules are drawn, added and removed. Removal is new: the classic editor can only add |
 | Comments | Panel and marks in the new editor. Comments now follow their rows through insert, delete, sort, cut and undo, in both editors. Mention emails open the new editor at the cell |
 | Sharing | Panel in the new editor, one service for both editors. Nobody can change their own access, and link times are kept in the person's own clock. Nothing is emailed, in either editor: an invitation is a link to pass on |
+| Version history | Panel over `SheetVersions`. Putting a copy back now says how many cells change first, and copies are named in plain words |
 | Formatting | Italic, underline, strike, colours, size, alignment, clear, number and date. The format painter is not carried over |
 
 ## To build, in order
 
 | # | Feature | Work | Note |
 |---|---|---|---|
-| P9 | Version history | Panel over `SheetVersions` | |
 | P10 | Import | Upload from the new editor | S8 then covers merges, freezes and multi-sheet files |
 | P11 | Named ranges, charts, pivot tables | Panels | Charts belong with S9 presentation |
 | P12 | Scripts, AI tools | Panels | AI needs the owner's provider and cost cap |

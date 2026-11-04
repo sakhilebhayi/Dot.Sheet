@@ -191,6 +191,20 @@
         </form>
     </aside>
 
+    <aside class="dock" id="copies" aria-label="Version history" hidden>
+        <div class="dock-head">
+            <h2>History</h2>
+            <button class="tool" type="button" id="copies-close" aria-label="Close history">×</button>
+        </div>
+        <p class="copies-whose" id="copies-whose"></p>
+        <form class="copies-form" id="copies-form">
+            <label for="copies-label">Save a copy as it is now</label>
+            <input id="copies-label" autocomplete="off" maxlength="120" placeholder="Give it a name, if you like">
+            <button class="button" type="submit">Save</button>
+        </form>
+        <ul class="people copies-list" id="copies-list"></ul>
+    </aside>
+
     @if ($boot['canShare'])
         <aside class="dock" id="sharing" aria-label="Share" hidden>
             <div class="dock-head">
@@ -248,7 +262,7 @@
         <form method="dialog" class="confirm">
             <p id="confirm-text"></p>
             <div class="deeds">
-                <button class="button quiet" value="cancel" autofocus>Keep it</button>
+                <button class="button quiet" id="confirm-no" value="cancel" autofocus>Keep it</button>
                 <button class="button" value="yes" id="confirm-yes">Delete sheet</button>
             </div>
         </form>

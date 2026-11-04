@@ -163,6 +163,33 @@ class SheetVersions
     }
 
     /**
+     * How many cells putting a copy back would change, by what someone would see: contents and formatting.
+     * Worked-out answers are left out, because a formula is worked out again anyway.
+     */
+    public function changes(SpreadsheetVersion $version): int
+    {
+        $wanted = [];
+        foreach ($version->cells_snapshot ?? [] as $cell) {
+            $wanted[$cell['row_index'].':'.$cell['col_index']] = $cell;
+        }
+
+        $changes = 0;
+        $cells = $this->cells((int) $version->spreadsheet_id, (int) $version->sheet_tab_id)->whereNull('spill_row');
+        foreach ($cells->select(['id', ...self::CELL_COLUMNS])->lazyById(1000) as $current) {
+            $key = $current->row_index.':'.$current->col_index;
+            $target = $wanted[$key] ?? null;
+            unset($wanted[$key]);
+
+            $now = $this->snapshotCell($current);
+            if ($target === null || $now['raw_value'] != ($target['raw_value'] ?? null) || $now['formula'] != ($target['formula'] ?? null) || $now['formatting'] != ($target['formatting'] ?? null)) {
+                $changes++;
+            }
+        }
+
+        return $changes + count($wanted);
+    }
+
+    /**
      * Keep the newest automatic and safety copies of a sheet; remove the rest. Returns how many went.
      */
     public function prune(int $sheetTabId): int

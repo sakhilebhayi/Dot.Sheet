@@ -10,10 +10,10 @@ class Comment extends Model
 {
     protected $fillable = [
         'spreadsheet_id', 'sheet_tab_id', 'user_id', 'parent_id',
-        'row_index', 'col_index', 'content', 'resolved',
+        'row_index', 'col_index', 'content', 'resolved', 'detached',
     ];
 
-    protected $casts = ['resolved' => 'boolean'];
+    protected $casts = ['resolved' => 'boolean', 'detached' => 'boolean'];
 
     public function spreadsheet(): BelongsTo
     {
@@ -35,6 +35,9 @@ class Comment extends Model
         return $this->belongsTo(Comment::class, 'parent_id');
     }
 
+    /**
+     * @return HasMany<Comment, $this>
+     */
     public function replies(): HasMany
     {
         return $this->hasMany(Comment::class, 'parent_id');

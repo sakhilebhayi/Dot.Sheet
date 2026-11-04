@@ -132,6 +132,7 @@ class SheetStructureService
             $this->checkClock();
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, 1);
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, 1);
+            app(SheetComments::class)->shift($sheetTabId, $axis, $index, 1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, 1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });
@@ -149,6 +150,7 @@ class SheetStructureService
             $this->checkClock();
             $resizedNames = $this->shiftNamedRanges($spreadsheetId, $sheetTabId, $axis, $index, -1);
             $this->shiftLayoutSettings($sheetTabId, $axis, $index, -1);
+            app(SheetComments::class)->shift($sheetTabId, $axis, $index, -1);
             $this->rewriteFormulas($spreadsheetId, $sheetTabId, $axis, $index, -1, $resizedNames);
             StructureVersion::bump($spreadsheetId);
         });

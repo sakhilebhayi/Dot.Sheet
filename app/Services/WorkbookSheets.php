@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Cell;
+use App\Models\Comment;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Services\Formula\FormulaText;
@@ -92,10 +93,10 @@ class WorkbookSheets
     }
 
     /**
-     * What removing a sheet would cost: the filled cells that go, and the formulas on other sheets that
-     * read it and will answer #REF!.
+     * What removing a sheet would cost: the filled cells and comments that go, and the formulas on other
+     * sheets that read it and will answer #REF!.
      *
-     * @return array{cells: int, readers: int}
+     * @return array{cells: int, readers: int, comments: int}
      */
     public function cost(SheetTab $tab): array
     {
@@ -104,7 +105,11 @@ class WorkbookSheets
             ->select('sheet_tab_id', 'row_index', 'col_index')->distinct();
         $readers = DB::query()->fromSub($reading, 'readers')->count();
 
-        return ['cells' => Cell::where('sheet_tab_id', $tab->id)->whereNull('spill_row')->count(), 'readers' => $readers];
+        return [
+            'cells' => Cell::where('sheet_tab_id', $tab->id)->whereNull('spill_row')->count(),
+            'readers' => $readers,
+            'comments' => Comment::where('sheet_tab_id', $tab->id)->whereNull('parent_id')->count(),
+        ];
     }
 
     /**

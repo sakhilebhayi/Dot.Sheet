@@ -15,12 +15,14 @@ class SpreadsheetVersion extends Model
         'kind',
         'cell_count',
         'layout',
+        'comment_places',
         'cells_snapshot',
     ];
 
     protected $casts = [
         'cells_snapshot' => 'array',
         'layout' => 'json',
+        'comment_places' => 'array',
         'cell_count' => 'integer',
     ];
 

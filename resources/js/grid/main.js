@@ -2,6 +2,7 @@
 import { fromText, toText } from './clipboard';
 import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
+import { Notes } from './notes';
 import { Server } from './server';
 import { hasContent, Store } from './store';
 
@@ -45,12 +46,15 @@ const filterValue = byId('filter-value');
 const filterValue2 = byId('filter-value2');
 const filterList = byId('filter-list');
 const pickButton = byId('pick');
+const notedHere = byId('noted-here');
+const commentBox = byId('notes-text');
 const pickList = byId('picks');
 const smaller = byId('do-smaller');
 const larger = byId('do-larger');
 
 const MAX_CELLS = 5000;
 const MAX_STEPS = 100;
+const MARK_INSET = 6;
 const MIN_COL = 48;
 const MAX_COL = 420;
 const MAX_FROZEN_ROWS = 50;
@@ -63,6 +67,25 @@ const MIN_ROW = 18;
 const MAX_ROW = 120;
 
 const server = new Server(boot.id);
+const notes = new Notes({
+    server,
+    canComment: boot.canComment,
+    tab: () => tab,
+    active: () => grid.active,
+    anchor: (r, c) => grid.anchorOf({ r, c }),
+    name: cellName,
+    go: goToComment,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: () => {
+        grid.measure();
+        grid.reveal(grid.active.r, grid.active.c);
+        grid.paint();
+    },
+    marks: showMarks,
+    note,
+    refused,
+    ask,
+});
 const store = new Store(server, () => {
     grid.paint();
     selected();
@@ -80,6 +103,23 @@ const redoSteps = [];
 function note(message) {
     told = message;
     noteLine.textContent = message || restingNote();
+}
+
+function showMarks(marks) {
+    grid.setMarks(marks);
+    notes.tally(marks);
+    grid.paint();
+    placeNoted();
+}
+
+function goToComment(r, c) {
+    if (grid.rows.sizeOf(r) === 0 || grid.cols.sizeOf(c) === 0) {
+        note(`${cellName(r, c)} is hidden. Show its row or column to see it.`);
+        return;
+    }
+    const at = grid.anchorOf({ r, c });
+    select(at.r, at.c);
+    sheet.focus({ preventScroll: true });
 }
 
 function restingNote() {
@@ -109,12 +149,14 @@ async function open(id) {
     grid.copied = clip?.tab === id ? clip.area : null;
     sheet.scrollTo(0, 0);
     grid.setLayout(body.layout);
+    showMarks(body.marks);
     drawRules();
     drawAllowed();
     drawFilters();
     drawTabs();
     selected();
     markFound();
+    if (!notes.closed) notes.load();
 }
 
 function drawTabs() {
@@ -216,17 +258,11 @@ async function removeSheet() {
         refused(cost.status, cost.body);
         return;
     }
-    const { cells, readers } = cost.body;
+    const { cells, readers, comments } = cost.body;
     const holds = cells === 0 ? 'It is empty.' : `It holds ${cells.toLocaleString('en-ZA')} ${cells === 1 ? 'cell' : 'cells'}.`;
     const breaks = readers === 0 ? '' : ` ${readers.toLocaleString('en-ZA')} ${readers === 1 ? 'formula' : 'formulas'} on other sheets will show #REF!.`;
-    confirmText.textContent = `Delete ${sheetName}? ${holds}${breaks} This cannot be undone.`;
-    confirmBox.returnValue = 'cancel';
-    confirmBox.showModal();
-    confirmBox.addEventListener('close', async () => {
-        if (confirmBox.returnValue !== 'yes') {
-            sheet.focus({ preventScroll: true });
-            return;
-        }
+    const said = comments === 0 ? '' : ` ${comments.toLocaleString('en-ZA')} ${comments === 1 ? 'comment goes' : 'comments go'} with it.`;
+    ask(`Delete ${sheetName}? ${holds}${breaks}${said} This cannot be undone.`, 'Delete sheet', async () => {
         const { ok, status, body } = await server.removeSheet(tab, () => version);
         if (!ok) {
             refused(status, body);
@@ -237,6 +273,18 @@ async function removeSheet() {
         await open(boot.tabs[0].id);
         sheet.focus({ preventScroll: true });
         note(`Deleted ${sheetName}.`);
+    });
+}
+
+/** Ask first, keeping what is there unless told otherwise. */
+function ask(text, yes, then) {
+    confirmText.textContent = text;
+    byId('confirm-yes').textContent = yes;
+    confirmBox.returnValue = 'cancel';
+    confirmBox.showModal();
+    confirmBox.addEventListener('close', () => {
+        if (confirmBox.returnValue === 'yes') then();
+        else sheet.focus({ preventScroll: true });
     }, { once: true });
 }
 
@@ -256,6 +304,8 @@ function selected() {
     rand.setAttribute('aria-pressed', String(cell?.x?.number_format === 'currency'));
     if (!formatbar.hidden) showFormat(cell);
     placePick();
+    placeNoted();
+    notes.follow();
 }
 
 function afterMove() {
@@ -415,8 +465,8 @@ function failed(status, body) {
 }
 
 /** Show the edits now and send them; the server's answer then replaces what was guessed here. */
-async function write(edits, { remember: keep = true, merges } = {}) {
-    if (!boot.canEdit || (edits.length === 0 && !merges)) return null;
+async function write(edits, { remember: keep = true, merges, comments } = {}) {
+    if (!boot.canEdit || (edits.length === 0 && !merges && !comments)) return null;
 
     const old = edits.map(({ row, col }) => before(row, col));
     edits.forEach((edit, i) => {
@@ -432,7 +482,7 @@ async function write(edits, { remember: keep = true, merges } = {}) {
     selected();
 
     sending++;
-    const { ok, status, body } = await server.edit(tab, () => version, edits, merges);
+    const { ok, status, body } = await server.edit(tab, () => version, edits, merges, comments);
     sending--;
     edits.forEach(({ row, col }) => store.release(row, col));
 
@@ -478,6 +528,10 @@ async function absorb(body, edited) {
 
     if (moved.length) grid.flash(moved);
     if (body.reload) await store.refresh();
+    if (body.marks) {
+        showMarks(body.marks);
+        if (!notes.closed) notes.load();
+    }
     grid.paint();
     selected();
     summarise();
@@ -590,9 +644,9 @@ async function retrace(from, to, nothing) {
     const back = [];
     let last = null;
     for (const group of step.groups) {
-        if (group.edits.length === 0 && !group.merges) continue;
+        if (group.edits.length === 0 && !group.merges && !group.comments) continue;
         if (group.tab !== tab) await open(group.tab);
-        const body = await write(group.edits, { remember: false, merges: group.merges });
+        const body = await write(group.edits, { remember: false, merges: group.merges, comments: group.comments });
         if (!body) return;
         back.push(...body.undo);
         last = [...group.edits, ...mergeCorners(group.merges)];
@@ -625,10 +679,12 @@ async function reopen() {
     drawTabs();
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
+    showMarks(body.marks);
     drawRules();
     drawAllowed();
     drawFilters();
     select(r, c);
+    if (!notes.closed) notes.load();
 }
 
 /** The selection, cut down to where the sheet holds anything. */
@@ -698,7 +754,7 @@ async function applyFormat(patch, { clear = false } = {}) {
 
 /* Copy, cut and paste */
 
-const inTextField = (e) => e.target instanceof HTMLInputElement;
+const inTextField = (e) => e.target instanceof HTMLInputElement || e.target === commentBox;
 
 // A selected cell is not selected text. Chrome sends clipboard events anyway; to not depend on every
 // browser doing so, focus sits for the one keystroke on a hidden field holding a selection, so the
@@ -1267,6 +1323,20 @@ function placePick() {
     if (pickButton.parentElement !== layer) layer.append(pickButton, pickList);
 }
 
+/** A cell with comments keeps a way to them while it is active. It sits on the cell's own mark. */
+function placeNoted() {
+    const { r, c } = grid.active;
+    const threads = grid.rows && !editing ? grid.notedAt(r, c) : 0;
+    notedHere.hidden = threads === 0;
+    if (threads === 0) return;
+    notedHere.setAttribute('aria-label', `Open ${threads === 1 ? 'the comment' : `${threads} comments`} on ${cellName(r, c)}`);
+    const size = notedHere.offsetWidth;
+    const { width } = grid.spanOf(r, c);
+    notedHere.style.transform = `translate(${grid.gutter + grid.cols.offset(c) + width - MARK_INSET - size / 2}px,${grid.rowTop(r) + MARK_INSET - size / 2}px)`;
+    const layer = grid.layerOf(r, c);
+    if (notedHere.parentElement !== layer) layer.append(notedHere);
+}
+
 function openPicks() {
     const { r, c } = grid.active;
     const items = listAt(grid.layout.validation_rules, r, c);
@@ -1299,6 +1369,7 @@ function openPicks() {
 }
 
 pickButton.addEventListener('click', () => (pickList.hidden ? openPicks() : closePicks()));
+notedHere.addEventListener('click', () => notes.toggle(true));
 pickList.addEventListener('focusout', (e) => {
     if (!pickList.contains(e.relatedTarget) && e.relatedTarget !== pickButton) closePicks();
 });
@@ -1972,7 +2043,7 @@ sheet.addEventListener('mousedown', (e) => {
 });
 
 sheet.addEventListener('pointerdown', (e) => {
-    if (e.target === sheet || e.target === box || e.button !== 0 || e.target.closest('.pick, .picks')) return;
+    if (e.target === sheet || e.target === box || e.button !== 0 || e.target.closest('.pick, .picks, .noted-here')) return;
     const gap = boot.canEdit && e.pointerType !== 'touch' ? grid.gapAt(e.clientX, e.clientY) : null;
     if (gap) {
         e.preventDefault();
@@ -2078,7 +2149,7 @@ window.addEventListener('pointerup', () => {
 
 let lastTap = { at: 0, r: -1, c: -1 };
 sheet.addEventListener('click', (e) => {
-    if (e.target === box || e.pointerType !== 'touch' || e.target.closest('.pick, .picks')) return;
+    if (e.target === box || e.pointerType !== 'touch' || e.target.closest('.pick, .picks, .noted-here')) return;
     const { r, c } = grid.hit(e.clientX, e.clientY);
     if (canPoint()) {
         if (r >= 0 && c >= 0) point(r, c);
@@ -2093,7 +2164,7 @@ sheet.addEventListener('click', (e) => {
 });
 
 sheet.addEventListener('dblclick', (e) => {
-    if (e.target === box || e.target.closest('.pick, .picks')) return;
+    if (e.target === box || e.target.closest('.pick, .picks, .noted-here')) return;
     const edge = boot.canEdit ? grid.edgeAt(e.clientX, e.clientY) : null;
     if (edge) {
         fitToContents(edge);
@@ -2113,7 +2184,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
 // Not here yet: looking for one of these finds the way to it.
 const IN_CLASSIC = [
-    'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
+    'Share this sheet', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
     'Scripts',
     'Ask AI',
 ];
@@ -2179,6 +2250,7 @@ function choices(query) {
             { label: 'Show as a date', run: () => toggleNumber('date') },
         ] : []),
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
+        { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Download as CSV', href: boot.links.csv },
         { label: 'Download as Excel', href: boot.links.excel },
         { label: 'Open the classic editor', href: boot.links.classic },
@@ -2263,7 +2335,7 @@ find.addEventListener('keydown', (e) => {
 });
 palette.addEventListener('close', () => {
     // A command may have put the cursor in a field of its own: leave it there.
-    if (!editing && !(document.activeElement instanceof HTMLInputElement)) sheet.focus({ preventScroll: true });
+    if (!editing && !(document.activeElement instanceof HTMLInputElement) && document.activeElement !== commentBox) sheet.focus({ preventScroll: true });
 });
 palette.addEventListener('click', (e) => {
     if (e.target === palette) palette.close();
@@ -2276,6 +2348,11 @@ document.addEventListener('keydown', (e) => {
     } else if (e.ctrlKey && e.key.toLowerCase() === 'h' && replaceText) {
         e.preventDefault();
         openFind(replaceText);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === 'KeyM') {
+        e.preventDefault();
+        closeEdit(true);
+        notes.toggle(notes.closed || (boot.canComment && document.activeElement !== commentBox));
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -2306,4 +2383,16 @@ window.addEventListener('beforeunload', (e) => {
     if (sending > 0) e.preventDefault();
 });
 
-if (tab !== null) open(tab).then(() => sheet.focus({ preventScroll: true }));
+// A link from a comment's email names the sheet and the cell.
+const asked = new URLSearchParams(location.search);
+const askedTab = boot.tabs.find((t) => t.id === Number(asked.get('tab')))?.id;
+const askedCell = GO_TO.exec(asked.get('cell') ?? '');
+if (tab !== null) {
+    open(askedTab ?? tab).then(() => {
+        sheet.focus({ preventScroll: true });
+        if (askedCell) {
+            select(Number(askedCell[2]) - 1, columnIndex(askedCell[1]));
+            notes.toggle(true);
+        }
+    });
+}

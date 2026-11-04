@@ -8,6 +8,7 @@ use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\CellWriter;
+use App\Services\SheetComments;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
@@ -1585,6 +1586,265 @@ class DotGridEditorTest extends DuskTestCase
             $this->open($browser, $viewer, $sheet);
             $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Sort');
             $browser->pause(100)->assertDontSeeIn('#found', 'Sort A to Z');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    /** What the cells that carry a comment's mark hold, and whether the mark is really drawn. */
+    private function marked(Browser $browser): array
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            return [...document.querySelectorAll('.c.noted')].filter(c => getComputedStyle(c).backgroundImage !== 'none').map(c => c.textContent);
+        JS);
+    }
+
+    private function say(Browser $browser, string $text): void
+    {
+        $browser->type('#notes-text', $text)->keys('#notes-text', '{enter}');
+    }
+
+    public function test_a_comment_is_written_marked_and_still_there_after_a_reload(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 1);
+            $browser->assertVisible('#do-comments')->assertMissing('#notes-count')->click('#do-comments')->waitFor('#notes');
+            $browser->assertSeeIn('#notes-on', 'Comment on B2')->assertSeeIn('#notes-list', 'No comments on this sheet yet.');
+
+            $this->say($browser, 'Rent went up in March');
+            $browser->waitForTextIn('#notes-list', 'Rent went up in March');
+            $this->assertSame(['-400'], array_map(fn ($text) => str_replace('−', '-', $text), $this->marked($browser)));
+            $browser->assertSeeIn('#notes-list .thread.here .where', 'B2')->assertSeeIn('#notes-count', '1');
+            $this->assertSame('', $browser->value('#notes-text'), 'the box is ready for the next one');
+            $this->assertSame('-400', str_replace('−', '-', $this->cell($browser, 1, 1)), 'typing there leaves the sheet alone');
+
+            $browser->driver->navigate()->refresh();
+            $browser->waitUsing(10, 25, fn () => count($this->marked($browser)) === 1);
+            $browser->assertMissing('#notes')->assertSeeIn('#notes-count', '1');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_panel_moves_the_sheet_aside_and_never_covers_it(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $rects = fn () => $browser->driver->executeScript(<<<'JS'
+                const rect = (id) => document.getElementById(id).getBoundingClientRect();
+                return { sheetRight: rect('sheet').right, sheetBottom: rect('sheet').bottom, notesLeft: rect('notes').left, notesTop: rect('notes').top, wide: document.documentElement.scrollWidth <= innerWidth };
+            JS);
+            $width = $rects()['sheetRight'];
+
+            $browser->click('#do-comments')->waitFor('#notes');
+            $open = $rects();
+            $this->assertLessThanOrEqual($open['notesLeft'], $open['sheetRight']);
+            $this->assertLessThan($width, $open['sheetRight']);
+
+            $browser->click('#notes-close');
+            $browser->waitUntilMissing('#notes');
+            $this->assertSame($width, $rects()['sheetRight']);
+
+            $browser->resize(390, 780);
+            $browser->pause(100);
+            $this->runCommand($browser, 'Comments');
+            $browser->waitFor('#notes');
+            $phone = $rects();
+            $this->assertLessThanOrEqual($phone['notesTop'], $phone['sheetBottom'], 'under the sheet on a phone');
+            $this->assertTrue($phone['wide']);
+            $browser->resize(1280, 800);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_thread_takes_a_reply_is_resolved_and_reopened_and_can_be_deleted(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $other = User::factory()->withPersonalTeam()->create(['name' => 'Thandi']);
+        $sheet->sharedUsers()->attach($other->id, ['permission' => 'comment']);
+        $thread = app(SheetComments::class)->add($sheet->id, $tab->id, $other->id, 0, 0, 'Theirs');
+        app(SheetComments::class)->add($sheet->id, $tab->id, $user->id, 0, 1, 'Mine');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $thread) {
+            $this->open($browser, $user, $sheet);
+            $browser->click('#do-comments')->waitForTextIn('#notes-list', 'Theirs');
+            $first = "#notes-list .thread[data-id='{$thread->id}']";
+            $browser->assertSeeIn($first, 'Thandi')->assertDontSeeIn($first, 'Delete');
+            $browser->assertSeeIn('#notes-list .thread:nth-child(2)', 'You')->assertSeeIn('#notes-list .thread:nth-child(2)', 'Delete');
+
+            $browser->pause(50);
+            $this->pressIn($browser, $first, 'Reply');
+            $browser->waitFor("{$first} .reply input")->type("{$first} .reply input", 'Agreed')->keys("{$first} .reply input", '{enter}');
+            $browser->waitForTextIn($first, 'Agreed');
+            $browser->assertMissing("{$first} .reply");
+
+            $this->pressIn($browser, $first, 'Resolve');
+            $browser->waitForTextIn('#notes-list', 'Show 1 resolved');
+            $browser->assertSeeIn('#notes-count', '1');
+            $this->assertCount(1, $this->marked($browser));
+            $browser->assertMissing($first);
+
+            $browser->driver->executeScript("document.querySelector('#notes-list .notes-more button').focus()");
+            $this->pressIn($browser, '#notes-list', 'Show 1 resolved');
+            $browser->waitFor($first);
+            $this->assertSame('Hide 1 resolved', $browser->driver->executeScript('return document.activeElement.textContent'), 'the keyboard stays where it was');
+            $this->pressIn($browser, $first, 'Reopen');
+            $browser->waitForTextIn('#notes-count', '2');
+            $this->assertCount(2, $this->marked($browser));
+
+            $mine = '#notes-list .thread:nth-child(2)';
+            $this->pressIn($browser, $mine, 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Delete this comment?')->assertSeeIn('#confirm-yes', 'Delete');
+            $browser->click('#confirm-yes');
+            $browser->waitForTextIn('#notes-count', '1');
+            $browser->assertDontSeeIn('#notes-list', 'Mine');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    private function pressIn(Browser $browser, string $within, string $label): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            [...document.querySelector(arguments[0]).querySelectorAll('button')].find(b => b.textContent === arguments[1]).click();
+        JS, [$within, $label]);
+    }
+
+    public function test_a_comment_goes_to_its_cell_and_a_cell_opens_its_comments(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(SheetComments::class)->add($sheet->id, $tab->id, $user->id, 2, 1, 'On the net');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->assertMissing('#noted-here');
+
+            $this->clickCell($browser, 2, 1);
+            $browser->waitFor('#noted-here');
+            $this->assertSame('Open the comment on B3', $browser->attribute('#noted-here', 'aria-label'));
+            $this->clickCell($browser, 0, 0);
+            $browser->waitUntilMissing('#noted-here');
+            $this->clickCell($browser, 2, 1);
+            $browser->click('#noted-here')->waitForTextIn('#notes-list', 'On the net');
+            $browser->assertPresent('#notes-list .thread.here');
+
+            $this->clickCell($browser, 0, 0);
+            $browser->waitUntilMissing('#notes-list .thread.here');
+            $browser->assertSeeIn('#notes-on', 'Comment on A1');
+
+            $browser->click('#notes-list .where');
+            $browser->waitFor('#notes-list .thread.here');
+            $browser->assertSeeIn('#ref', 'B3');
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'), 'the arrow keys carry on from there');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_comment_keeps_to_its_row_through_a_sort_and_undo(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 0, 'col' => 0, 'value' => 'Sales'], ['row' => 0, 'col' => 1, 'value' => 'Price'],
+            ['row' => 1, 'col' => 0, 'value' => 'Pears'], ['row' => 1, 'col' => 1, 'value' => '30'],
+            ['row' => 2, 'col' => 0, 'value' => 'Apples'], ['row' => 2, 'col' => 1, 'value' => '10'],
+        ], $user->id);
+        app(SheetComments::class)->add($sheet->id, $tab->id, $user->id, 1, 0, 'About pears');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitUsing(10, 25, fn () => $this->marked($browser) === ['Pears']);
+            $browser->click('#do-comments')->waitForTextIn('#notes-list .where', 'A2');
+            $this->clickCell($browser, 1, 0);
+
+            $this->runCommand($browser, 'Sort A to Z');
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 2, 0) === 'Pears');
+            $browser->waitForTextIn('#notes-list .where', 'A3');
+            $this->assertSame(['Pears'], $this->marked($browser));
+
+            $browser->script("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 1, 0) === 'Pears');
+            $browser->waitForTextIn('#notes-list .where', 'A2');
+            $this->assertSame(['Pears'], $this->marked($browser));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_merged_cell_shows_the_comment_of_a_cell_inside_it(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        Cell::where('sheet_tab_id', $tab->id)->where('col_index', 1)->delete();
+        app(SheetComments::class)->add($sheet->id, $tab->id, $user->id, 0, 1, 'Inside the merge');
+        SheetTab::updateLayout($tab->id, fn (array $layout) => [...$layout, 'merges' => [['r1' => 0, 'c1' => 0, 'r2' => 0, 'c2' => 1]]]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitUsing(10, 25, fn () => $this->marked($browser) === ['Sales']);
+            $this->clickCell($browser, 0, 0);
+            $browser->click('#noted-here')->waitForTextIn('#notes-list', 'Inside the merge');
+            $browser->assertPresent('#notes-list .thread.here');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_link_from_an_email_opens_the_sheet_the_cell_and_the_comments(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $extra = SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+        app(SheetComments::class)->add($sheet->id, $extra->id, $user->id, 3, 2, 'Over here');
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $extra) {
+            $browser->driver->get('about:blank');
+            $browser->driver->manage()->getLog('browser');
+            $browser->loginAs($user)->visit("/spreadsheets/{$sheet->id}?tab={$extra->id}&cell=C4");
+            $browser->waitForTextIn('#notes-list', 'Over here');
+            $browser->assertSeeIn('#ref', 'C4')->assertPresent('#notes-list .thread.here')->assertSeeIn('#tabs [aria-current]', 'Stock');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_keys_open_comments_and_escape_closes_them_and_text_stays_in_the_box(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            // keys() puts the focus back on the element it was given: this is a key that moves it.
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::CONTROL, WebDriverKeys::ALT, 'm']);
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::NULL]);
+            $browser->waitFor('#notes');
+            $this->assertSame('notes-text', $browser->driver->executeScript('return document.activeElement.id'));
+
+            $kept = $browser->driver->executeScript(<<<'JS'
+                const box = document.getElementById('notes-text');
+                const cut = new ClipboardEvent('cut', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+                box.dispatchEvent(cut);
+                return !cut.defaultPrevented;
+            JS);
+            $this->assertTrue($kept, 'cutting in the box is the box\'s own business');
+
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::ESCAPE]);
+            $browser->waitUntilMissing('#notes');
+            $this->assertSame('sheet', $browser->driver->executeScript('return document.activeElement.id'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_view_reads_comments_and_writes_none(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(SheetComments::class)->add($sheet->id, $tab->id, $user->id, 0, 0, 'Worth a look');
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Comments');
+            $browser->waitForTextIn('#notes-list', 'Worth a look');
+            $browser->assertMissing('#notes-form')->assertMissing('#notes-list .deeds');
             $this->assertNoConsoleErrors($browser);
         });
     }

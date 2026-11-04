@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
  */
 class RangeSort
 {
+    /** @var array<int, int> after a plan, the row each moved row was on => the row it goes to */
+    public array $moved = [];
+
     /**
      * The block of data around a cell, with no empty row or column inside it. Frozen rows stay out, and
      * so does a first row that reads as a header: no figures in it, and figures under it.
@@ -86,12 +89,14 @@ class RangeSort
             return ($descending ? -1 : 1) * $this->compare($left, $right);
         });
 
+        $this->moved = [];
         $edits = [];
         foreach ($order as $i => $from) {
             $to = $area['r1'] + $i;
             if ($from === $to) {
                 continue;
             }
+            $this->moved[$from] = $to;
 
             for ($col = $area['c1']; $col <= $area['c2']; $col++) {
                 $source = $cells[$from.':'.$col] ?? null;

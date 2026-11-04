@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
+use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
@@ -89,6 +90,11 @@ Route::middleware([
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('comments', [GridCommentController::class, 'index'])->name('comments');
+        Route::post('comments', [GridCommentController::class, 'store'])->name('comments.store');
+        Route::post('comments/{comment}/reply', [GridCommentController::class, 'reply'])->name('comments.reply');
+        Route::post('comments/{comment}/resolve', [GridCommentController::class, 'resolve'])->name('comments.resolve');
+        Route::delete('comments/{comment}', [GridCommentController::class, 'destroy'])->name('comments.destroy');
         Route::get('trace/{row}/{col}', [GridController::class, 'trace'])->whereNumber(['row', 'col'])->name('trace');
     });
 

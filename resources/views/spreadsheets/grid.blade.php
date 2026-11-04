@@ -26,6 +26,7 @@
             <button type="button" id="do-more" aria-label="More formatting" aria-expanded="false" aria-controls="formatbar">Aa</button>
         </div>
         <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
+        <button class="tool quiet" id="do-comments" type="button" aria-expanded="false" aria-controls="notes">Comments<b id="notes-count" hidden></b></button>
         <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
     </header>
 
@@ -151,6 +152,7 @@
     </form>
     </div>
 
+    <div class="work">
     <main class="sheet" id="sheet" tabindex="0" role="application" aria-roledescription="spreadsheet" aria-label="{{ $spreadsheet->name }}">
         <div class="canvas" id="canvas">
             <div class="head" id="head">
@@ -168,9 +170,24 @@
                 <div class="frozen" id="frozen"></div>
                 <button class="pick" id="pick" type="button" aria-label="Choose from the list" aria-expanded="false" aria-controls="picks" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.5 8 10.5 12 6.5"/></svg></button>
                 <ul class="picks" id="picks" role="listbox" aria-label="Choices" hidden></ul>
+                <button class="noted-here" id="noted-here" type="button" hidden></button>
             </div>
         </div>
     </main>
+
+    <aside class="notes" id="notes" aria-label="Comments" hidden>
+        <div class="notes-head">
+            <h2>Comments</h2>
+            <button class="tool" type="button" id="notes-close" aria-label="Close comments">×</button>
+        </div>
+        <ul class="notes-list" id="notes-list" tabindex="-1"></ul>
+        <form class="notes-form" id="notes-form">
+            <label for="notes-text" id="notes-on">Comment</label>
+            <textarea id="notes-text" rows="2" maxlength="1000" placeholder="Use @name to tell someone"></textarea>
+            <button class="button" type="submit">Comment</button>
+        </form>
+    </aside>
+    </div>
 
     <footer class="foot">
         <nav class="tabs" id="tabs" aria-label="Sheets"></nav>

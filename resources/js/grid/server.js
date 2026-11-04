@@ -33,12 +33,32 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    comments(tab) {
+        return json(`${this.base}/${tab}/comments`);
+    }
+
+    addComment(tab, row, col, text) {
+        return json(`${this.base}/${tab}/comments`, { method: 'POST', body: JSON.stringify({ row, col, text }) });
+    }
+
+    replyToComment(tab, id, text) {
+        return json(`${this.base}/${tab}/comments/${id}/reply`, { method: 'POST', body: JSON.stringify({ text }) });
+    }
+
+    resolveComment(tab, id, resolved) {
+        return json(`${this.base}/${tab}/comments/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolved }) });
+    }
+
+    removeComment(tab, id) {
+        return json(`${this.base}/${tab}/comments/${id}`, { method: 'DELETE' });
+    }
+
     stats(tab, area) {
         return json(`${this.base}/${tab}/stats?${new URLSearchParams(area)}`);
     }
 
-    edit(tab, version, edits, merges) {
-        const send = () => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits, merges }) });
+    edit(tab, version, edits, merges, comments) {
+        const send = () => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits, merges, comments }) });
         const result = this.queue.then(send, send);
         this.queue = result;
         return result;

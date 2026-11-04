@@ -17,6 +17,7 @@ class MentionedInComment extends Notification
         public int $row,
         public int $col,
         public string $excerpt,
+        public ?int $sheetTabId = null,
     ) {}
 
     /**
@@ -39,7 +40,7 @@ class MentionedInComment extends Notification
             ->line("{$this->actorName} mentioned you in {$this->spreadsheetName}.")
             ->line("Cell: {$cellRef}")
             ->line("Comment: \"{$this->excerpt}\"")
-            ->action('Open Spreadsheet', url('/spreadsheets/'.$this->spreadsheetId.'/classic'));
+            ->action('Open Spreadsheet', route('spreadsheets.show', $this->spreadsheetId).'?'.http_build_query(array_filter(['tab' => $this->sheetTabId, 'cell' => $cellRef])));
     }
 
     /**
@@ -54,6 +55,7 @@ class MentionedInComment extends Notification
             'actor_name' => $this->actorName,
             'spreadsheet_id' => $this->spreadsheetId,
             'spreadsheet_name' => $this->spreadsheetName,
+            'sheet_tab_id' => $this->sheetTabId,
             'row' => $this->row,
             'col' => $this->col,
             'excerpt' => $this->excerpt,

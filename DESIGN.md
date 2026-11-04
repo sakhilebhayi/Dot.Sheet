@@ -144,6 +144,13 @@ components:
   cell-read:
     backgroundColor: "{colors.thread-read}"
     textColor: "{colors.primary}"
+  comment-mark:
+    backgroundColor: "{colors.primary}"
+    size: 6px
+  comment-here:
+    backgroundColor: "{colors.tertiary}"
+    textColor: "{colors.on-tertiary}"
+    rounded: "{rounded.full}"
   button-primary:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.on-primary}"
@@ -192,7 +199,7 @@ The reference is `docs/programme/design/board-dot-grid.html`, a working board.
 
 Colour carries meaning, and each colour has one job.
 
-- **Primary (#15201B):** ink. Text, figures, the Share button.
+- **Primary (#15201B):** ink. Text, figures, the Share button, and the mark of a comment, which is someone's writing.
 - **Secondary (#5C6A63):** row and column labels, the status line, anything that is not the data.
 - **Tertiary (#2438C9):** the thread. Selection, tracing, and focus. Nothing decorative is blue.
 - **Loss (#C62A12):** a negative figure, and only that. Never a selection, never an accent.
@@ -233,7 +240,8 @@ tells people there is more.
 
 ## Elevation & Depth
 
-The sheet is flat. Only the palette floats, with one soft shadow over a dimmed page.
+The sheet is flat. Only the palette and the question before a delete float, with one soft shadow over a dimmed
+page. Panels sit on the desk beside the sheet.
 
 ## Shapes
 
@@ -303,6 +311,16 @@ list shows a small chevron while it is active, and Alt and the down arrow open i
 which rows moved and which stayed as a heading. A sort that cannot be done cleanly says why and changes
 nothing. Filters are set from the same sentence bar. They apply when they change or on Reapply, never as
 values change, so a row does not vanish while it is being typed in. Rows hidden by hand stay hidden.
+
+**Comments.** A cell with an open comment carries a 6px ink dot inside its top right corner: ink, because it is
+someone's writing and blue is for what the sheet traces. While that cell is active the dot grows and answers
+to the pointer, the same way a list's chevron does. The panel docks beside the sheet on the desk and pushes it
+narrower, so it never covers a figure; on a phone it docks under the sheet, so the cell stays in view. It lists
+the sheet's threads in reading order, and a thread on the active cell wears the selection's colour on its cell
+reference, as the active row number does. Pressing a reference goes to the cell. A comment belongs to its cell,
+not to a position: it goes with its row through a sort, a cut, and rows going in or out, and undo takes it back.
+When its row or column is deleted its words stay in the panel under Cell deleted, and undoing the delete puts it
+back. Resolved threads leave no mark and fold away at the foot of the list.
 
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.

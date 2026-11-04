@@ -318,7 +318,9 @@ the formulas on other sheets that will break. Keeping it is the default, because
 to move it, or use the palette, which also works on a phone. A sheet's colour is a dot before its name, in the chart
 colours, so they stay apart. Hiding a sheet takes it off the foot and the palette brings it back: it is tidiness and
 not privacy, so a hidden sheet stays readable by everyone who can open the workbook, and a workbook always keeps one
-sheet showing.
+sheet showing. Duplicating keeps the work and leaves the conversation and the record: a duplicate holds cells, formats,
+charts and pivots, and comments and history stay with the original. A workbook's duplicate is a private copy for the
+person who made it, with no people and no public link.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

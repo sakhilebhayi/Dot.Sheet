@@ -2986,4 +2986,82 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertNoConsoleErrors($browser);
         });
     }
+
+    public function test_a_sheet_is_duplicated_beside_the_original_and_goes_its_own_way(): void
+    {
+        [$user, $sheet, $stock] = $this->threeSheets();
+        app(CellWriter::class)->write($sheet->id, $stock->id, [['row' => 1, 'col' => 0, 'value' => '4'], ['row' => 2, 'col' => 0, 'value' => '=A2*2']], $user->id);
+        $stock->update(['formulas_built_at' => null]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 0, 0) === 'Shelves');
+
+            $this->runCommand($browser, 'Duplicate this sheet');
+            $browser->waitForTextIn('#note', 'Made Stock copy.');
+            $this->assertSame(['Sheet1', 'Stock', 'Stock copy', 'Notes'], $this->tabNames($browser));
+            $browser->assertSeeIn('#tabs [aria-current]', 'Stock copy');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 0) === '8');
+
+            $this->clickCell($browser, 1, 0);
+            $browser->driver->getKeyboard()->sendKeys(['9', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 0) === '18');
+
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#tabs [aria-current]', 'Stock');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 0) === '8');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_someone_who_can_only_read_duplicates_a_workbook_and_can_edit_their_copy(): void
+    {
+        [, $sheet] = $this->threeSheets();
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->open($browser, $reader, $sheet);
+            $this->runCommand($browser, 'Duplicate this workbook');
+            $browser->waitUsing(10, 50, fn () => ! str_ends_with($browser->driver->getCurrentURL(), "/spreadsheets/{$sheet->id}"));
+
+            $copy = Spreadsheet::where('owner_id', $reader->id)->sole();
+            $this->assertStringEndsWith("/spreadsheets/{$copy->id}", $browser->driver->getCurrentURL());
+            $browser->waitUsing(10, 25, fn () => $this->cell($browser, 0, 0) === 'Sales');
+            $this->assertSame(['Sheet1', 'Stock', 'Notes'], $this->tabNames($browser));
+
+            // The page's arrival is a view transition, and nothing takes a click until it ends.
+            $browser->pause(500);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['mine', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'mine');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_the_dashboard_duplicates_the_workbook_it_is_showing(): void
+    {
+        [$user, $sheet] = $this->threeSheets();
+        Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $user->id, 'name' => 'Another one']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $browser->loginAs($user)->visit('/dashboard');
+            $browser->waitFor('#stage-duplicate');
+
+            // The page opens on the first row, so the second proves the button follows the choice.
+            $name = $browser->driver->executeScript(<<<'JS'
+                const row = document.querySelectorAll('.ledger tbody tr')[1];
+                row.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }));
+                return row.querySelector('a').textContent.trim();
+            JS);
+            $this->assertContains($name, [$sheet->name, 'Another one']);
+            $browser->waitForTextIn('#stage-title', $name);
+            $browser->click('#stage-duplicate button');
+            $browser->waitUsing(10, 50, fn () => Spreadsheet::where('name', $name.' copy')->exists());
+
+            $copy = Spreadsheet::where('name', $name.' copy')->sole();
+            $browser->waitUsing(10, 50, fn () => str_ends_with($browser->driver->getCurrentURL(), "/spreadsheets/{$copy->id}"));
+        });
+    }
 }

@@ -354,6 +354,28 @@ async function addSheet() {
     note(`Added ${boot.tabs.find((t) => t.id === body.tab)?.name}.`);
 }
 
+async function duplicateSheet() {
+    closeEdit(true);
+    const { ok, status, body } = await server.duplicateSheet(tab);
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    await open(body.tab);
+    sheet.focus({ preventScroll: true });
+    note(`Made ${boot.tabs.find((t) => t.id === body.tab)?.name}. Comments and history stay with the original.`);
+}
+
+async function duplicateWorkbook() {
+    closeEdit(true);
+    const { ok, status, body } = await server.duplicateWorkbook();
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    window.location.assign(body.url);
+}
+
 /* How the sheets are kept: their order, colour and whether they show. */
 
 let tabMoved = false;
@@ -2528,6 +2550,7 @@ function choices(query) {
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Add a sheet', run: addSheet },
+            { label: 'Duplicate this sheet', hint: 'Everything but its comments and history', run: duplicateSheet },
             { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
             { label: 'Delete this sheet', run: removeSheet },
             { label: 'Hide this sheet', run: hideSheet },
@@ -2582,6 +2605,7 @@ function choices(query) {
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
+        { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         { label: 'Pivot tables', hint: 'Sum a table by what is in it', run: () => pivots.toggle(true) },

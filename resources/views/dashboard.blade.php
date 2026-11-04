@@ -21,6 +21,7 @@
         ])->filter()->implode(', ') ?: 'Nobody',
         'owner' => $sheet->owner_id === auth()->id() ? 'You' : ($sheet->owner?->name ?? 'Shared'),
         'delete' => auth()->user()->can('delete', $sheet) ? route('spreadsheets.destroy', $sheet) : null,
+        'duplicate' => route('spreadsheets.duplicate', $sheet),
     ];
     $first = $spreadsheets->first();
 @endphp
@@ -66,6 +67,10 @@
                 </dl>
                 <div class="deeds">
                     <a class="button" id="stage-open" href="{{ route('spreadsheets.show', $first) }}">Open</a>
+                    <form id="stage-duplicate" method="POST" action="{{ route('spreadsheets.duplicate', $first) }}">
+                        @csrf
+                        <button class="button quiet" type="submit">Duplicate</button>
+                    </form>
                     <button class="button quiet away" id="stage-delete" type="button" hidden>Delete</button>
                 </div>
             </aside>

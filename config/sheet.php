@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Largest sheet or workbook a duplicate can hold
+    |--------------------------------------------------------------------------
+    |
+    | A duplicate is one write transaction, so it holds the single SQLite write lock for its
+    | whole length, and everyone else waits. 100,000 cells measured 0.2 seconds on a laptop, which
+    | leaves a slower shared host well under busy_timeout 5000.
+    | 0 turns the limit off.
+    |
+    */
+    'duplicate_max_cells' => (int) env('SHEET_DUPLICATE_MAX_CELLS', 100000),
+
+    /*
+    |--------------------------------------------------------------------------
     | Largest import that runs inside the request
     |--------------------------------------------------------------------------
     |

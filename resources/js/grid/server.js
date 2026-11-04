@@ -52,6 +52,20 @@ export class Server {
         return json(`${this.base}/${tab}/trace/${row}/${col}`);
     }
 
+    duplicateSheet(tab) {
+        const send = () => json(`${this.base}/${tab}/duplicate`, { method: 'POST' });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    duplicateWorkbook() {
+        const send = () => json(this.base.replace(/\/tabs$/, '/duplicate'), { method: 'POST' });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     /** How a sheet is kept: its colour, whether it shows, or the order of them all. */
     sheetLook({ kind, tab, ...change }) {
         const url = kind === 'order' ? `${this.base}/order` : `${this.base}/${tab}/look/${kind}`;

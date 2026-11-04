@@ -363,6 +363,7 @@ async function open(id, stillWriting = false) {
     grid.setLayout(body.layout);
     showMarks(body.marks);
     showProtection(body.protection);
+    grid.setFacts(body.ruleFacts);
     drawRules();
     drawAllowed();
     drawFilters();
@@ -905,6 +906,7 @@ async function absorb(body, edited) {
     if (body.reload) await store.refresh();
     charts.touched();
     pivots.touched();
+    refreshFacts();
     if (body.marks) {
         showMarks(body.marks);
         if (!notes.closed) notes.load();
@@ -1063,6 +1065,7 @@ async function reopen() {
     drawTabs();
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
+    grid.setFacts(body.ruleFacts);
     showMarks(body.marks);
     drawRules();
     drawAllowed();
@@ -1361,7 +1364,22 @@ let ruleColour = FILL_COLOURS[3][1];
 
 function ruleWords(rule) {
     const where = rule.target === 'column' ? `Column ${columnName(Number(rule.col))}` : cellName(Number(rule.row), Number(rule.col));
+    if (rule.kind) return `${where} from row ${Number(rule.row) + 1}, ${KIND_WORDS[rule.kind]}`;
     return `${where}, ${OPERATOR_WORDS[rule.operator] ?? rule.operator} ${rule.value ?? ''}`;
+}
+
+const KIND_WORDS = { scale: 'a colour scale', bars: 'data bars', icons: 'marks for high, middle and low', duplicates: 'values that repeat', missing: 'empty cells' };
+
+/** The column's facts changed with its cells. Only worth asking when a rule uses them. */
+let factsWait = null;
+function refreshFacts() {
+    if (!(grid.layout.conditional_formatting_rules ?? []).some((rule) => rule?.kind)) return;
+    clearTimeout(factsWait);
+    factsWait = setTimeout(async () => {
+        const asked = tab;
+        const { ok, body } = await server.ruleFacts(asked);
+        if (ok && asked === tab) grid.setFacts(body.facts);
+    }, 200);
 }
 
 function drawRules() {
@@ -1404,6 +1422,7 @@ async function changeRules(request, { remember: keep = true } = {}) {
     grid.setRules(body.rules);
     grid.paint();
     drawRules();
+    refreshFacts();
     if (keep && body.undo) {
         undoSteps.push({ version, rule: { tab, request: body.undo } });
         if (undoSteps.length > MAX_STEPS) undoSteps.shift();
@@ -1446,11 +1465,19 @@ drawRuleSwatches();
 rulebar.addEventListener('submit', async (e) => {
     e.preventDefault();
     const { r, c } = grid.active;
-    const body = await changeRules({ add: { target: ruleTarget.value, row: r, col: c, operator: ruleOperator.value, value: ruleValue.value, color: ruleColour } });
+    const kind = ruleOperator.value.startsWith('kind:') ? ruleOperator.value.slice(5) : null;
+    const body = await changeRules({ add: kind
+        ? { target: 'column', row: r, col: c, kind, color: ruleColour }
+        : { target: ruleTarget.value, row: r, col: c, operator: ruleOperator.value, value: ruleValue.value, color: ruleColour } });
     if (body) {
         ruleValue.value = '';
         ruleValue.focus();
     }
+});
+ruleOperator.addEventListener('change', () => {
+    const kind = ruleOperator.value.startsWith('kind:');
+    ruleValue.hidden = kind;
+    ruleTarget.disabled = kind;
 });
 rulebar.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') toggleRulebar(false);

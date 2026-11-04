@@ -338,7 +338,9 @@ the sheet's own headings, and shows the formula before putting it in. A new form
 fill down, in the foot, and changes nothing until pressed. An imported file opens on a report of what came across and,
 by name, what did not. It stays in the palette as What came across, because nothing is left behind in silence. A whole
 workbook downloads as Excel or ODS with its formulas and formats. Paper is a plain table on a white page: print goes
-through the browser, and PDF is the same page.
+through the browser, and PDF is the same page. Colour rules can also read a whole column from the selected cell down: a
+colour scale in one hue, data bars, marks for high, middle and low that do not rely on colour, repeated values and
+missing cells.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

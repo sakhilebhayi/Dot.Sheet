@@ -3718,4 +3718,107 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertSame('none', $browser->driver->executeScript("return [...document.styleSheets[0].cssRules].some(r => r.media?.mediaText === 'print') ? 'none' : 'missing'"));
         });
     }
+
+    /** @param array<string, mixed> $rule */
+    private function columnRule(SheetTab $tab, array $rule): void
+    {
+        SheetTab::updateLayout($tab->id, fn (array $layout) => [...$layout, 'conditional_formatting_rules' => [...($layout['conditional_formatting_rules'] ?? []), ['id' => (string) str()->uuid(), 'target' => 'column', 'color' => '#DCEBD9', ...$rule]]]);
+    }
+
+    private function look(Browser $browser, int $row, int $col, string $property): string
+    {
+        return (string) $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const x = px('--gutter') + (arguments[1] === 0 ? 0 : px('--label') + (arguments[1] - 1) * px('--col'));
+            const at = `translate(${x}px, ${arguments[0] * px('--row')}px)`;
+            const cell = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.style.transform === at);
+            return cell ? cell.style[arguments[2]] : null;
+        JS, [$row, $col, $property]);
+    }
+
+    public function test_a_column_rule_draws_bars_and_marks_from_the_whole_column(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $this->columnRule($tab, ['row' => 1, 'col' => 1, 'kind' => 'bars']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundImage'), '100%'));
+            $this->assertStringContainsString(' 0%', $this->look($browser, 1, 1, 'backgroundImage'));
+            $this->assertStringContainsString('50%', $this->look($browser, 2, 1, 'backgroundImage'));
+            $this->assertSame('', $this->look($browser, 0, 1, 'backgroundImage'));
+
+            $this->clickCell($browser, 3, 1);
+            $browser->driver->getKeyboard()->sendKeys(['500', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 2, 1, 'backgroundImage'), '25%'));
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_column_rule_starts_where_it_was_set_and_copes_with_one_value(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [
+            ['row' => 1, 'col' => 2, 'value' => '5'], ['row' => 2, 'col' => 2, 'value' => '5'],
+            ['row' => 5, 'col' => 1, 'value' => '', 'x' => ['bold' => true]],
+        ], $user->id);
+        $this->columnRule($tab, ['row' => 2, 'col' => 1, 'kind' => 'bars']);
+        $this->columnRule($tab, ['row' => 1, 'col' => 2, 'kind' => 'bars']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundImage'), '100%'));
+            $this->assertSame('', $this->look($browser, 1, 1, 'backgroundImage'));
+            $this->assertSame('', $this->look($browser, 5, 1, 'backgroundColor'));
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 1, 2, 'backgroundImage'), '100%'));
+        });
+    }
+
+    public function test_marks_say_high_middle_and_low_without_colour(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $this->columnRule($tab, ['row' => 1, 'col' => 1, 'kind' => 'icons']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 3, 1) === '▲ 300');
+            $this->assertSame('▼ 100', $this->cell($browser, 1, 1));
+            $this->assertSame('▬ 200', $this->cell($browser, 2, 1));
+        });
+    }
+
+    public function test_repeats_and_gaps_are_coloured(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 5, 'col' => 0, 'value' => 'Later']], $user->id);
+        $this->columnRule($tab, ['row' => 1, 'col' => 0, 'kind' => 'duplicates']);
+        $this->columnRule($tab, ['row' => 1, 'col' => 0, 'kind' => 'missing', 'color' => '#F7E0DA']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(5, 25, fn () => $this->look($browser, 1, 0, 'backgroundColor') !== '');
+            $this->assertNotSame('', $this->look($browser, 3, 0, 'backgroundColor'));
+            $this->assertSame('', $this->look($browser, 2, 0, 'backgroundColor'));
+            $this->assertNotSame('', $this->look($browser, 4, 0, 'backgroundColor'));
+            $this->assertSame('', $this->look($browser, 9, 0, 'backgroundColor'));
+        });
+    }
+
+    public function test_a_scale_runs_from_light_to_full_and_the_form_makes_one(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 1);
+            $this->runCommand($browser, 'Colour rules');
+            $browser->waitFor('#rulebar:not([hidden])')->select('#rule-operator', 'kind:scale');
+            $browser->assertMissing('#rule-value:not([hidden])');
+            $browser->click('#rulebar button[type=submit]');
+            $browser->waitForTextIn('#rule-list', 'a colour scale');
+            $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundColor'), '100%'));
+            $this->assertStringContainsString('20%', $this->look($browser, 1, 1, 'backgroundColor'));
+        });
+    }
 }

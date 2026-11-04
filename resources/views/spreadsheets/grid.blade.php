@@ -147,6 +147,11 @@
                 <option value="==">exactly</option>
                 <option value="!=">anything but</option>
                 <option value="contains">containing</option>
+                <option value="kind:scale">on a colour scale</option>
+                <option value="kind:bars">with data bars</option>
+                <option value="kind:icons">with high, middle and low marks</option>
+                <option value="kind:duplicates">repeated in the column</option>
+                <option value="kind:missing">missing</option>
             </select>
             <input id="rule-value" aria-label="The value" autocomplete="off" spellcheck="false">
             <span class="swatches" id="rule-swatches" role="group" aria-label="Colour"></span>

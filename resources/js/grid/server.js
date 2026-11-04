@@ -128,6 +128,10 @@ export class Server {
         return json(`${this.base}/${tab}/from-words?sentence=${encodeURIComponent(sentence)}`);
     }
 
+    ruleFacts(tab) {
+        return json(`${this.base}/${tab}/rule-facts`);
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

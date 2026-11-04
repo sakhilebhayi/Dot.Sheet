@@ -109,6 +109,7 @@ Route::middleware([
         Route::post('freeze', [GridController::class, 'freeze'])->name('freeze');
         Route::post('hidden', [GridController::class, 'hidden'])->name('hidden');
         Route::post('rules', [GridController::class, 'rules'])->name('rules');
+        Route::get('rule-facts', [GridController::class, 'ruleFacts'])->name('rule-facts');
         Route::post('allowed', [GridController::class, 'allowed'])->name('allowed');
         Route::post('sort', [GridController::class, 'sort'])->name('sort');
         Route::post('filter', [GridController::class, 'filter'])->name('filter');

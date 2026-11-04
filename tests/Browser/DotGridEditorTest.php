@@ -2,6 +2,7 @@
 
 namespace Tests\Browser;
 
+use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -10,6 +11,7 @@ use App\Services\CellWriter;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
+use ReflectionMethod;
 use Tests\DuskTestCase;
 
 /**
@@ -1176,6 +1178,148 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertTrue((bool) $browser->driver->executeScript("return document.getElementById('do-more').disabled"));
             $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'Format cells');
             $browser->pause(100)->assertDontSeeIn('#found', 'Format cells');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    /** The background drawn at a place on the sheet, on a sheet of default sizes. */
+    private function fillAt(Browser $browser, int $row, int $col): ?string
+    {
+        return $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const x = px('--gutter') + (arguments[1] === 0 ? 0 : px('--label') + (arguments[1] - 1) * px('--col'));
+            const at = `translate(${x}px, ${arguments[0] * px('--row')}px)`;
+            const cell = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.style.transform === at);
+            return cell ? cell.style.backgroundColor : null;
+        JS, [$row, $col]);
+    }
+
+    public function test_the_browser_and_the_classic_editor_agree_on_every_kind_of_rule(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $colour = '#F7E0DA';
+        $drawn = 'rgb(247, 224, 218)';
+
+        // Value in the cell, operator, what the rule compares with.
+        $cases = [
+            ['5', '>', '3'], ['5', '>', '5'], ['5', '>=', '5'], ['5', '<', '5.5'], ['5', '<=', '4'],
+            ['5.0', '==', '5'], ['5', '==', '5'], ['5', '!=', '5.0'], ['abc', '==', 'ABC'], ['abc', '!=', 'abd'],
+            ['Late fee', 'contains', 'LATE'], ['Late fee', 'contains', 'early'], ['abc', '>', '1'], ['5', '>', 'abc'],
+            ['1e3', '>', '999'], ['0x10', '>', '1'], ['.5', '<', '1'], ['-3', '<', '0'], ['+4', '>=', '4'], ['=2+3', '>', '4'],
+            ['=2+3', '==', '5'], ['=1/0', '==', '#DIV/0!'], ['x', 'contains', ''], ['007', '==', '7'],
+        ];
+
+        $edits = [];
+        $rules = [];
+        foreach ($cases as $row => [$value, $operator, $expected]) {
+            $edits[] = ['row' => $row, 'col' => 1, 'value' => $value];
+            $rules[] = ['id' => "r{$row}", 'target' => 'cell', 'row' => $row, 'col' => 1, 'operator' => $operator, 'value' => $expected, 'color' => $colour];
+        }
+        Cell::where('sheet_tab_id', $tab->id)->delete();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 0, 'col' => 0, 'value' => 'Sales'], ...$edits], $user->id);
+        $tab->forceFill(['layout' => ['conditional_formatting_rules' => $rules, 'frozen_cols' => 0]])->save();
+
+        // What the classic editor decides for each cell is the answer.
+        $classic = new ShowSpreadsheet;
+        $classic->conditionalFormattingRules = $rules;
+        $decide = new ReflectionMethod(ShowSpreadsheet::class, 'applyConditionalFormattingRules');
+        $expected = [];
+        foreach ($cases as $row => $case) {
+            $cell = Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', 1)->firstOrFail();
+            $expected[$row] = ($decide->invoke($classic, $row, 1, $cell->computed_value ?? $cell->raw_value ?? '', [])['bg_color'] ?? null) !== null;
+        }
+        $this->assertContains(true, $expected);
+        $this->assertContains(false, $expected);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $cases, $expected, $drawn) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, count($cases) - 1, 1) !== null);
+
+            foreach ($cases as $row => [$value, $operator, $against]) {
+                $this->assertSame($expected[$row], $this->fillAt($browser, $row, 1) === $drawn, "{$value} {$operator} {$against}");
+            }
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_rule_is_set_from_a_sentence_and_follows_the_figures(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 2, 'value' => '-9']], $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 1);
+            $this->runCommand($browser, 'Colour rules');
+            $browser->waitFor('#rulebar:not([hidden])');
+            $browser->assertSeeIn('#rule-list', 'This sheet has no colour rules yet');
+
+            $browser->select('#rule-operator', '<');
+            $browser->keys('#rule-value', '0', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#rule-list', 'Column B, less than 0');
+
+            // Rent is negative, so it colours. Sales is not.
+            $rose = 'rgb(247, 224, 218)';
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, 1, 1) === $rose);
+            $this->assertSame('', $this->fillAt($browser, 0, 1));
+            $this->assertSame('', $this->fillAt($browser, 1, 2), 'A column rule stays in its column.');
+
+            // A second rule shows at once, though nothing about the page has moved to redraw it.
+            $browser->select('#rule-operator', '>');
+            $browser->click('#rule-swatches [aria-label="Butter"]');
+            $browser->keys('#rule-value', '500', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#rule-list', 'Column B, more than 500');
+            $browser->waitUsing(2, 25, fn () => $this->fillAt($browser, 0, 1) === 'rgb(251, 240, 191)');
+            $browser->click('#rule-list .rule:last-child button');
+            $browser->waitUsing(2, 25, fn () => $this->fillAt($browser, 0, 1) === '');
+
+            // It follows the figures.
+            $this->clickCell($browser, 1, 1);
+            $browser->keys('#sheet', '400', WebDriverKeys::ENTER);
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, 1, 1) === '');
+
+            // Taken off, then back with undo.
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, 1, 1) === $rose);
+            $browser->click('#rule-list .rule button');
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, 1, 1) === '');
+            $this->assertSame([], $tab->fresh()->layout['conditional_formatting_rules']);
+
+            $browser->driver->executeScript("document.getElementById('sheet').focus()");
+            $browser->keys('#sheet', [WebDriverKeys::CONTROL, 'z']);
+            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, 1, 1) === $rose);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_rule_that_needs_a_number_says_so(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Colour rules');
+            $browser->waitFor('#rulebar:not([hidden])');
+            $browser->keys('#rule-value', 'plenty', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#note', 'give it a number');
+            $browser->assertInputValue('#rule-value', 'plenty');
+        });
+    }
+
+    public function test_each_sheet_keeps_its_own_rules(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $tab->forceFill(['layout' => ['conditional_formatting_rules' => [['id' => 'a', 'target' => 'column', 'row' => 0, 'col' => 1, 'operator' => '<', 'value' => '0', 'color' => '#F7E0DA']]]])->save();
+        SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Stock', 'sort_order' => 2]);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Colour rules');
+            $browser->waitForTextIn('#rule-list', 'Column B, less than 0');
+
+            $browser->script("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Stock').click()");
+            $browser->waitForTextIn('#rule-list', 'no colour rules yet');
             $this->assertNoConsoleErrors($browser);
         });
     }

@@ -4,7 +4,7 @@
  */
 import { Axis } from './axis';
 import { hasContent } from './store';
-import { cellName, columnName, show } from './format';
+import { cellName, columnName, ruleFill, show } from './format';
 import { threadCurve } from './thread';
 
 const OVERSCAN_ROWS = 6;
@@ -183,6 +183,10 @@ export class Grid {
         this.layout = { ...this.layout, [axis === 'col' ? 'hidden_cols' : 'hidden_rows']: list };
         this.measure();
         if (this.lines.length) this.drawThreads(false);
+    }
+
+    setRules(rules) {
+        this.layout = { ...this.layout, conditional_formatting_rules: rules };
     }
 
     setMerges(merges) {
@@ -558,7 +562,8 @@ export class Grid {
         if (shown.negative) names += ' neg';
         if (shown.error) names += ' err';
         if (x.bold) names += ' b';
-        if (x.bg_color) names += ' filled';
+        const fill = ruleFill(this.layout.conditional_formatting_rules, r, c, cell) ?? x.bg_color;
+        if (fill) names += ' filled';
         if (r >= area.r1 && r <= area.r2 && c >= area.c1 && c <= area.c2) names += ' sel';
         else if (this.isRead(r, c)) names += ' read';
         if (r === this.active.r && c === this.active.c) names += ' now';
@@ -575,7 +580,7 @@ export class Grid {
         const { w, h } = merge ? this.drawnSpan(merge) : { w: this.cols.sizeOf(c), h: this.rows.sizeOf(r) };
         const room = !merge && align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
         if (room > 0) names += ' over';
-        const sig = `${names}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${x.bg_color}|${x.font_size}|${cell?.e}`;
+        const sig = `${names}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${fill}|${x.font_size}|${cell?.e}`;
         if (el.sig === sig) return;
         el.sig = sig;
 
@@ -586,7 +591,7 @@ export class Grid {
         el.style.fontStyle = x.italic ? 'italic' : '';
         el.firstChild.style.textDecoration = [x.underline && 'underline', x.strike && 'line-through'].filter(Boolean).join(' ');
         el.style.color = x.font_color ?? '';
-        el.style.backgroundColor = x.bg_color ?? '';
+        el.style.backgroundColor = fill ?? '';
         el.style.fontSize = x.font_size ? `${Number(x.font_size)}px` : '';
         el.title = cell?.e ?? '';
         el.firstChild.textContent = shown.text;

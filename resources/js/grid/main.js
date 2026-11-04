@@ -28,6 +28,11 @@ const underline = byId('do-underline');
 const strike = byId('do-strike');
 const alignments = { left: byId('do-left'), center: byId('do-center'), right: byId('do-right') };
 const sizeNow = byId('size-now');
+const rulebar = byId('rulebar');
+const ruleTarget = byId('rule-target');
+const ruleOperator = byId('rule-operator');
+const ruleValue = byId('rule-value');
+const ruleList = byId('rule-list');
 const smaller = byId('do-smaller');
 const larger = byId('do-larger');
 
@@ -91,6 +96,7 @@ async function open(id) {
     grid.copied = clip?.tab === id ? clip.area : null;
     sheet.scrollTo(0, 0);
     grid.setLayout(body.layout);
+    drawRules();
     drawTabs();
     selected();
     markFound();
@@ -522,6 +528,14 @@ async function retrace(from, to, nothing) {
         return;
     }
 
+    if (step.rule) {
+        if (step.rule.tab !== tab) await open(step.rule.tab);
+        const answer = await changeRules(step.rule.request, { remember: false });
+        if (!answer) return;
+        to.push({ version, rule: { tab, request: answer.undo } });
+        return;
+    }
+
     if (step.hidden) {
         if (step.hidden.tab !== tab) await open(step.hidden.tab);
         const answer = await saveHidden(step.hidden.axis, step.hidden.hide, step.hidden.show, { remember: false });
@@ -577,6 +591,7 @@ async function reopen() {
     drawTabs();
     store.reset(tab, body.lastRow, body.lastCol);
     grid.setLayout(body.layout);
+    drawRules();
     select(r, c);
 }
 
@@ -858,6 +873,110 @@ function drawSwatches(id, key, colours, noneLabel) {
 
 drawSwatches('text-swatches', 'font_color', TEXT_COLOURS, 'Ink, the default');
 drawSwatches('fill-swatches', 'bg_color', FILL_COLOURS, 'No fill');
+
+/* Colour rules */
+
+const OPERATOR_WORDS = { '<': 'less than', '<=': 'at most', '>': 'more than', '>=': 'at least', '==': 'exactly', '!=': 'anything but', contains: 'containing' };
+let ruleColour = FILL_COLOURS[3][1];
+
+function ruleWords(rule) {
+    const where = rule.target === 'column' ? `Column ${columnName(Number(rule.col))}` : cellName(Number(rule.row), Number(rule.col));
+    return `${where}, ${OPERATOR_WORDS[rule.operator] ?? rule.operator} ${rule.value ?? ''}`;
+}
+
+function drawRules() {
+    if (rulebar.hidden) return;
+    const rules = (grid.layout.conditional_formatting_rules ?? []).filter((rule) => rule && typeof rule === 'object');
+    if (rules.length === 0) {
+        const empty = document.createElement('li');
+        empty.textContent = 'This sheet has no colour rules yet.';
+        ruleList.replaceChildren(empty);
+        return;
+    }
+    ruleList.replaceChildren(...rules.map((rule) => {
+        const item = document.createElement('li');
+        item.className = 'rule';
+        const dot = document.createElement('i');
+        dot.style.background = rule.color ?? '';
+        const words = document.createElement('span');
+        words.textContent = ruleWords(rule);
+        item.append(dot, words);
+        // A rule from before ids existed cannot be named to the server.
+        if (rule.id) {
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = '×';
+            remove.setAttribute('aria-label', `Remove rule: ${words.textContent}`);
+            remove.addEventListener('click', () => changeRules({ remove: rule.id }));
+            item.append(remove);
+        }
+        return item;
+    }));
+}
+
+async function changeRules(request, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.rules(tab, () => version, request);
+    if (!ok) {
+        refused(status, body);
+        return null;
+    }
+    grid.setRules(body.rules);
+    grid.paint();
+    drawRules();
+    if (keep && body.undo) {
+        undoSteps.push({ version, rule: { tab, request: body.undo } });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    return body;
+}
+
+function toggleRulebar(show = rulebar.hidden) {
+    rulebar.hidden = !show;
+    grid.soon();
+    if (show) {
+        drawRules();
+        ruleValue.focus();
+    } else {
+        sheet.focus({ preventScroll: true });
+    }
+}
+
+function drawRuleSwatches() {
+    byId('rule-swatches').replaceChildren(...FILL_COLOURS.map(([name, colour]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('aria-label', name);
+        button.title = name;
+        button.setAttribute('aria-pressed', String(colour === ruleColour));
+        const dot = document.createElement('i');
+        dot.style.background = colour;
+        button.append(dot);
+        button.addEventListener('click', () => {
+            ruleColour = colour;
+            drawRuleSwatches();
+        });
+        return button;
+    }));
+}
+
+drawRuleSwatches();
+
+rulebar.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const { r, c } = grid.active;
+    const body = await changeRules({ add: { target: ruleTarget.value, row: r, col: c, operator: ruleOperator.value, value: ruleValue.value, color: ruleColour } });
+    if (body) {
+        ruleValue.value = '';
+        ruleValue.focus();
+    }
+});
+rulebar.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleRulebar(false);
+});
+byId('rule-close').addEventListener('click', () => toggleRulebar(false));
+byId('do-rules').addEventListener('click', () => toggleRulebar());
 
 function toggleNumber(format) {
     const cell = store.get(grid.active.r, grid.active.c);
@@ -1654,7 +1773,7 @@ const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 const IN_CLASSIC = [
     'Share this sheet', 'Comments', 'Charts', 'Pivot tables', 'Named ranges', 'Version history', 'Import a file',
     'Scripts', 'Sort', 'Filter',
-    'Validation rules', 'Conditional formatting', 'Ask AI',
+    'Validation rules', 'Ask AI',
 ];
 
 function choices(query) {
@@ -1693,6 +1812,7 @@ function choices(query) {
             { label: 'Undo', run: undo },
             { label: 'Redo', run: redo },
             { label: 'Format cells', run: () => toggleFormatbar(true) },
+            { label: 'Colour rules (conditional formatting)', run: () => toggleRulebar(true) },
             { label: 'Bold', run: toggleBold },
             { label: 'Italic', run: () => toggleStyle('italic') },
             { label: 'Underline', run: () => toggleStyle('underline') },

@@ -291,6 +291,10 @@ while the selection moves. Pressing a tool leaves the cursor on the sheet. Colou
 that marks a place is here, and text sizes stop at 24, the tallest that fits a row. A selected or found
 cell keeps its fill, with the mark laid over it.
 
+**Colour rules.** A rule reads as a sentence: colour this column when it is less than 0. The bar docks under
+the bar, as find does, and the sheet's rules sit under the sentence with a way to take each off. A rule's
+colour lies where a fill would, and the last rule that applies wins, the same in both editors.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

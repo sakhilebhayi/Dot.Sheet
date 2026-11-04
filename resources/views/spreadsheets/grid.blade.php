@@ -48,9 +48,36 @@
         <div class="set" role="group" aria-labelledby="text-label"><span id="text-label">Text</span><span class="swatches" id="text-swatches"></span></div>
         <div class="set" role="group" aria-labelledby="fill-label"><span id="fill-label">Fill</span><span class="swatches" id="fill-swatches"></span></div>
         <button class="tool quiet" type="button" id="do-clear">Clear formatting</button>
+        <button class="tool quiet" type="button" id="do-rules">Colour rules</button>
         <span class="grow"></span>
         <button class="tool" type="button" id="format-close" aria-label="Close formatting">×</button>
     </div>
+
+    <form class="rulebar" id="rulebar" aria-label="Colour rules" hidden>
+        <div class="rule-line">
+            <span>Colour</span>
+            <select id="rule-target" aria-label="Which cells">
+                <option value="column">this column</option>
+                <option value="cell">this cell</option>
+            </select>
+            <span>when it is</span>
+            <select id="rule-operator" aria-label="The condition">
+                <option value="<">less than</option>
+                <option value="<=">at most</option>
+                <option value=">">more than</option>
+                <option value=">=">at least</option>
+                <option value="==">exactly</option>
+                <option value="!=">anything but</option>
+                <option value="contains">containing</option>
+            </select>
+            <input id="rule-value" aria-label="The value" autocomplete="off" spellcheck="false">
+            <span class="swatches" id="rule-swatches" role="group" aria-label="Colour"></span>
+            <button class="tool" type="submit">Add rule</button>
+            <span class="grow"></span>
+            <button class="tool" type="button" id="rule-close" aria-label="Close colour rules">×</button>
+        </div>
+        <ul class="rule-list" id="rule-list"></ul>
+    </form>
 
     <form class="findbar" id="findbar" role="search" hidden>
         <label><span class="sr">Find</span><input id="find-text" placeholder="Find" autocomplete="off" spellcheck="false"></label>

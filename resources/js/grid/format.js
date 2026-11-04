@@ -55,6 +55,38 @@ export const FILL_COLOURS = [
     ['Butter', '#FBF0BF'], ['Sage', '#DCEBD9'], ['Aqua', '#D5ECE7'], ['Rose', '#F7E0DA'], ['Lilac', '#EBE2F4'], ['Stone', '#E4E9E3'],
 ];
 
+const PHP_NUMERIC = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/;
+
+function meets(value, operator, expected) {
+    if (['>', '>=', '<', '<='].includes(operator)) {
+        if (!PHP_NUMERIC.test(String(value)) || !PHP_NUMERIC.test(String(expected))) return false;
+        const [left, right] = [Number(value), Number(expected)];
+        return { '>': left > right, '>=': left >= right, '<': left < right, '<=': left <= right }[operator];
+    }
+    if (operator === 'contains') return String(value).toLowerCase().includes(String(expected ?? '').toLowerCase());
+    if (operator === '!=') return String(value) !== String(expected ?? '');
+    return String(value) === String(expected ?? '');
+}
+
+/**
+ * The colour a sheet's rules give a cell. The last rule that applies wins. This matches
+ * ShowSpreadsheet::applyConditionalFormattingRules, so a sheet reads the same in both editors: change
+ * one and change the other.
+ */
+export function ruleFill(rules, r, c, cell) {
+    if (!rules?.length || !cell) return null;
+    const value = cell.v ?? '';
+    let fill = null;
+    for (const rule of rules) {
+        const target = rule?.target ?? 'cell';
+        if (target === 'cell' && (Number(rule.row) !== r || Number(rule.col) !== c)) continue;
+        if (target === 'column' && Number(rule.col) !== c) continue;
+        if (!meets(value, String(rule.operator ?? '=='), rule.value ?? null)) continue;
+        if (/^#[0-9A-Fa-f]{6}$/.test(String(rule.color ?? '#FEE2E2'))) fill = rule.color ?? '#FEE2E2';
+    }
+    return fill;
+}
+
 /** Stops at the tallest text that still fits a row. */
 export const TEXT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20, 24];
 

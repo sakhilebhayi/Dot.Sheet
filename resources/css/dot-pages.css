@@ -55,6 +55,10 @@
 .starts b { font-weight: 600; }
 .starts span { color: var(--soft); }
 .starts small { color: var(--soft); font-size: 12px; }
+.start-line { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 8px; }
+.start-line input { flex: 1 1 240px; min-width: 0; padding: 10px 0; border: 0; border-bottom: 1.5px solid var(--ink); background: none; color: inherit; font: inherit; }
+.start-line input:focus { border-bottom-color: var(--thread); outline: 0; }
+.start-said { margin: 12px 0 0; }
 .form { max-width: none; }
 .form > div { padding-block: 3px; }
 .form input, .form select { width: min(100%, 320px); height: 34px; padding: 0; border: 0; border-bottom: 1.5px solid transparent; background: none; outline: none; transition: border-color .15s; }

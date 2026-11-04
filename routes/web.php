@@ -5,6 +5,7 @@ use App\Http\Controllers\CspReportController;
 use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
+use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\SchedulerProbeController;
@@ -101,6 +102,10 @@ Route::middleware([
         Route::post('merge', [GridController::class, 'merge'])->name('merge');
         Route::post('unmerge', [GridController::class, 'unmerge'])->name('unmerge');
         Route::get('stats', [GridController::class, 'stats'])->name('stats');
+        Route::get('names', [GridNameController::class, 'index'])->name('names');
+        Route::post('names', [GridNameController::class, 'store'])->name('names.store');
+        Route::get('names/{namedRange}/uses', [GridNameController::class, 'uses'])->name('names.uses');
+        Route::delete('names/{namedRange}', [GridNameController::class, 'destroy'])->name('names.destroy');
         Route::get('before-import', [GridCopyController::class, 'beforeImport'])->name('import.before');
         Route::get('copies', [GridCopyController::class, 'index'])->name('copies');
         Route::post('copies', [GridCopyController::class, 'store'])->name('copies.store');

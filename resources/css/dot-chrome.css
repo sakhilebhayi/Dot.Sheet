@@ -56,8 +56,8 @@ button, input { font: inherit; color: inherit; }
 
 /* The one quiet bar */
 .bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; min-width: 0; }
-.mark { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--thread); transition: scale .3s var(--ease); }
-.mark:hover { scale: 1.25; }
+.mark { width: 44px; height: 29px; flex: none; background: url('../images/dot-sheet-mark.png') left center / contain no-repeat; transition: scale .3s var(--ease); }
+.mark:hover { scale: 1.06; }
 h1 { margin: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border-bottom: 1.5px solid var(--ink); }
 .line:focus-within { border-bottom-color: var(--thread); }

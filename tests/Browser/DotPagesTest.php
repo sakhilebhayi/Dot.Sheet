@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\CellWriter;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\DuskTestCase;
 
 /**
@@ -205,5 +206,30 @@ class DotPagesTest extends DuskTestCase
         });
 
         unlink($file);
+    }
+
+    public function test_a_workbook_opens_on_a_report_of_what_came_across(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $book = new \PhpOffice\PhpSpreadsheet\Spreadsheet;
+        $book->getActiveSheet()->setTitle('Sales')->setCellValue('A1', 'Total')->setCellValue('B1', '=1+1');
+        $book->getActiveSheet()->getCell('A2')->setValue('site')->getHyperlink()->setUrl('https://example.com');
+        $book->createSheet()->setTitle('Costs')->setCellValue('A1', 'x');
+        $path = tempnam(sys_get_temp_dir(), 'book').'.xlsx';
+        IOFactory::createWriter($book, 'Xlsx')->save($path);
+
+        $this->browse(function (Browser $browser) use ($user, $path) {
+            $this->signIn($browser, $user)->visit('/spreadsheets/create');
+            $browser->attach('file', $path)->press('Import it');
+            $browser->waitFor('#report:not([hidden])', 10);
+            $browser->assertSeeIn('#report-body', '2 sheets')->assertSeeIn('#report-body', 'Left behind')->assertSeeIn('#report-body', 'A link in a cell.');
+            $browser->assertSeeIn('#tabs', 'Costs');
+
+            $browser->click('#report-close')->waitUntilMissing('#report:not([hidden])');
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'What came across', '{enter}');
+            $browser->waitFor('#report:not([hidden])');
+        });
+
+        unlink($path);
     }
 }

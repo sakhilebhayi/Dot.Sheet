@@ -317,6 +317,14 @@
 
     <div class="formula-help" id="formula-help" role="listbox" aria-label="Suggestions" hidden></div>
 
+    <aside class="dock" id="report" aria-label="What came across" hidden>
+        <div class="dock-head">
+            <h2>What came across</h2>
+            <button class="tool" type="button" id="report-close" aria-label="Close the import report">×</button>
+        </div>
+        <div class="assistant-detail" id="report-body"></div>
+    </aside>
+
     <aside class="dock" id="explain" aria-label="Explain this cell" hidden>
         <div class="dock-head">
             <h2>Explain this cell</h2>

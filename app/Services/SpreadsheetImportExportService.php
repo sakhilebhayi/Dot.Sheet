@@ -265,7 +265,7 @@ class SpreadsheetImportExportService
      *
      * @return list<list<string|array{text: string}|null>> a cell that must stay text is ['text' => value]
      */
-    protected function parseCsv(string $csvContent): array
+    protected function parseCsv(string $csvContent, string $separator = ','): array
     {
         $csvContent = preg_replace('/^\xEF\xBB\xBF/', '', $csvContent) ?? $csvContent;
 
@@ -274,7 +274,7 @@ class SpreadsheetImportExportService
         rewind($stream);
 
         $rows = [];
-        while (($row = fgetcsv($stream, null, ',', '"', '')) !== false) {
+        while (($row = fgetcsv($stream, null, $separator, '"', '')) !== false) {
             if ($row === [null]) {
                 $row = [];
             }
@@ -313,12 +313,12 @@ class SpreadsheetImportExportService
         // for a formula. So is a real formula, for now: it lands as its own text until S8 reads the type.
         $valuesAreText = false;
 
-        if ($ext === 'csv') {
+        if (in_array($ext, ['csv', 'tsv'], true)) {
             $content = file_get_contents($file->getRealPath());
-            $rows = $this->parseCsv((string) $content);
+            $rows = $this->parseCsv((string) $content, $ext === 'tsv' ? "\t" : ',');
         }
 
-        if (in_array($ext, ['xlsx', 'xls'])) {
+        if (in_array($ext, ['xlsx', 'xls', 'ods'], true)) {
             try {
                 $rows = $this->readFirstSheet($file);
                 $valuesAreText = true;
@@ -354,7 +354,7 @@ class SpreadsheetImportExportService
     protected function readFirstSheet(UploadedFile $file): array
     {
         // Named outright: left to guess, the library reads a broken workbook as CSV and its junk lands on the sheet.
-        $reader = IOFactory::createReaderForFile($file->getRealPath(), [IOFactory::READER_XLSX, IOFactory::READER_XLS]);
+        $reader = IOFactory::createReaderForFile($file->getRealPath(), [IOFactory::READER_XLSX, IOFactory::READER_XLS, IOFactory::READER_ODS]);
         $reader->setReadDataOnly(true);
         $workbook = $reader->load($file->getRealPath());
 

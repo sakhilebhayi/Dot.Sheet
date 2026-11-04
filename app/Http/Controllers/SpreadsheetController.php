@@ -17,6 +17,7 @@ use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
 use App\Services\TemplateCatalogue;
 use App\Services\WorkbookBuilder;
+use App\Services\WorkbookImporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -141,25 +142,46 @@ class SpreadsheetController extends Controller
     }
 
     /**
-     * Start from a file: a new workbook named after it, with the file on its first sheet.
+     * Start from a file: a new workbook named after it. An Excel or ODS file comes across whole, every
+     * sheet with its formulas and formatting, with a report of whatever it could not bring.
      */
-    public function fromFile(Request $request)
+    public function fromFile(Request $request, WorkbookImporter $importer)
     {
         $validated = $request->validate([
-            'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
+            // By extension: an ODS file reads as a plain zip to anything that sniffs it, and each reader
+            // checks what it is given anyway.
+            'file' => 'required|file|extensions:csv,tsv,xlsx,xls,ods|max:10240',
             'team_id' => 'nullable|integer|exists:teams,id',
         ], [
             'file.required' => 'Choose a file to start from.',
-            'file.mimes' => 'Import a CSV or Excel file.',
+            'file.extensions' => 'Import a CSV, TSV, Excel or ODS file.',
             'file.max' => 'That file is larger than 10 MB.',
         ]);
 
         $file = $request->file('file');
+        $teamId = $this->teamToAddTo($validated['team_id'] ?? null);
+        $name = Str::limit(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 255, '') ?: 'Imported spreadsheet';
+        $extension = strtolower($file->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls', 'ods'], true)) {
+            try {
+                if ($importer->fits($file->getRealPath(), $extension)) {
+                    $spreadsheet = $importer->import($file->getRealPath(), $extension, $name, $request->user(), $teamId);
+
+                    return redirect()->route('spreadsheets.show', $spreadsheet)->with('import_report', true);
+                }
+            } catch (\Exception $e) {
+                report($e);
+
+                return back()->with('error', SpreadsheetImportExportService::UNREADABLE_MESSAGE);
+            }
+        }
+
         $spreadsheet = Spreadsheet::create([
             'uuid' => (string) Str::uuid(),
             'owner_id' => $request->user()->id,
-            'team_id' => $this->teamToAddTo($validated['team_id'] ?? null),
-            'name' => Str::limit(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 255, '') ?: 'Imported spreadsheet',
+            'team_id' => $teamId,
+            'name' => $name,
             'settings' => [],
         ]);
 
@@ -170,7 +192,8 @@ class SpreadsheetController extends Controller
             return back()->with('error', $result['error'] ?? SpreadsheetImportExportService::UNREADABLE_MESSAGE);
         }
 
-        return redirect()->route('spreadsheets.show', $spreadsheet);
+        return redirect()->route('spreadsheets.show', $spreadsheet)
+            ->with('success', in_array($extension, ['xlsx', 'xls', 'ods'], true) ? 'That file is too large to read whole, so its first sheet came in as values, without formulas or formatting.' : null);
     }
 
     /** A read-only member (viewer) may belong to a team but not add sheets to it. */

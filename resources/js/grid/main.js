@@ -9,6 +9,7 @@ import { Names } from './names';
 import { Protection } from './protection';
 import { Assistant } from './assistant';
 import { Explain } from './explain';
+import { ImportReport } from './report';
 import { FormulaHelp } from './suggest';
 import { Notes } from './notes';
 import { Pivots } from './pivots';
@@ -178,6 +179,12 @@ const explain = new Explain({
     },
     refused,
 });
+const importReport = new ImportReport({
+    report: boot.importReport,
+    resized: panelMoved,
+    opening: () => closeOtherPanels(importReport),
+    back: () => sheet.focus({ preventScroll: true }),
+});
 const protectionPanel = new Protection({
     server,
     canKeep: boot.canKeep,
@@ -264,7 +271,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, assistant, explain, importReport, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -2877,6 +2884,7 @@ function choices(query) {
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         { label: 'Function assistant', hint: 'Find a function and fill it in', run: () => assistant.toggle(true) },
+        ...(boot.importReport ? [{ label: 'What came across', hint: 'The report from importing this file', run: () => importReport.toggle(true) }] : []),
         { label: 'Explain this cell', hint: 'What its formula does, or why it shows an error', run: () => explain.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },
         { label: 'Pivot tables', hint: 'Sum a table by what is in it', run: () => pivots.toggle(true) },
@@ -3029,6 +3037,7 @@ if (tab !== null) {
     open(askedTab ?? tab).then(() => {
         sheet.focus({ preventScroll: true });
         if (boot.told) note(boot.told);
+        if (boot.showReport && boot.importReport) importReport.toggle(true);
         if (askedCell) {
             select(Number(askedCell[2]) - 1, columnIndex(askedCell[1]));
             notes.toggle(true);

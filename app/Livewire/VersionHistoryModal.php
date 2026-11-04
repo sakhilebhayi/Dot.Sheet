@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
@@ -21,6 +22,7 @@ class VersionHistoryModal extends Component
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

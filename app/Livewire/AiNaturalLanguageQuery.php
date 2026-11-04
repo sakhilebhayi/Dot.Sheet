@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +14,7 @@ use Livewire\Component;
 class AiNaturalLanguageQuery extends Component
 {
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id = null;

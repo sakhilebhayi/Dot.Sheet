@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\StructureVersion;
@@ -16,6 +17,7 @@ class SpreadsheetToolbar extends Component
 {
     use AuthorizesRequests;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

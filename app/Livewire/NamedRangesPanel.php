@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Livewire\Concerns\ChecksSheetEditAccess;
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\NamedRange;
 use App\Models\Spreadsheet;
 use App\Services\NameRefused;
@@ -20,6 +21,7 @@ class NamedRangesPanel extends Component
     use AuthorizesRequests;
     use ChecksSheetEditAccess;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

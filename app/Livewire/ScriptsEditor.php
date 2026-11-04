@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Spreadsheet;
 use App\Services\SheetMacros;
 use App\Services\WriteLock;
@@ -14,6 +15,7 @@ class ScriptsEditor extends Component
 {
     use AuthorizesRequests;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

@@ -293,6 +293,22 @@
         <ul class="people dock-list" id="names-list"></ul>
     </aside>
 
+    <aside class="dock" id="protection" aria-label="Protected cells" hidden>
+        <div class="dock-head">
+            <h2>Protected cells</h2>
+            <button class="tool" type="button" id="protection-close" aria-label="Close protected cells">×</button>
+        </div>
+        <p class="dock-note">Only the owner and admins can change what is protected. Everyone who can open the workbook can still read it.</p>
+        <form class="dock-form protection-form" id="protection-form">
+            <label for="protection-range">Protect the selection</label>
+            <input id="protection-range" autocomplete="off" spellcheck="false" maxlength="40" aria-label="Which cells">
+            <input id="protection-label" autocomplete="off" maxlength="80" placeholder="Label" aria-label="Label, if it needs one">
+            <button class="button" type="submit">Protect</button>
+        </form>
+        <div class="dock-note"><button class="button quiet" type="button" id="protection-whole">Protect the whole sheet</button></div>
+        <ul class="people dock-list" id="protection-list"></ul>
+    </aside>
+
     <aside class="dock" id="copies" aria-label="Version history" hidden>
         <div class="dock-head">
             <h2>History</h2>

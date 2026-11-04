@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
@@ -18,6 +19,7 @@ class AiAnalysisPanel extends Component
 {
     use AuthorizesRequests;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
     use WithFileUploads;
 
     #[Locked]

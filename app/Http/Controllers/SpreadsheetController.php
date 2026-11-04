@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ImportRowsChunkJob;
+use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
+use App\Services\ProtectionRefused;
 use App\Services\SheetPrint;
+use App\Services\SheetProtections;
 use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Http\JsonResponse;
@@ -124,6 +127,10 @@ class SpreadsheetController extends Controller
     {
         $this->authorize('view', $spreadsheet);
 
+        if (ShowSpreadsheet::protectedFor($spreadsheet)) {
+            return redirect()->route('spreadsheets.show', $spreadsheet);
+        }
+
         return view('spreadsheets.show', ['spreadsheet' => $spreadsheet]);
     }
 
@@ -162,6 +169,7 @@ class SpreadsheetController extends Controller
                 }
             }
             if ($layout !== []) {
+                abort_if(ShowSpreadsheet::protectedFor($spreadsheet), 403, 'This workbook has protected cells. Open it in the new editor.');
                 $tabId = $validated['sheet_tab_id'] ?? $spreadsheet->defaultSheetTab()?->id;
                 if ($tabId !== null) {
                     SheetTab::updateLayout((int) $tabId, fn (array $stored) => array_replace($stored, $layout));
@@ -205,6 +213,13 @@ class SpreadsheetController extends Controller
 
         $tab = $this->resolveSheetTab($request, $spreadsheet);
         $file = $request->file('file');
+        if ($tab !== null) {
+            try {
+                app(SheetProtections::class)->refuseAny($spreadsheet, $tab->id, Auth::user());
+            } catch (ProtectionRefused $refused) {
+                return $request->expectsJson() ? response()->json(['message' => $refused->getMessage()], 422) : back()->with('error', $refused->getMessage());
+            }
+        }
 
         // An import writes over what is there, and nothing else can take it back.
         $copy = $tab !== null && SheetVersions::canCopyWhole($tab->id) && Cell::where('sheet_tab_id', $tab->id)->exists()

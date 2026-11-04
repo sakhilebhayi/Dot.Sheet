@@ -14,6 +14,7 @@ use App\Services\SheetCharts;
 use App\Services\SheetComments;
 use App\Services\SheetMacros;
 use App\Services\SheetNames;
+use App\Services\SheetProtections;
 use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -3062,6 +3063,98 @@ class DotGridEditorTest extends DuskTestCase
 
             $copy = Spreadsheet::where('name', $name.' copy')->sole();
             $browser->waitUsing(10, 50, fn () => str_ends_with($browser->driver->getCurrentURL(), "/spreadsheets/{$copy->id}"));
+        });
+    }
+
+    public function test_an_owner_protects_cells_and_an_editor_is_stopped_at_them(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $editor = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($editor->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $editor, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->clickCell($browser, 0, 0);
+            $this->runCommand($browser, 'Protect this sheet');
+            $browser->waitFor('#protection:not([hidden])')->waitForTextIn('#protection-list', 'Nothing on this sheet');
+            $browser->assertInputValue('#protection-range', 'A1');
+            $browser->type('#protection-label', 'Heading')->click('#protection-form button[type=submit]');
+            $browser->waitForTextIn('#protection-list', 'Heading')->waitForTextIn('#note', 'A1 is protected.');
+            $browser->waitFor('.c.held');
+
+            $this->open($browser, $editor, $sheet);
+            $browser->pause(100)->waitFor('.c.held');
+            $this->clickCell($browser, 0, 0);
+            $browser->driver->getKeyboard()->sendKeys(['x']);
+            $browser->waitForTextIn('#note', 'This cell is protected.');
+            $this->assertSame('Sales', $this->cell($browser, 0, 0));
+            $browser->driver->getKeyboard()->sendKeys([WebDriverKeys::DELETE]);
+            $browser->waitForTextIn('#note', 'Those cells are protected.');
+            $this->assertSame('Sales', $this->cell($browser, 0, 0));
+
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['fine', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'fine');
+
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'protect');
+            $browser->waitForTextIn('#found', 'Protected cells')->assertDontSeeIn('#found', 'Protect this sheet');
+        });
+    }
+
+    public function test_a_protected_sheet_is_read_only_for_an_editor_until_the_owner_lifts_it(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        $editor = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($editor->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $editor, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Protect this sheet');
+            $browser->waitFor('#protection:not([hidden])')->waitFor('#protection-whole:not([hidden])')->click('#protection-whole');
+            $browser->waitForTextIn('#protection-list', 'The whole sheet')->waitFor('#tabs .locked');
+            $browser->assertMissing('#protection-whole:not([hidden])');
+
+            $this->clickCell($browser, 5, 0);
+            $browser->driver->getKeyboard()->sendKeys(['keeper', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 5, 0) === 'keeper');
+
+            $this->open($browser, $editor, $sheet);
+            $browser->waitFor('#tabs .locked')->waitForTextIn('#note', 'This sheet is protected.');
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['x']);
+            $browser->pause(150);
+            $this->assertSame('', $this->cell($browser, 4, 0));
+
+            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'protect');
+            $browser->waitForTextIn('#found', 'Protected cells')->assertDontSeeIn('#found', 'Protect this sheet');
+            $browser->keys('#find', WebDriverKeys::ENTER);
+            $browser->waitForTextIn('#protection-list', 'The whole sheet');
+            $browser->assertMissing('#protection-form:not([hidden])')->assertDontSeeIn('#protection-list', 'Remove');
+
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Protected cells');
+            $browser->waitForTextIn('#protection-list', 'The whole sheet');
+            $browser->driver->executeScript("[...document.querySelectorAll('#protection-list button')].find(b => b.textContent === 'Remove').click()");
+            $browser->waitForTextIn('#note', 'no longer protected')->waitUntilMissing('#tabs .locked');
+
+            $this->open($browser, $editor, $sheet);
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['fine', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'fine');
+        });
+    }
+
+    public function test_the_marks_follow_the_sheet_that_is_open(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+        SheetTab::create(['spreadsheet_id' => $sheet->id, 'name' => 'Open one', 'sort_order' => 2]);
+        app(SheetProtections::class)->protectRange($sheet, $tab->id, 'A1:B2', null, $user->id);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->waitFor('.c.held');
+            $browser->driver->executeScript("[...document.querySelectorAll('#tabs button')].find(b => b.textContent === 'Open one').click()");
+            $browser->waitForTextIn('#tabs [aria-current]', 'Open one')->waitUntilMissing('.c.held');
         });
     }
 }

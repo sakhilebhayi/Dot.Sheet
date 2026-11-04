@@ -118,12 +118,14 @@ class WorkbookSheets
     }
 
     /**
-     * @return list<array{id: int, name: string, color: string|null, hidden: bool}> in the workbook's order
+     * @return list<array{id: int, name: string, color: string|null, hidden: bool, locked: bool}> in the workbook's order
      */
     public function listOf(Spreadsheet $spreadsheet): array
     {
+        $locked = app(SheetProtections::class)->lockedTabs($spreadsheet->id);
+
         return SheetTab::where('spreadsheet_id', $spreadsheet->id)->orderBy('sort_order')->orderBy('id')->get(['id', 'name', 'color', 'hidden'])
-            ->map(fn (SheetTab $tab) => ['id' => $tab->id, 'name' => $tab->name, 'color' => $tab->color, 'hidden' => (bool) $tab->hidden])
+            ->map(fn (SheetTab $tab) => ['id' => $tab->id, 'name' => $tab->name, 'color' => $tab->color, 'hidden' => (bool) $tab->hidden, 'locked' => in_array($tab->id, $locked, true)])
             ->all();
     }
 

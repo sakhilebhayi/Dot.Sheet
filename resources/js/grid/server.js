@@ -124,6 +124,18 @@ export class Server {
         return json(`${this.base}/${tab}/names`);
     }
 
+    protections(tab) {
+        return json(`${this.base}/${tab}/protections`);
+    }
+
+    protect(tab, range, label) {
+        return json(`${this.base}/${tab}/protections`, { method: 'POST', body: JSON.stringify({ range, label }) });
+    }
+
+    unprotect(tab, id) {
+        return json(`${this.base}/${tab}/protections/${id}`, { method: 'DELETE' });
+    }
+
     addName(tab, name, range) {
         return json(`${this.base}/${tab}/names`, { method: 'POST', body: JSON.stringify({ name, range }) });
     }

@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\GuardsSheetState;
+use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\AiPrompt;
 use App\Models\Spreadsheet;
 use App\Services\AiService;
@@ -15,6 +16,7 @@ class AiFormulaModal extends Component
 {
     use AuthorizesRequests;
     use GuardsSheetState;
+    use RefusesProtectedWorkbook;
 
     #[Locked]
     public $spreadsheet_id;

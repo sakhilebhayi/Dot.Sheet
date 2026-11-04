@@ -111,6 +111,7 @@ export class Grid {
         this.onView = () => {};
         this.marks = [];
         this.noted = new Map();
+        this.held = [];
 
         this.sheet.addEventListener('scroll', () => {
             this.slide();
@@ -206,6 +207,15 @@ export class Grid {
             const { r, c } = this.anchorOf({ r: row, c: col });
             this.noted.set(`${r}:${c}`, (this.noted.get(`${r}:${c}`) ?? 0) + threads);
         }
+    }
+
+    setHeld(ranges) {
+        this.held = ranges;
+        this.paint();
+    }
+
+    heldAt(r, c) {
+        return this.held.some((a) => r >= a.r1 && r <= a.r2 && c >= a.c1 && c <= a.c2);
     }
 
     notedAt(r, c) {
@@ -589,6 +599,7 @@ export class Grid {
         if (this.isCopied(r, c)) names += ' copied';
         if (this.foundCells.has(`${r}:${c}`)) names += ' found';
         if (this.noted.has(`${r}:${c}`)) names += ' noted';
+        if (this.held.length > 0 && this.heldAt(r, c)) names += ' held';
         if (this.isFilling(r, c)) names += ' filling';
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;

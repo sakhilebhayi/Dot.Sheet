@@ -6,6 +6,7 @@ import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, SHEET_COLOURS,
 import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
+import { Protection } from './protection';
 import { Notes } from './notes';
 import { Pivots } from './pivots';
 import { Server } from './server';
@@ -127,6 +128,22 @@ const pivots = new Pivots({
     refused,
     ask,
 });
+const protectionPanel = new Protection({
+    server,
+    canKeep: boot.canKeep,
+    tab: () => tab,
+    selection: selectionText,
+    goTo: ({ r1, c1, r2, c2 }) => {
+        selectArea(r1, c1, r2, c2);
+        grid.reveal(r1, c1);
+    },
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(protectionPanel),
+    changed: showProtection,
+    note,
+    refused,
+});
 const macros = boot.canEdit ? new Macros({
     server,
     back: () => sheet.focus({ preventScroll: true }),
@@ -171,6 +188,10 @@ const store = new Store(server, () => {
 });
 const grid = new Grid(store, { rows: boot.rows, cols: boot.cols, editable: boot.canEdit });
 
+// Whether this person can edit here depends on the sheet: a protected one is read only for them.
+const canEditWorkbook = boot.canEdit;
+let protection = { locked: false, ranges: [] };
+
 let version = boot.version;
 let tab = firstShowing();
 let sending = 0;
@@ -193,7 +214,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, protectionPanel, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -260,6 +281,7 @@ function restingNote() {
     if (cell?.e) return cell.e;
     if (cell?.s) return 'Part of the answer of a formula nearby. Change that formula to change this.';
     if (clip) return 'Copied. Paste where you want it, or press Escape to let go of it.';
+    if (canEditWorkbook && !boot.canEdit) return 'This sheet is protected. Ask the workbook\'s owner to change it.';
     return boot.canEdit ? '' : 'You can read this sheet. Ask its owner for edit access to change it.';
 }
 
@@ -283,6 +305,7 @@ async function open(id) {
     sheet.scrollTo(0, 0);
     grid.setLayout(body.layout);
     showMarks(body.marks);
+    showProtection(body.protection);
     drawRules();
     drawAllowed();
     drawFilters();
@@ -292,8 +315,20 @@ async function open(id) {
     if (!notes.closed) notes.load();
     if (!copies.closed) copies.load();
     if (!names.closed) names.load();
+    if (!protectionPanel.closed) protectionPanel.load();
     if (!charts.closed) charts.load();
     if (!pivots.closed) pivots.load();
+}
+
+function showProtection(state) {
+    protection = state;
+    boot.canEdit = canEditWorkbook && (boot.canKeep || !state.locked);
+    grid.editable = boot.canEdit;
+    grid.setHeld(state.ranges);
+    const here = boot.tabs.find((t) => t.id === tab);
+    if (here) here.locked = state.locked;
+    drawTabs();
+    selected();
 }
 
 function firstShowing() {
@@ -314,6 +349,7 @@ function drawTabs() {
             button.prepend(dot);
         }
         if (t.hidden) button.classList.add('held-back');
+        if (t.locked) button.classList.add('locked');
         if (t.id === tab) button.setAttribute('aria-current', 'page');
         button.addEventListener('click', () => {
             if (tabMoved) return;
@@ -567,6 +603,7 @@ function selected() {
     placeNoted();
     notes.follow();
     names.follow();
+    protectionPanel.follow();
     charts.follow();
     pivots.follow();
 }
@@ -2098,6 +2135,10 @@ function fit() {
 }
 
 function beginEdit(text, typing = false, inLine = false) {
+    if (!boot.canKeep && boot.canEdit && grid.heldAt(grid.active.r, grid.active.c)) {
+        note('This cell is protected. Ask the workbook\'s owner to change it.');
+        return;
+    }
     if (!boot.canEdit || editing) return;
     const { r, c } = grid.active;
     grid.extent = { r, c };
@@ -2550,6 +2591,7 @@ function choices(query) {
             { label: 'Freeze above and left of this cell', run: freezeHere },
             { label: 'Unfreeze', run: () => saveFreeze(0, 0) },
             { label: 'Add a sheet', run: addSheet },
+            ...(boot.canKeep ? [{ label: 'Protect this sheet', hint: 'Or these cells', run: () => protectionPanel.toggle(true) }] : []),
             { label: 'Duplicate this sheet', hint: 'Everything but its comments and history', run: duplicateSheet },
             { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
             { label: 'Delete this sheet', run: removeSheet },
@@ -2605,6 +2647,7 @@ function choices(query) {
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
+        { label: 'Protected cells', hint: 'What only the owner and admins can change', run: () => protectionPanel.toggle(true) },
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
         { label: 'Charts', hint: 'Bars, lines, pies and more', run: () => charts.toggle(true) },

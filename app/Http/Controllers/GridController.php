@@ -590,7 +590,7 @@ class GridController extends Controller
      */
     private function tabs(Spreadsheet $spreadsheet): array
     {
-        return $spreadsheet->sheetTabs()->orderBy('sort_order')->orderBy('id')->get(['id', 'name'])->toArray();
+        return app(WorkbookSheets::class)->listOf($spreadsheet);
     }
 
     public function addSheet(Request $request, Spreadsheet $spreadsheet, WorkbookSheets $sheets): JsonResponse

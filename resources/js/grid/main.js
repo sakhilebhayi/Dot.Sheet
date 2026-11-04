@@ -2,7 +2,7 @@
 import { fromText, toText } from './clipboard';
 import { Charts } from './charts';
 import { Copies } from './copies';
-import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, show, TEXT_COLOURS, TEXT_SIZES } from './format';
+import { cellName, columnIndex, columnName, FILL_COLOURS, listAt, SHEET_COLOURS, show, TEXT_COLOURS, TEXT_SIZES } from './format';
 import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
@@ -172,7 +172,7 @@ const store = new Store(server, () => {
 const grid = new Grid(store, { rows: boot.rows, cols: boot.cols, editable: boot.canEdit });
 
 let version = boot.version;
-let tab = boot.tabs[0]?.id ?? null;
+let tab = firstShowing();
 let sending = 0;
 let told = '';
 let clip = null;
@@ -296,18 +296,34 @@ async function open(id) {
     if (!pivots.closed) pivots.load();
 }
 
+function firstShowing() {
+    return (boot.tabs.find((t) => !t.hidden) ?? boot.tabs[0])?.id ?? null;
+}
+
 function drawTabs() {
     const nav = byId('tabs');
-    const buttons = boot.tabs.map((t) => {
+    // A hidden sheet someone is in, from a link or the palette, shows for as long as they stay.
+    const buttons = boot.tabs.filter((t) => !t.hidden || t.id === tab).map((t) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = t.name;
+        button.dataset.tab = t.id;
+        if (t.color) {
+            const dot = document.createElement('i');
+            dot.className = `sheet-dot ${t.color}`;
+            button.prepend(dot);
+        }
+        if (t.hidden) button.classList.add('held-back');
         if (t.id === tab) button.setAttribute('aria-current', 'page');
         button.addEventListener('click', () => {
+            if (tabMoved) return;
             if (t.id !== tab) open(t.id);
             sheet.focus({ preventScroll: true });
         });
-        if (boot.canEdit) button.addEventListener('dblclick', () => nameSheet(button, t));
+        if (boot.canEdit) {
+            button.addEventListener('dblclick', () => nameSheet(button, t));
+            button.addEventListener('pointerdown', (e) => holdTab(e, button));
+        }
         return button;
     });
     if (boot.canEdit) {
@@ -336,6 +352,90 @@ async function addSheet() {
     await open(body.tab);
     sheet.focus({ preventScroll: true });
     note(`Added ${boot.tabs.find((t) => t.id === body.tab)?.name}.`);
+}
+
+/* How the sheets are kept: their order, colour and whether they show. */
+
+let tabMoved = false;
+
+/** Drag a tab along the foot with a mouse. On touch the foot scrolls, and the palette moves sheets. */
+function holdTab(e, button) {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const nav = byId('tabs');
+    const from = e.clientX;
+    let moving = false;
+
+    const move = (m) => {
+        if (!moving && Math.abs(m.clientX - from) < 5) return;
+        moving = true;
+        button.classList.add('moving');
+        const others = [...nav.querySelectorAll('[data-tab]')].filter((b) => b !== button);
+        const next = others.find((b) => {
+            const box = b.getBoundingClientRect();
+            return m.clientX < box.left + box.width / 2;
+        });
+        nav.insertBefore(button, next ?? nav.querySelector('.add'));
+    };
+    const drop = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', drop);
+        if (!moving) return;
+        button.classList.remove('moving');
+        // The click that ends a drag is not a click on the tab.
+        tabMoved = true;
+        setTimeout(() => { tabMoved = false; });
+        settleOrder([...nav.querySelectorAll('[data-tab]')].map((b) => Number(b.dataset.tab)));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', drop);
+}
+
+/** The sheets in view in a new order. Hidden ones keep their places among them. */
+function settleOrder(showing) {
+    const rest = [...showing];
+    const order = boot.tabs.map((t) => (showing.includes(t.id) ? rest.shift() : t.id));
+    if (order.every((id, i) => id === boot.tabs[i].id)) return;
+    changeSheetLook({ kind: 'order', order });
+}
+
+function moveSheet(by) {
+    const showing = boot.tabs.filter((t) => !t.hidden || t.id === tab).map((t) => t.id);
+    const at = showing.indexOf(tab);
+    const to = at + by;
+    if (to < 0 || to >= showing.length) {
+        note(by < 0 ? 'This sheet is already first.' : 'This sheet is already last.');
+        return;
+    }
+    [showing[at], showing[to]] = [showing[to], showing[at]];
+    settleOrder(showing);
+}
+
+async function changeSheetLook(request, { remember: keep = true } = {}) {
+    if (!boot.canEdit) return null;
+    const { ok, status, body } = await server.sheetLook(request);
+    if (!ok) {
+        refused(status, body);
+        drawTabs();
+        return null;
+    }
+    boot.tabs = body.tabs;
+    if (keep) {
+        undoSteps.push({ version, sheetLook: body.undo });
+        if (undoSteps.length > MAX_STEPS) undoSteps.shift();
+        redoSteps.length = 0;
+    }
+    if (boot.tabs.find((t) => t.id === tab)?.hidden) await open(firstShowing());
+    else drawTabs();
+    return body;
+}
+
+async function hideSheet() {
+    const name = boot.tabs.find((t) => t.id === tab)?.name;
+    if (await changeSheetLook({ kind: 'hidden', tab, hidden: true })) note(`Hid ${name}. Find anything shows it again.`);
+}
+
+async function showSheet(sheetTab) {
+    if (await changeSheetLook({ kind: 'hidden', tab: sheetTab.id, hidden: false })) await open(sheetTab.id);
 }
 
 /** Type a new name where the old one was. */
@@ -407,7 +507,7 @@ async function removeSheet() {
         }
         if (clip?.tab === tab) letGo();
         boot.tabs = body.tabs;
-        await open(boot.tabs[0].id);
+        await open(firstShowing());
         sheet.focus({ preventScroll: true });
         note(`Deleted ${sheetName}.`);
     });
@@ -713,6 +813,13 @@ async function retrace(from, to, nothing) {
         const answer = await saveFreeze(step.freeze.rows, step.freeze.cols, { remember: false });
         if (!answer) return;
         to.push({ version, freeze: { tab, ...answer.undo } });
+        return;
+    }
+
+    if (step.sheetLook) {
+        const answer = await changeSheetLook(step.sheetLook, { remember: false });
+        if (!answer) return;
+        to.push({ version, sheetLook: answer.undo });
         return;
     }
 
@@ -2423,6 +2530,12 @@ function choices(query) {
             { label: 'Add a sheet', run: addSheet },
             { label: 'Rename this sheet', run: () => nameSheet(byId('tabs').querySelector('[aria-current]'), boot.tabs.find((t) => t.id === tab)) },
             { label: 'Delete this sheet', run: removeSheet },
+            { label: 'Hide this sheet', run: hideSheet },
+            ...boot.tabs.filter((t) => t.hidden).map((t) => ({ label: `Show sheet: ${t.name}`, run: () => showSheet(t) })),
+            { label: 'Move sheet left', run: () => moveSheet(-1) },
+            { label: 'Move sheet right', run: () => moveSheet(1) },
+            ...SHEET_COLOURS.map(([name, colour]) => ({ label: `Sheet colour: ${name}`, run: () => changeSheetLook({ kind: 'colour', tab, colour }) })),
+            { label: 'No sheet colour', run: () => changeSheetLook({ kind: 'colour', tab, colour: null }) },
             ...(boot.structure ? [
                 { label: 'Insert rows above', run: () => insertLines('row', false) },
                 { label: 'Insert rows below', run: () => insertLines('row', true) },

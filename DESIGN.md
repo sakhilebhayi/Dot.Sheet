@@ -314,7 +314,11 @@ them, and deletes the ones selected. Undo takes it back, and when it cannot, the
 
 **Sheets.** The tabs along the foot end in a plus that adds a sheet. Double-click a tab to rename it, and
 formulas that name it follow. Deleting a sheet asks first and says what it costs: the cells it holds and
-the formulas on other sheets that will break. Keeping it is the default, because this cannot be undone.
+the formulas on other sheets that will break. Keeping it is the default, because this cannot be undone. Drag a tab
+to move it, or use the palette, which also works on a phone. A sheet's colour is a dot before its name, in the chart
+colours, so they stay apart. Hiding a sheet takes it off the foot and the palette brings it back: it is tidiness and
+not privacy, so a hidden sheet stays readable by everyone who can open the workbook, and a workbook always keeps one
+sheet showing.
 
 **Formatting.** Bold, percent and rand stay in the bar, the tools in constant use. Aa opens the rest in a
 tray docked under the bar, as find does: it pushes the sheet down, never covers a figure, and stays open

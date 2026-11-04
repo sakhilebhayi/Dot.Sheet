@@ -64,7 +64,7 @@ class Spreadsheet extends Model
 
     public function defaultSheetTab(): ?SheetTab
     {
-        return $this->sheetTabs()->orderBy('sort_order')->orderBy('id')->first();
+        return $this->sheetTabs()->orderBy('hidden')->orderBy('sort_order')->orderBy('id')->first();
     }
 
     /**

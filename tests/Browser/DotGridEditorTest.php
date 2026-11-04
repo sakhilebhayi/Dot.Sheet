@@ -16,6 +16,7 @@ use App\Services\SheetMacros;
 use App\Services\SheetNames;
 use App\Services\SheetProtections;
 use App\Services\SheetVersions;
+use Facebook\WebDriver\WebDriverBy;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
@@ -3820,5 +3821,101 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitUsing(5, 25, fn () => str_contains($this->look($browser, 3, 1, 'backgroundColor'), '100%'));
             $this->assertStringContainsString('20%', $this->look($browser, 1, 1, 'backgroundColor'));
         });
+    }
+
+    public function test_a_chart_goes_on_the_sheet_and_follows_its_cells(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, 'Spend', 'bar', 'A1:B4', null);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $chart) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 6, 0);
+            $this->runCommand($browser, 'Charts');
+            $browser->waitForTextIn('#charts-list', 'Put on the sheet')->assertMissing('.placed');
+            $browser->driver->executeScript("[...document.querySelectorAll('#charts-list button')].find(b => b.textContent === 'Put on the sheet').click()");
+            $browser->waitFor('.placed')->assertSeeIn('.placed', 'Spend');
+            $this->assertSame(6, $chart->fresh()->position_row);
+
+            $browser->waitForTextIn('#charts-list', 'Take off the sheet');
+            $browser->pause(200);
+            $this->assertTrue($browser->driver->executeScript("const c = document.querySelector('.placed canvas'); return c.width > 0"));
+
+            $browser->driver->executeScript(<<<'JS'
+                const title = document.querySelector('.placed figcaption');
+                const box = title.getBoundingClientRect();
+                title.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: box.left + 5, clientY: box.top + 5, button: 0, pointerType: 'mouse' }));
+                window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + 5 + 300, clientY: box.top + 5 }));
+                window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            JS);
+            $browser->waitUsing(5, 25, fn () => (int) $chart->fresh()->position_col > 0);
+
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitFor('.placed');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_reader_sees_a_chart_on_the_sheet_but_cannot_move_it(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, 'Spend', 'bar', 'A1:B4', null);
+        app(SheetCharts::class)->place($chart, ['on_sheet' => true, 'row' => 6, 'col' => 0]);
+        $reader = User::factory()->withPersonalTeam()->create();
+        $sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+
+        $this->browse(function (Browser $browser) use ($reader, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $reader, $sheet);
+            $browser->waitFor('.placed')->assertMissing('.placed-corner');
+        });
+    }
+
+    public function test_the_new_kinds_of_chart_draw_without_trouble(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        foreach (['hbar', 'combo', 'histogram', 'waterfall'] as $i => $type) {
+            $chart = app(SheetCharts::class)->add($sheet->id, $tab->id, $type, $type, 'A1:B4', null);
+            app(SheetCharts::class)->place($chart, ['on_sheet' => true, 'row' => 6 + $i * 11, 'col' => 0]);
+        }
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->waitUsing(10, 50, fn () => count($browser->driver->findElements(WebDriverBy::cssSelector('.placed'))) === 4);
+            $browser->pause(400);
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_a_sparkline_is_drawn_from_the_numbers_selected_and_follows_them(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->dragAcrossCol($browser, 1, 1, 3);
+            $this->runCommand($browser, 'Add sparklines');
+            $browser->waitFor('.c svg.spark');
+            $browser->waitUsing(5, 25, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formatting')['sparkline'] ?? null);
+            $this->assertSame('B2:B4', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->where('col_index', 1)->value('formatting')['sparkline']);
+            $before = $browser->driver->executeScript("return document.querySelector('.c svg.spark polyline').getAttribute('points')");
+
+            $this->clickCell($browser, 2, 1);
+            $browser->driver->getKeyboard()->sendKeys(['999', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $browser->driver->executeScript("return document.querySelector('.c svg.spark polyline').getAttribute('points')") !== $before);
+        });
+    }
+
+    private function dragAcrossCol(Browser $browser, int $col, int $fromRow, int $toRow): void
+    {
+        $browser->driver->executeScript(<<<'JS'
+            const sizes = getComputedStyle(document.documentElement);
+            const px = (name) => parseFloat(sizes.getPropertyValue(name));
+            const sheet = document.getElementById('sheet').getBoundingClientRect();
+            const x = sheet.left + px('--gutter') + px('--label') + (arguments[0] - 1) * px('--col') + 20;
+            const y = (row) => sheet.top + px('--head') + row * px('--row') + 10;
+            document.elementFromPoint(x, y(arguments[1])).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y(arguments[1]), button: 0, pointerType: 'mouse' }));
+            window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
+            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y(arguments[2]) }));
+        JS, [$col, $fromRow, $toRow]);
     }
 }

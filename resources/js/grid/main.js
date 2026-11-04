@@ -9,6 +9,7 @@ import { Names } from './names';
 import { Protection } from './protection';
 import { Assistant } from './assistant';
 import { Explain } from './explain';
+import { PlacedCharts } from './placed';
 import { ImportReport } from './report';
 import { FormulaHelp } from './suggest';
 import { Notes } from './notes';
@@ -112,6 +113,8 @@ const sharing = boot.canShare ? new Sharing({
     ask,
 }) : null;
 const charts = new Charts({
+    active: () => grid.active,
+    placed: () => placedCharts.load(),
     server,
     canEdit: boot.canEdit,
     tab: () => tab,
@@ -123,6 +126,14 @@ const charts = new Charts({
     note,
     refused,
     ask,
+});
+const placedCharts = new PlacedCharts({
+    server,
+    grid: () => grid,
+    canEdit: () => boot.canEdit,
+    tab: () => tab,
+    figure: amount,
+    refused,
 });
 const pivots = new Pivots({
     server,
@@ -316,10 +327,33 @@ async function putBackCopy(copy) {
 }
 
 /** A panel took room from the sheet, or gave it back. */
+function placedMoved() {
+    placedCharts.reposition();
+}
+
 function panelMoved() {
     grid.measure();
     grid.reveal(grid.active.r, grid.active.c);
     grid.paint();
+    placedCharts.reposition();
+}
+
+/** A small line in a cell for each row of numbers selected, or one under a column of them. */
+function addSparklines() {
+    const { r1, r2, c1, c2 } = grid.area();
+    if (r1 === r2 && c1 === c2) {
+        note('Select a row or a column of numbers first.');
+        return;
+    }
+    const rangeOf = (a, b, d, e) => `${cellName(a, b)}:${cellName(d, e)}`;
+    const places = c1 === c2
+        ? [{ row: r2 + 1, col: c1, range: rangeOf(r1, c1, r2, c2) }]
+        : Array.from({ length: r2 - r1 + 1 }, (_, i) => ({ row: r1 + i, col: c2 + 1, range: rangeOf(r1 + i, c1, r1 + i, c2) }));
+    write(places.map(({ row, col, range }) => {
+        const cell = store.get(row, col);
+        return { row, col, value: contents(cell), x: { ...cell?.x, sparkline: range } };
+    }));
+    note(places.length === 1 ? 'Added a sparkline.' : `Added ${places.length} sparklines.`);
 }
 
 function goToComment(r, c) {
@@ -364,6 +398,7 @@ async function open(id, stillWriting = false) {
     showMarks(body.marks);
     showProtection(body.protection);
     grid.setFacts(body.ruleFacts);
+    placedCharts.load();
     drawRules();
     drawAllowed();
     drawFilters();
@@ -906,6 +941,7 @@ async function absorb(body, edited) {
     if (body.reload) await store.refresh();
     charts.touched();
     pivots.touched();
+    placedCharts.touched();
     refreshFacts();
     if (body.marks) {
         showMarks(body.marks);
@@ -2850,6 +2886,7 @@ function choices(query) {
             ...boot.tabs.filter((t) => t.hidden).map((t) => ({ label: `Show sheet: ${t.name}`, run: () => showSheet(t) })),
             { label: 'Move sheet left', run: () => moveSheet(-1) },
             { label: 'Move sheet right', run: () => moveSheet(1) },
+            { label: 'Add sparklines', hint: 'A small line in a cell for the numbers selected', run: addSparklines },
             ...SHEET_COLOURS.map(([name, colour]) => ({ label: `Sheet colour: ${name}`, run: () => changeSheetLook({ kind: 'colour', tab, colour }) })),
             { label: 'No sheet colour', run: () => changeSheetLook({ kind: 'colour', tab, colour: null }) },
             ...(boot.structure ? [

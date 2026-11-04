@@ -131,6 +131,7 @@ Route::middleware([
         Route::delete('pivots/{pivot}', [GridPivotController::class, 'destroy'])->whereNumber('pivot')->name('pivots.destroy');
         Route::get('charts', [GridChartController::class, 'index'])->name('charts');
         Route::post('charts', [GridChartController::class, 'store'])->name('charts.store');
+        Route::post('charts/{chart}/place', [GridChartController::class, 'place'])->name('charts.place');
         Route::get('charts/{chart}', [GridChartController::class, 'show'])->name('charts.show');
         Route::delete('charts/{chart}', [GridChartController::class, 'destroy'])->name('charts.destroy');
         Route::get('names', [GridNameController::class, 'index'])->name('names');

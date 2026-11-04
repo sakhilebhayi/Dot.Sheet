@@ -132,6 +132,10 @@ export class Server {
         return json(`${this.base}/${tab}/rule-facts`);
     }
 
+    placeChart(tab, id, place) {
+        return json(`${this.base}/${tab}/charts/${id}/place`, { method: 'POST', body: JSON.stringify(place) });
+    }
+
     explain(tab, row, col) {
         return json(`${this.base}/${tab}/explain/${row}/${col}`);
     }

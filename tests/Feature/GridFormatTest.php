@@ -215,6 +215,8 @@ class GridFormatTest extends TestCase
 
         $this->assertNull(CellFormat::clean(['decimals' => 9]));
         $this->assertNull(CellFormat::clean(['date_style' => 'mdy']));
+        $this->assertSame(['sparkline' => 'B2:M2'], CellFormat::clean(['sparkline' => 'B2:M2']));
+        $this->assertNull(CellFormat::clean(['sparkline' => '<script>']));
         $this->assertNull(CellFormat::clean(['decimals' => '3']));
     }
 }

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SheetCharts
 {
-    public const TYPES = ['bar', 'line', 'pie', 'doughnut', 'scatter', 'area'];
+    public const TYPES = ['bar', 'hbar', 'line', 'area', 'combo', 'pie', 'doughnut', 'scatter', 'histogram', 'waterfall'];
 
     /** Points in one chart. More than this cannot be read at this size. */
     public const MAX_POINTS = 500;
@@ -31,12 +31,17 @@ class SheetCharts
     public function of(int $spreadsheetId, int $tabId): array
     {
         return ChartConfig::where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $tabId)->latest()->orderByDesc('id')
-            ->get(['id', 'title', 'type', 'data_range', 'labels_range'])
+            ->get(['id', 'title', 'type', 'data_range', 'labels_range', 'options', 'position_row', 'position_col', 'width', 'height'])
             ->map(fn (ChartConfig $chart) => [
                 'id' => $chart->id,
                 'title' => $chart->title,
                 'type' => $chart->type,
                 'data_range' => $chart->data_range,
+                'on_sheet' => (bool) ($chart->options['on_sheet'] ?? false),
+                'row' => (int) $chart->position_row,
+                'col' => (int) $chart->position_col,
+                'cols' => (int) $chart->width,
+                'rows' => (int) $chart->height,
                 'labels_range' => $chart->labels_range,
             ])->all();
     }
@@ -74,6 +79,22 @@ class SheetCharts
             'labels_range' => $labels === null ? null : RangeText::of($labels),
             'options' => [],
         ]);
+    }
+
+    /**
+     * Put a chart on the sheet, take it off, or move and size it there.
+     *
+     * @param  array{on_sheet: bool, row?: int, col?: int, cols?: int, rows?: int}  $place
+     */
+    public function place(ChartConfig $chart, array $place): void
+    {
+        $chart->options = [...(is_array($chart->options) ? $chart->options : []), 'on_sheet' => $place['on_sheet']];
+        foreach (['row' => 'position_row', 'col' => 'position_col', 'cols' => 'width', 'rows' => 'height'] as $given => $column) {
+            if (isset($place[$given])) {
+                $chart->{$column} = $place[$given];
+            }
+        }
+        $chart->save();
     }
 
     /**

@@ -272,8 +272,12 @@
                 <input id="charts-title" autocomplete="off" maxlength="100" placeholder="Title">
                 <select id="charts-type" aria-label="Kind of chart">
                     <option value="bar">Bars</option>
+                    <option value="hbar">Bars across</option>
                     <option value="line">Line</option>
                     <option value="area">Area</option>
+                    <option value="combo">Bars and lines</option>
+                    <option value="histogram">Histogram</option>
+                    <option value="waterfall">Waterfall</option>
                     <option value="pie">Pie</option>
                     <option value="doughnut">Doughnut</option>
                     <option value="scatter">Scatter</option>

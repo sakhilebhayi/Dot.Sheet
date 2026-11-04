@@ -407,4 +407,48 @@ class GridChartsTest extends TestCase
 
         $this->assertSame('A1:A3', ChartConfig::firstOrFail()->labels_range);
     }
+
+    public function test_the_new_kinds_of_chart_are_taken(): void
+    {
+        $this->table([['Month', 'Sales'], ['Jan', '10'], ['Feb', '20']]);
+
+        foreach (['hbar', 'combo', 'histogram', 'waterfall'] as $type) {
+            $this->postJson($this->url(), ['title' => $type, 'type' => $type, 'data_range' => 'A1:B3', 'labels_range' => null])->assertOk();
+        }
+    }
+
+    public function test_a_chart_goes_on_the_sheet_and_stays_where_it_is_put(): void
+    {
+        $this->table([['Month', 'Sales'], ['Jan', '10'], ['Feb', '20']]);
+        $id = $this->chart()->id;
+
+        $this->postJson($this->url("charts/{$id}/place"), ['on_sheet' => true, 'row' => 3, 'col' => 4, 'cols' => 8, 'rows' => 12])->assertOk()
+            ->assertJsonPath('charts.0.on_sheet', true)->assertJsonPath('charts.0.row', 3)->assertJsonPath('charts.0.col', 4)
+            ->assertJsonPath('charts.0.cols', 8)->assertJsonPath('charts.0.rows', 12);
+
+        $this->postJson($this->url("charts/{$id}/place"), ['on_sheet' => false])->assertOk()->assertJsonPath('charts.0.on_sheet', false)->assertJsonPath('charts.0.row', 3);
+    }
+
+    public function test_a_chart_cannot_be_put_off_the_sheet_or_made_silly(): void
+    {
+        $this->table([['Month', 'Sales'], ['Jan', '10']]);
+        $id = $this->chart()->id;
+
+        $this->postJson($this->url("charts/{$id}/place"), ['on_sheet' => true, 'row' => -1])->assertUnprocessable();
+        $this->postJson($this->url("charts/{$id}/place"), ['on_sheet' => true, 'cols' => 1])->assertUnprocessable();
+        $this->postJson($this->url("charts/{$id}/place"), ['on_sheet' => true, 'rows' => 500])->assertUnprocessable();
+    }
+
+    public function test_only_people_who_can_edit_place_a_chart_and_only_through_its_own_sheet(): void
+    {
+        $this->table([['Month', 'Sales'], ['Jan', '10']]);
+        $id = $this->chart()->id;
+        $other = SheetTab::create(['spreadsheet_id' => $this->sheet->id, 'name' => 'Other', 'sort_order' => 3]);
+
+        $this->postJson($this->url("charts/{$id}/place", $other), ['on_sheet' => true])->assertNotFound();
+
+        $reader = User::factory()->withPersonalTeam()->create();
+        $this->sheet->sharedUsers()->attach($reader->id, ['permission' => 'view']);
+        $this->actingAs($reader)->postJson($this->url("charts/{$id}/place"), ['on_sheet' => true])->assertForbidden();
+    }
 }

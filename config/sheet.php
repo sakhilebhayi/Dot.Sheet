@@ -83,7 +83,7 @@ return [
     | off until the multi-process race test (tests/Feature/ProductionSettingsTest.php) has been run
     | against the target host. While off the context-menu items and toolbar buttons are hidden, every
     | server handler refuses ("Inserting and deleting rows and columns is not available yet.") and
-    | nothing in SheetStructureService runs. Sort, editing, import, export, tab delete and version
+    | nothing in SheetStructureService runs. Editing, import, export, tab delete and version
     | restore are not affected.
     |
     */

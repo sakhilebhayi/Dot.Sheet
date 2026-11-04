@@ -83,6 +83,13 @@ export class Server {
         return result;
     }
 
+    hidden(tab, version, request) {
+        const send = () => json(`${this.base}/${tab}/hidden`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
     merge(tab, version, area) {
         const send = () => json(`${this.base}/${tab}/merge`, { method: 'POST', body: JSON.stringify({ version: version(), ...area }) });
         const result = this.queue.then(send, send);

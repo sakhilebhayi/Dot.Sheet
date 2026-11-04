@@ -22,6 +22,11 @@
 .h.first { justify-content: flex-start; }
 .n { position: absolute; left: 0; width: var(--gutter); display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer; user-select: none; }
 .h.on, .n.on { background: var(--thread); color: var(--on-thread); font-weight: 600; }
+/* Hidden rows and columns leave a blue dot on the edge where they were. */
+.h.gap::before, .n.gap::before { content: ''; position: absolute; z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: var(--thread); box-shadow: 0 0 0 2px var(--sheet); cursor: pointer; transition: scale .15s var(--ease); }
+.h.gap::before { left: -4px; top: 50%; margin-top: -4px; }
+.n.gap::before { top: -4px; left: 50%; margin-left: -4px; }
+.h.gap:hover::before, .n.gap:hover::before { scale: 1.35; }
 
 .c { position: absolute; left: 0; top: 0; display: flex; align-items: center; padding: 0 12px; white-space: nowrap; overflow: hidden; cursor: cell; }
 .c > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

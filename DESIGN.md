@@ -224,6 +224,11 @@ keys, formulas and threads. A merge across the frozen edge runs on over the shee
 scrolled under it, then stops at the edge, as long text does. Paste and cut bring merged cells with
 them. Fill brings their contents only, and neither ever cuts through one.
 
+**Hidden rows and columns.** The palette hides the selected rows or columns and shows them again. They
+leave a blue dot on the edge where they were, on the row number or column letter, and pressing it brings
+them back. It is the same dot as the fill handle: a place on the sheet that answers to the pointer. Arrow
+keys step over what is hidden.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

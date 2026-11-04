@@ -108,6 +108,10 @@ class SpreadsheetImportExportService
             $sheet->freezePane(Coordinate::stringFromColumnIndex($frozenCols + 1).($frozenRows + 1));
         }
 
+        foreach (SheetMerges::of($sheetTab?->layout) as $merge) {
+            $sheet->mergeCells(Coordinate::stringFromColumnIndex($merge['c1'] + 1).($merge['r1'] + 1).':'.Coordinate::stringFromColumnIndex($merge['c2'] + 1).($merge['r2'] + 1));
+        }
+
         Storage::disk('local')->makeDirectory('exports');
         (new Xlsx($workbook))->save(Storage::disk('local')->path($filePath));
         $workbook->disconnectWorksheets();

@@ -217,6 +217,13 @@ the edge of what is frozen, and it stays clear of the scroll: threads and the fi
 cells. Frozen rows and columns never take more than 60% of the sheet, so on a phone they give way and
 come back on a larger screen.
 
+**Merged cells.** The palette merges the selection into one cell, and undo brings back anything that
+cleared. A merged cell loses its inner dots and keeps the four at its corners, so it still reads as the
+space between dots. Its first cell holds the contents and speaks for it everywhere: selection, arrow
+keys, formulas and threads. A merge across the frozen edge runs on over the sheet while nothing has
+scrolled under it, then stops at the edge, as long text does. Paste and cut bring merged cells with
+them. Fill brings their contents only, and neither ever cuts through one.
+
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
 to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
 

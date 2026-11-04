@@ -37,8 +37,8 @@ export class Server {
         return json(`${this.base}/${tab}/stats?${new URLSearchParams(area)}`);
     }
 
-    edit(tab, version, edits) {
-        const send = () => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits }) });
+    edit(tab, version, edits, merges) {
+        const send = () => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits, merges }) });
         const result = this.queue.then(send, send);
         this.queue = result;
         return result;
@@ -78,6 +78,20 @@ export class Server {
 
     freeze(tab, version, request) {
         const send = () => json(`${this.base}/${tab}/freeze`, { method: 'POST', body: JSON.stringify({ version: version(), ...request }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    merge(tab, version, area) {
+        const send = () => json(`${this.base}/${tab}/merge`, { method: 'POST', body: JSON.stringify({ version: version(), ...area }) });
+        const result = this.queue.then(send, send);
+        this.queue = result;
+        return result;
+    }
+
+    unmerge(tab, version, area) {
+        const send = () => json(`${this.base}/${tab}/unmerge`, { method: 'POST', body: JSON.stringify({ version: version(), ...area }) });
         const result = this.queue.then(send, send);
         this.queue = result;
         return result;

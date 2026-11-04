@@ -15,6 +15,7 @@ use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\CellRules;
 use App\Services\Formula\Recalculator;
+use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
 use App\Services\SheetVersions;
 use App\Services\StaleStructure;
@@ -1616,6 +1617,13 @@ class ShowSpreadsheet extends Component
         $this->authorize('update', $this->spreadsheet);
 
         if ($this->refuseWhenStructureIsStale()) {
+            return;
+        }
+
+        // Rows moving under a merged cell would put what they hold where nothing shows.
+        if (SheetMerges::onTab((int) $this->activeSheetTabId) !== []) {
+            $this->structureNotice = 'This sheet has merged cells, so it cannot be sorted. Unmerge them in the new editor first.';
+
             return;
         }
 

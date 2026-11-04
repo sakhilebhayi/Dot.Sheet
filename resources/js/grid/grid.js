@@ -91,6 +91,10 @@ export class Grid {
         this.stuckColumns = new Pool(this.headFrozen, 'h');
 
         this.layout = {};
+        this.merges = [];
+        this.nearMerges = [];
+        this.covered = new Set();      // on screen: the cells a merge hides
+        this.anchored = new Map();     // on screen: the merge that starts at a cell
         this.top = 0;      // how far down the sheet the window starts, in pixels
         this.reach = 0;    // how many rows the window runs to
         this.active = { r: 0, c: 0 };
@@ -115,6 +119,7 @@ export class Grid {
 
     setLayout(layout) {
         this.layout = layout ?? {};
+        this.merges = this.layout.merges ?? [];
         this.top = 0;
         this.reach = 0;
         this.measure();
@@ -171,6 +176,68 @@ export class Grid {
         this.layout = { ...this.layout, frozen_rows: rows, frozen_cols: cols };
         this.measure();
         if (this.lines.length) this.drawThreads(false);
+    }
+
+    setMerges(merges) {
+        this.merges = merges;
+        this.layout = { ...this.layout, merges };
+    }
+
+    /** The merged cell a place on the sheet belongs to. */
+    mergeAt(r, c) {
+        return this.merges.find((m) => r >= m.r1 && r <= m.r2 && c >= m.c1 && c <= m.c2) ?? null;
+    }
+
+    /** The cell that speaks for a place: the first cell of its merge, or the place itself. */
+    anchorOf({ r, c }) {
+        const merge = this.mergeAt(r, c);
+        return merge ? { r: merge.r1, c: merge.c1 } : { r, c };
+    }
+
+    /** One step from a place: out of a merged cell by its far edge, or to the next cell. */
+    step({ r, c }, dr, dc) {
+        const merge = this.mergeAt(r, c);
+        if (!merge) return { r: r + dr, c: c + dc };
+        return {
+            r: dr > 0 ? merge.r2 + 1 : dr < 0 ? merge.r1 - 1 : r,
+            c: dc > 0 ? merge.c2 + 1 : dc < 0 ? merge.c1 - 1 : c,
+        };
+    }
+
+    /** How much room a cell has: all of its merge when it starts one. */
+    spanOf(r, c) {
+        const merge = this.mergeAt(r, c);
+        if (!merge) return { width: this.cols.sizeOf(c), height: this.rows.sizeOf(r) };
+        return {
+            width: this.cols.offset(merge.c2 + 1) - this.cols.offset(merge.c1),
+            height: this.rows.offset(merge.r2 + 1) - this.rows.offset(merge.r1),
+        };
+    }
+
+    /** An area grown until no merged cell is cut by its edge. */
+    wholeMerges(area) {
+        const whole = { ...area };
+        let grown = true;
+        while (grown) {
+            grown = false;
+            for (const m of this.merges) {
+                const touches = m.r1 <= whole.r2 && m.r2 >= whole.r1 && m.c1 <= whole.c2 && m.c2 >= whole.c1;
+                if (!touches || (m.r1 >= whole.r1 && m.r2 <= whole.r2 && m.c1 >= whole.c1 && m.c2 <= whole.c2)) continue;
+                whole.r1 = Math.min(whole.r1, m.r1);
+                whole.r2 = Math.max(whole.r2, m.r2);
+                whole.c1 = Math.min(whole.c1, m.c1);
+                whole.c2 = Math.max(whole.c2, m.c2);
+                grown = true;
+            }
+        }
+        return whole;
+    }
+
+    /** The merged cells on screen. Each is drawn by its first cell, however far that has scrolled away. */
+    mergesNear(view) {
+        const { frozenRows, frozenCols } = this;
+        return this.merges.filter((m) => (m.r1 < frozenRows || (m.r1 <= view.r2 && m.r2 >= view.r1))
+            && (m.c1 < frozenCols || (m.c1 <= view.c2 && m.c2 >= view.c1)));
     }
 
     /** Change some sizes on screen. A null size is the default again. */
@@ -270,7 +337,8 @@ export class Grid {
 
     area() {
         const { active: a, extent: e } = this;
-        return { r1: Math.min(a.r, e.r), r2: Math.max(a.r, e.r), c1: Math.min(a.c, e.c), c2: Math.max(a.c, e.c) };
+        const area = { r1: Math.min(a.r, e.r), r2: Math.max(a.r, e.r), c1: Math.min(a.c, e.c), c2: Math.max(a.c, e.c) };
+        return this.merges.length ? this.wholeMerges(area) : area;
     }
 
     get pageRows() {
@@ -302,6 +370,9 @@ export class Grid {
         const view = this.visible();
         if (this.frozenRows > 0) this.store.ensure(0, this.frozenRows - 1);
         this.store.ensure(view.r1, view.r2);
+        for (const m of this.mergesNear(view)) {
+            if (m.r1 < view.r1) this.store.ensure(m.r1, m.r1);
+        }
         this.draw(view);
         if (this.lines.length && this.scrolledTo() !== this.linesAt) this.drawThreads(false);
     }
@@ -316,6 +387,11 @@ export class Grid {
         const { rows, cols, frozenRows, frozenCols } = this;
         const pools = [this.cells, this.stuck, this.columns, this.numbers, this.topCells, this.cornerCells, this.cornerNumbers, this.stuckColumns];
         for (const pool of pools) pool.begin();
+        this.placeMerges(view);
+        const cell = (pool, r, c) => {
+            const key = `${r}:${c}`;
+            if (cols.sizeOf(c) > 0 && !this.covered.has(key)) this.paintCell(pool.take(key), r, c, area);
+        };
 
         for (let c = view.c1; c <= view.c2; c++) {
             if (cols.sizeOf(c) > 0) this.paintColumn(this.columns.take(c), c, area);
@@ -327,27 +403,56 @@ export class Grid {
         for (let r = 0; r < frozenRows; r++) {
             if (rows.sizeOf(r) === 0) continue;
             this.paintNumber(this.cornerNumbers.take(r), r, area);
-            for (let c = 0; c < frozenCols; c++) {
-                if (cols.sizeOf(c) > 0) this.paintCell(this.cornerCells.take(`${r}:${c}`), r, c, area);
-            }
-            for (let c = view.c1; c <= view.c2; c++) {
-                if (cols.sizeOf(c) > 0) this.paintCell(this.topCells.take(`${r}:${c}`), r, c, area);
-            }
+            for (let c = 0; c < frozenCols; c++) cell(this.cornerCells, r, c);
+            for (let c = view.c1; c <= view.c2; c++) cell(this.topCells, r, c);
         }
 
         for (let r = view.r1; r <= view.r2; r++) {
             if (rows.sizeOf(r) === 0) continue;
             this.paintNumber(this.numbers.take(r), r, area);
-            for (let c = 0; c < frozenCols; c++) {
-                if (cols.sizeOf(c) > 0) this.paintCell(this.stuck.take(`${r}:${c}`), r, c, area);
-            }
-            for (let c = view.c1; c <= view.c2; c++) {
-                if (cols.sizeOf(c) > 0) this.paintCell(this.cells.take(`${r}:${c}`), r, c, area);
-            }
+            for (let c = 0; c < frozenCols; c++) cell(this.stuck, r, c);
+            for (let c = view.c1; c <= view.c2; c++) cell(this.cells, r, c);
+        }
+
+        // A merged cell whose first cell has scrolled off still shows.
+        for (const m of this.nearMerges) {
+            const rowDrawn = m.r1 < frozenRows || (m.r1 >= view.r1 && m.r1 <= view.r2);
+            const colDrawn = m.c1 < frozenCols || (m.c1 >= view.c1 && m.c1 <= view.c2);
+            if ((!rowDrawn || !colDrawn) && rows.sizeOf(m.r1) > 0) cell(this.poolOf(m.r1, m.c1), m.r1, m.c1);
         }
 
         for (const pool of pools) pool.end();
         this.placeHandle(area);
+    }
+
+    placeMerges(view) {
+        this.nearMerges = this.mergesNear(view);
+        this.covered.clear();
+        this.anchored.clear();
+        for (const m of this.nearMerges) {
+            this.anchored.set(`${m.r1}:${m.c1}`, m);
+            for (let r = m.r1; r <= m.r2; r++) {
+                for (let c = m.c1; c <= m.c2; c++) {
+                    if (r !== m.r1 || c !== m.c1) this.covered.add(`${r}:${c}`);
+                }
+            }
+        }
+    }
+
+    poolOf(r, c) {
+        if (r < this.frozenRows) return c < this.frozenCols ? this.cornerCells : this.topCells;
+        return c < this.frozenCols ? this.stuck : this.cells;
+    }
+
+    /** A merged cell across the frozen edge stops at it once the sheet has scrolled underneath. */
+    drawnSpan(m) {
+        const { rows, cols, frozenRows, frozenCols } = this;
+        const crossesCols = m.c1 < frozenCols && m.c2 >= frozenCols && this.sheet.scrollLeft > 0;
+        const crossesRows = m.r1 < frozenRows && m.r2 >= frozenRows && this.sheet.scrollTop > 0;
+        return {
+            w: cols.offset(crossesCols ? frozenCols : m.c2 + 1) - cols.offset(m.c1),
+            h: rows.offset(crossesRows ? frozenRows : m.r2 + 1) - rows.offset(m.r1),
+        };
     }
 
     /** The fill dot sits on the selection's bottom right corner, when that corner can be seen. */
@@ -406,11 +511,11 @@ export class Grid {
         const align = x.align ?? (shown.number || shown.error ? 'right' : 'left');
         if (align !== 'left') names += ` ${align}`;
 
+        const merge = this.anchored.get(`${r}:${c}`);
         const left = this.gutter + this.cols.offset(c);
         const top = this.rowTop(r);
-        const w = this.cols.sizeOf(c);
-        const h = this.rows.sizeOf(r);
-        const room = align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
+        const { w, h } = merge ? this.drawnSpan(merge) : { w: this.cols.sizeOf(c), h: this.rows.sizeOf(r) };
+        const room = !merge && align === 'left' && !shown.number && !shown.error ? this.roomBeside(r, c, w, shown.text) : 0;
         if (room > 0) names += ' over';
         const sig = `${names}|${left}|${top}|${w}|${h}|${room}|${shown.text}|${x.italic}|${x.underline}|${x.strike}|${x.font_color}|${x.bg_color}|${x.font_size}|${cell?.e}`;
         if (el.sig === sig) return;
@@ -439,7 +544,7 @@ export class Grid {
         if (c < this.frozenCols && this.sheet.scrollLeft > 0) return 0;
         let room = 0;
         for (let next = c + 1; next < this.size.cols && next <= c + MAX_OVERFLOW_COLS; next++) {
-            if (hasContent(this.store.get(r, next))) break;
+            if (hasContent(this.store.get(r, next)) || this.covered.has(`${r}:${next}`) || this.anchored.has(`${r}:${next}`)) break;
             room += this.cols.sizeOf(next);
             if (text.length * WIDE_CHARACTER < width + room - CELL_PADDING) break;
         }
@@ -465,23 +570,31 @@ export class Grid {
         const { sheet, rows, cols } = this;
         const height = sheet.clientHeight - this.headHeight;
         const stuck = this.stuckHeight;
+        const span = this.spanOf(r, c);
         const top = rows.offset(r);
-        const bottom = top + rows.sizeOf(r);
+        const bottom = top + span.height;
 
         this.reach = Math.max(this.reach, Math.min(this.size.rows, r + ROOM_ROWS));
         if (top < this.top || bottom > this.top + MAX_WINDOW) this.top = Math.max(0, top - MAX_WINDOW / 2);
         this.fit();
 
         if (r >= this.frozenRows) {
-            if (top < sheet.scrollTop + this.top + stuck) sheet.scrollTop = top - stuck - this.top;
-            else if (bottom > sheet.scrollTop + this.top + height) sheet.scrollTop = bottom - height - this.top;
+            const from = sheet.scrollTop + this.top + stuck;
+            const to = sheet.scrollTop + this.top + height;
+            // A merged cell too big for the screen stays put while any of it shows.
+            const shows = bottom - top > to - from && top < to && bottom > from;
+            if (!shows && top < from) sheet.scrollTop = top - stuck - this.top;
+            else if (!shows && bottom > to) sheet.scrollTop = bottom - height - this.top;
         }
 
         if (c < this.frozenCols) return;
         const left = this.gutter + cols.offset(c);
-        const right = left + cols.sizeOf(c);
-        if (left < sheet.scrollLeft + this.stuckWidth) sheet.scrollLeft = left - this.stuckWidth;
-        else if (right > sheet.scrollLeft + sheet.clientWidth) sheet.scrollLeft = right - sheet.clientWidth;
+        const right = left + span.width;
+        const from = sheet.scrollLeft + this.stuckWidth;
+        const to = sheet.scrollLeft + sheet.clientWidth;
+        const shows = right - left > to - from && left < to && right > from;
+        if (!shows && left < from) sheet.scrollLeft = left - this.stuckWidth;
+        else if (!shows && right > to) sheet.scrollLeft = right - sheet.clientWidth;
     }
 
     /** The cell, header or corner under a point on the screen. */
@@ -495,7 +608,8 @@ export class Grid {
         if (px < this.gutter) c = -1;
         else if (px < this.stuckWidth) c = this.cols.at(px - this.gutter);
         else c = this.cols.at(px + this.sheet.scrollLeft - this.gutter);
-        return { r: py < this.headHeight ? -1 : r, c };
+        if (py < this.headHeight || c < 0) return { r: py < this.headHeight ? -1 : r, c };
+        return this.anchorOf({ r, c });
     }
 
     name() {

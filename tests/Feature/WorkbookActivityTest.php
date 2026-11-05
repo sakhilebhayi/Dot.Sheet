@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\SchedulerProbeController;
 use App\Models\AuditEvent;
 use App\Models\Spreadsheet;
 use App\Models\User;
@@ -104,7 +105,7 @@ class WorkbookActivityTest extends TestCase
         $this->actingAs($stranger)->get('/activity')->assertOk()->assertDontSee('Payroll');
     }
 
-    public function test_a_team_editor_sees_only_their_own_private_workbooks(): void
+    public function test_a_team_editor_sees_only_the_workbooks_they_own(): void
     {
         $team = $this->owner->currentTeam;
         $editor = User::factory()->withPersonalTeam()->create();
@@ -137,7 +138,7 @@ class WorkbookActivityTest extends TestCase
 
     public function test_ready_fails_when_the_scheduler_has_stopped(): void
     {
-        Cache::forever(\App\Http\Controllers\SchedulerProbeController::SCHEDULER_KEY, now()->subDay()->toIso8601String());
+        Cache::forever(SchedulerProbeController::SCHEDULER_KEY, now()->subDay()->toIso8601String());
 
         $this->getJson('/ready')->assertStatus(503)->assertJsonPath('status', 'fail')->assertJsonPath('checks.scheduler.ok', false);
     }

@@ -140,4 +140,10 @@ return [
     | Days the record of who did what to a workbook is kept.
     */
     'audit_keep_days' => (int) env('SHEET_AUDIT_KEEP_DAYS', 730),
+
+    /*
+    | Seconds a person's request may spend working formulas out. What is left finishes in the background and the
+    | sheet says so, so a huge sheet never stops a workbook from opening. Keep it below the host's PHP time limit.
+    */
+    'recalculate_seconds' => (int) env('SHEET_RECALCULATE_SECONDS', 20),
 ];

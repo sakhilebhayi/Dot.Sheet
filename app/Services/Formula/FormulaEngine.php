@@ -47,6 +47,15 @@ class FormulaEngine
     /** Most cells held in memory at once (about 1 KB each): a host may allow a process only 128 MB. */
     public const MAX_CELLS_HELD = 60000;
 
+    /** Of the memory a process may use, the most used before the workbook held here is let go. */
+    private const MEMORY_SHARE = 0.7;
+
+    /** Rows apart two ranges can be and still be read as one: a few spare cells cost less than a query. */
+    private const JOINED_GAP = 64;
+
+    /** Ranges compared with each other at most: past it a range read twice costs less than the comparing. */
+    private const MAX_COMPARED = 500;
+
     /** @var array<string, int> sheet name => id */
     private array $tabs = [];
 
@@ -81,7 +90,7 @@ class FormulaEngine
         $this->reset();
 
         foreach ($this->widest($ranges) as [$tab, $r1, $r2, $c1, $c2]) {
-            if ($this->held < self::MAX_CELLS_HELD) {
+            if ($this->held < self::MAX_CELLS_HELD && ! $this->memoryIsTight()) {
                 $this->load($tab, $r1, $r2, $c1, $c2);
             }
         }
@@ -114,6 +123,11 @@ class FormulaEngine
             return null;
         };
 
+        // Between formulas, never during one: everything a formula reads has to be in memory together.
+        if ($this->held >= self::MAX_CELLS_HELD || $this->memoryIsTight()) {
+            $this->reset();
+        }
+
         $text = FormulaText::withNamedRanges($formula, $this->names[$sheetTabId] ??= $this->namedRanges($this->spreadsheetId, $sheetTabId));
         $text = FormulaText::withSheetAliases($text, $aliasFor);
         $target = FormulaText::columnLetters($col).($row + 1);
@@ -141,6 +155,7 @@ class FormulaEngine
         }
 
         $this->put($this->sheet($sheetTabId), $row, $col, $result['value']);
+        $this->held++;
 
         return $result;
     }
@@ -148,6 +163,8 @@ class FormulaEngine
     private function reset(): void
     {
         $this->workbook?->disconnectWorksheets();
+        $this->workbook = null;
+        gc_collect_cycles();
 
         $this->workbook = new Workbook;
         $this->workbook->removeSheetByIndex(0);
@@ -157,6 +174,14 @@ class FormulaEngine
         $this->sheets = [];
         $this->loaded = [];
         $this->held = 0;
+    }
+
+    /** Cells are costlier on some hosts than the estimate above, and everything else in the request counts too. */
+    protected function memoryIsTight(): bool
+    {
+        $limit = ini_parse_quantity((string) ini_get('memory_limit'));
+
+        return $limit > 0 && memory_get_usage() > $limit * self::MEMORY_SHARE;
     }
 
     private function sheet(int $tabId): Worksheet
@@ -176,10 +201,6 @@ class FormulaEngine
             if ($r1 >= $a1 && $r2 <= $a2 && $c1 >= $b1 && $c2 <= $b2) {
                 return 0;
             }
-        }
-
-        if ($this->held >= self::MAX_CELLS_HELD) {
-            $this->reset();
         }
 
         return $this->load($tabId, $r1, $r2, $c1, $c2);
@@ -210,20 +231,20 @@ class FormulaEngine
     }
 
     /**
-     * The ranges without those another one contains, widest first: a column of running totals reads
-     * one range, not a thousand overlapping ones.
+     * Fewest ranges that cover these, widest first. A column of formulas that each read their own row is ten thousand
+     * ranges and one read of the column; a column of running totals is one range, not a thousand overlapping ones.
      *
      * @param  list<array{0: int, 1: int, 2: int, 3: int, 4: int}>  $ranges
      * @return list<array{0: int, 1: int, 2: int, 3: int, 4: int}>
      */
     private function widest(array $ranges): array
     {
-        $ranges = array_values(array_unique($ranges, SORT_REGULAR));
-        usort($ranges, fn (array $a, array $b) => ($b[2] - $b[1] + 1) * ($b[4] - $b[3] + 1) <=> ($a[2] - $a[1] + 1) * ($a[4] - $a[3] + 1));
+        $merged = $this->joined($ranges);
+        usort($merged, fn (array $a, array $b) => ($b[2] - $b[1] + 1) * ($b[4] - $b[3] + 1) <=> ($a[2] - $a[1] + 1) * ($a[4] - $a[3] + 1));
 
         $kept = [];
-        foreach ($ranges as $range) {
-            foreach ($kept as $wider) {
+        foreach ($merged as $range) {
+            foreach (array_slice($kept, 0, self::MAX_COMPARED) as $wider) {
                 if ($range[0] === $wider[0] && $range[1] >= $wider[1] && $range[2] <= $wider[2] && $range[3] >= $wider[3] && $range[4] <= $wider[4]) {
                     continue 2;
                 }
@@ -232,6 +253,37 @@ class FormulaEngine
         }
 
         return $kept;
+    }
+
+    /**
+     * Ranges over the same columns of a sheet, joined where they overlap or nearly meet.
+     *
+     * @param  list<array{0: int, 1: int, 2: int, 3: int, 4: int}>  $ranges
+     * @return list<array{0: int, 1: int, 2: int, 3: int, 4: int}>
+     */
+    private function joined(array $ranges): array
+    {
+        $groups = [];
+        foreach ($ranges as $range) {
+            $groups[$range[0].':'.$range[3].':'.$range[4]][] = $range;
+        }
+
+        $joined = [];
+        foreach ($groups as $group) {
+            usort($group, fn (array $a, array $b) => $a[1] <=> $b[1]);
+            $current = array_shift($group);
+            foreach ($group as $range) {
+                if ($range[1] <= $current[2] + self::JOINED_GAP) {
+                    $current[2] = max($current[2], $range[2]);
+                } else {
+                    $joined[] = $current;
+                    $current = $range;
+                }
+            }
+            $joined[] = $current;
+        }
+
+        return $joined;
     }
 
     /**

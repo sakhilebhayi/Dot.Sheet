@@ -2,10 +2,12 @@
 
 namespace App\Services\Formula;
 
+use App\Jobs\WorkOutSheet;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
 use App\Services\SheetMerges;
 use App\Services\SheetStructureService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -41,6 +43,17 @@ class Recalculator
     public const MAX_RECALCULATED = 20000;
 
     private const CHUNK = 500;
+
+    /** Areas asked of the database one by one, before a sheet's dependencies are loaded instead. */
+    private const QUERIED_AREAS = 64;
+
+    /** How long the background job is expected to take at most, while the sheet is left to it. */
+    private const FINISHING_SECONDS = 900;
+
+    private ?float $deadline = null;
+
+    /** @var array<int, true> sheets with formulas left over when time ran out */
+    private array $unfinished = [];
 
     /** @var list<array{0: int, 1: int, 2: int, 3: int, 4: int}> areas spilled on in the current pass */
     private array $spilled = [];
@@ -119,7 +132,9 @@ class Recalculator
         }
 
         $recalculated = $this->recalculate($spreadsheetId, $nodes);
-        SheetTab::whereKey($sheetTabId)->update(['formulas_built_at' => now()]);
+        if (! isset($this->unfinished[$sheetTabId])) {
+            SheetTab::whereKey($sheetTabId)->update(['formulas_built_at' => now()]);
+        }
 
         return $recalculated;
     }
@@ -180,13 +195,34 @@ class Recalculator
     public function ensureBuilt(int $spreadsheetId, int $sheetTabId): bool
     {
         $built = SheetTab::whereKey($sheetTabId)->where('spreadsheet_id', $spreadsheetId)->value('formulas_built_at');
-        if ($built !== null || ! SheetTab::whereKey($sheetTabId)->exists()) {
+        if ($built !== null || ! SheetTab::whereKey($sheetTabId)->exists() || self::isFinishing($sheetTabId)) {
             return false;
         }
 
         DB::transaction(fn () => $this->rebuildTab($spreadsheetId, $sheetTabId));
 
         return true;
+    }
+
+    /** The job that finishes a sheet has it: working it out here as well would only get in the way. */
+    public static function isFinishing(int $sheetTabId): bool
+    {
+        return Cache::has('sheet-finishing:'.$sheetTabId);
+    }
+
+    /**
+     * Finish a sheet with no one waiting. Outside one transaction: a sheet that takes minutes must not hold the
+     * database for minutes, and a sheet stopped halfway is simply worked out again.
+     */
+    public function finishSheet(int $spreadsheetId, int $sheetTabId): void
+    {
+        try {
+            if (SheetTab::whereKey($sheetTabId)->whereNull('formulas_built_at')->exists()) {
+                $this->rebuildTab($spreadsheetId, $sheetTabId);
+            }
+        } finally {
+            Cache::forget('sheet-finishing:'.$sheetTabId);
+        }
     }
 
     /**
@@ -276,6 +312,7 @@ class Recalculator
             $queue[] = [$tab, $row, $row, $col, $col];
         }
         $seen = [];
+        $map = count($queue) > self::QUERIED_AREAS ? new PrecedentMap : null;
 
         while ($queue !== []) {
             $area = array_pop($queue);
@@ -286,19 +323,11 @@ class Recalculator
             }
             $seen[$key] = true;
 
-            $readers = DB::table('cell_precedents')
-                ->where('precedent_tab_id', $tab)
-                ->where('col_from', '<=', $c2)->where('col_to', '>=', $c1)
-                ->where('row_from', '<=', $r2)->where('row_to', '>=', $r1)
-                ->select('sheet_tab_id', 'row_index', 'col_index')->distinct()->get();
+            if ($map === null && count($seen) > self::QUERIED_AREAS) {
+                $map = new PrecedentMap;
+            }
 
-            $anchors = DB::table('cells')->where('sheet_tab_id', $tab)->whereNotNull('spill_rows')
-                ->where('row_index', '<=', $r2)->whereRaw('row_index + spill_rows - 1 >= ?', [$r1])
-                ->where('col_index', '<=', $c2)->whereRaw('col_index + spill_cols - 1 >= ?', [$c1])
-                ->selectRaw('sheet_tab_id, row_index, col_index')->get();
-
-            foreach ([...$readers, ...$anchors] as $reader) {
-                $node = $reader->sheet_tab_id.':'.$reader->row_index.':'.$reader->col_index;
+            foreach ($map?->readers($tab, $r1, $r2, $c1, $c2) ?? $this->readersAsked($tab, $r1, $r2, $c1, $c2) as $node) {
                 if (isset($skip[$node])) {
                     continue;
                 }
@@ -308,11 +337,31 @@ class Recalculator
                         return null;
                     }
                 }
-                $queue[] = [(int) $reader->sheet_tab_id, (int) $reader->row_index, (int) $reader->row_index, (int) $reader->col_index, (int) $reader->col_index];
+                [$readerTab, $row, $col] = array_map('intval', explode(':', $node));
+                $queue[] = [$readerTab, $row, $row, $col, $col];
             }
         }
 
         return $found;
+    }
+
+    /**
+     * @return list<string> what reads this area, or spills over it, as "tab:row:col"
+     */
+    private function readersAsked(int $tab, int $r1, int $r2, int $c1, int $c2): array
+    {
+        $readers = DB::table('cell_precedents')
+            ->where('precedent_tab_id', $tab)
+            ->where('col_from', '<=', $c2)->where('col_to', '>=', $c1)
+            ->where('row_from', '<=', $r2)->where('row_to', '>=', $r1)
+            ->select('sheet_tab_id', 'row_index', 'col_index')->distinct()->get();
+
+        $anchors = DB::table('cells')->where('sheet_tab_id', $tab)->whereNotNull('spill_rows')
+            ->where('row_index', '<=', $r2)->whereRaw('row_index + spill_rows - 1 >= ?', [$r1])
+            ->where('col_index', '<=', $c2)->whereRaw('col_index + spill_cols - 1 >= ?', [$c1])
+            ->selectRaw('sheet_tab_id, row_index, col_index')->get();
+
+        return array_map(fn (object $cell) => $cell->sheet_tab_id.':'.$cell->row_index.':'.$cell->col_index, [...$readers, ...$anchors]);
     }
 
     /**
@@ -327,12 +376,39 @@ class Recalculator
 
         // A spilled answer lands on cells no dependency row knows about until it exists, so whatever
         // reads those cells is found afterwards, in a further pass.
+        $this->startClock();
+
         for ($pass = 0; $pass < self::MAX_SPILL_PASSES && $nodes !== []; $pass++) {
             $worked = [...$worked, ...$this->pass($spreadsheetId, $nodes)];
             $nodes = $this->readersOfSpills();
         }
 
+        $this->leaveTheRestForLater($spreadsheetId);
+
         return array_values(array_unique($worked));
+    }
+
+    /** Only while a person waits: a job has as long as it takes. */
+    private function startClock(): void
+    {
+        $seconds = (int) config('sheet.recalculate_seconds');
+        if ($this->deadline === null && $seconds > 0 && (! app()->runningInConsole() || config('sheet.recalculate_always_timed'))) {
+            $this->deadline = microtime(true) + $seconds;
+        }
+    }
+
+    private function outOfTime(): bool
+    {
+        return $this->deadline !== null && microtime(true) > $this->deadline;
+    }
+
+    private function leaveTheRestForLater(int $spreadsheetId): void
+    {
+        foreach (array_keys($this->unfinished) as $tab) {
+            SheetTab::whereKey($tab)->update(['formulas_built_at' => null]);
+            Cache::put('sheet-finishing:'.$tab, true, self::FINISHING_SECONDS);
+            WorkOutSheet::dispatch($spreadsheetId, $tab)->afterCommit();
+        }
     }
 
     /**
@@ -356,58 +432,8 @@ class Recalculator
     protected function pass(int $spreadsheetId, array $nodes): array
     {
 
-        // Each formula's ranges, and which of the other formulas fall in them.
-        $ranges = [];
-        foreach (array_keys($nodes) as $node) {
-            [$tab, $row, $col] = array_map('intval', explode(':', $node));
-            $ranges[$node] = DB::table('cell_precedents')->where('sheet_tab_id', $tab)->where('row_index', $row)->where('col_index', $col)
-                ->get(['precedent_tab_id', 'row_from', 'row_to', 'col_from', 'col_to'])->all();
-        }
-
-        $byTab = [];
-        foreach (array_keys($nodes) as $node) {
-            [$tab, $row, $col] = array_map('intval', explode(':', $node));
-            $byTab[$tab][] = [$node, $row, $col];
-        }
-
-        $reads = [];   // node => nodes it reads
-        foreach ($ranges as $node => $list) {
-            $reads[$node] = [];
-            foreach ($list as $range) {
-                foreach ($byTab[(int) $range->precedent_tab_id] ?? [] as [$other, $row, $col]) {
-                    if ($row >= $range->row_from && $row <= $range->row_to && $col >= $range->col_from && $col <= $range->col_to) {
-                        $reads[$node][$other] = true;
-                    }
-                }
-            }
-        }
-
-        $circular = $this->circular($reads);
-
-        // Kahn's order over the rest; a circular formula counts as already worked out.
-        $waiting = [];
-        $readers = [];
-        foreach ($reads as $node => $inputs) {
-            if (isset($circular[$node])) {
-                continue;
-            }
-            $waiting[$node] = 0;
-            foreach (array_keys($inputs) as $input) {
-                if ($input !== $node && ! isset($circular[$input])) {
-                    $waiting[$node]++;
-                    $readers[$input][] = $node;
-                }
-            }
-        }
-
-        $order = array_keys(array_filter($waiting, fn (int $count) => $count === 0));
-        for ($i = 0; $i < count($order); $i++) {
-            foreach ($readers[$order[$i]] ?? [] as $reader) {
-                if (--$waiting[$reader] === 0) {
-                    $order[] = $reader;
-                }
-            }
-        }
+        $ranges = $this->rangesOf($nodes);
+        [$order, $circular] = $this->inOrder($nodes, $ranges);
 
         foreach (array_keys($circular) as $node) {
             $this->store($spreadsheetId, $node, ['value' => self::CIRCULAR_VALUE, 'error' => self::CIRCULAR]);
@@ -417,6 +443,12 @@ class Recalculator
         try {
             foreach ($order as $node) {
                 [$tab, $row, $col] = array_map('intval', explode(':', $node));
+                if ($this->outOfTime()) {
+                    $this->unfinished[$tab] = true;
+
+                    continue;
+                }
+
                 $formula = DB::table('cells')->where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $tab)
                     ->where('row_index', $row)->where('col_index', $col)->value('formula');
                 if ($formula === null) {
@@ -430,6 +462,156 @@ class Recalculator
         }
 
         return [...array_keys($circular), ...$order];
+    }
+
+    /**
+     * Each formula's ranges.
+     *
+     * @param  array<string, true>  $nodes
+     * @return array<string, list<object>>
+     */
+    private function rangesOf(array $nodes): array
+    {
+        $columns = ['sheet_tab_id', 'row_index', 'col_index', 'precedent_tab_id', 'row_from', 'row_to', 'col_from', 'col_to'];
+        $ranges = array_fill_keys(array_keys($nodes), []);
+
+        if (count($nodes) <= self::QUERIED_AREAS) {
+            foreach (array_keys($nodes) as $node) {
+                [$tab, $row, $col] = array_map('intval', explode(':', $node));
+                $ranges[$node] = DB::table('cell_precedents')->where('sheet_tab_id', $tab)->where('row_index', $row)->where('col_index', $col)->get($columns)->all();
+            }
+
+            return $ranges;
+        }
+
+        $tabs = array_unique(array_map(fn (string $node) => (int) strtok($node, ':'), array_keys($nodes)));
+        foreach (DB::table('cell_precedents')->whereIn('sheet_tab_id', $tabs)->select($columns)->cursor() as $range) {
+            $node = $range->sheet_tab_id.':'.$range->row_index.':'.$range->col_index;
+            if (isset($ranges[$node])) {
+                $ranges[$node][] = $range;
+            }
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * The order to work these formulas out in, each after the ones it reads, and those in a cycle. Tarjan's strongly
+     * connected components, which come out inputs first: a formula that reads thousands of others costs time here, not
+     * memory, because what each one reads is found as it is walked rather than stored.
+     *
+     * @param  array<string, true>  $nodes
+     * @param  array<string, list<object>>  $ranges
+     * @return array{0: list<string>, 1: array<string, true>}
+     */
+    private function inOrder(array $nodes, array $ranges): array
+    {
+        $rowsOf = [];
+        foreach (array_keys($nodes) as $node) {
+            [$tab, $row, $col] = array_map('intval', explode(':', $node));
+            $rowsOf[$tab][$col][] = $row;
+        }
+        foreach ($rowsOf as &$columns) {
+            foreach ($columns as &$rows) {
+                sort($rows);
+            }
+        }
+        unset($columns, $rows);
+
+        $index = 0;
+        $indices = [];
+        $low = [];
+        $stack = [];
+        $onStack = [];
+        $order = [];
+        $circular = [];
+
+        foreach (array_keys($nodes) as $root) {
+            if (isset($indices[$root])) {
+                continue;
+            }
+
+            // Walked by hand: a column of formulas that each read the one above is as deep as the column is long.
+            $indices[$root] = $low[$root] = $index++;
+            $stack[] = $root;
+            $onStack[$root] = true;
+            $walk = [[$root, $this->inputsOf($root, $ranges[$root], $rowsOf), false]];
+
+            while ($walk !== []) {
+                $top = count($walk) - 1;
+                [$node, $inputs] = $walk[$top];
+
+                if ($inputs->valid()) {
+                    $input = $inputs->current();
+                    $inputs->next();
+                    if ($input === $node) {
+                        $walk[$top][2] = true;
+                    } elseif (! isset($indices[$input])) {
+                        $indices[$input] = $low[$input] = $index++;
+                        $stack[] = $input;
+                        $onStack[$input] = true;
+                        $walk[] = [$input, $this->inputsOf($input, $ranges[$input], $rowsOf), false];
+                    } elseif (isset($onStack[$input])) {
+                        $low[$node] = min($low[$node], $indices[$input]);
+                    }
+
+                    continue;
+                }
+
+                $readsItself = $walk[$top][2];
+                array_pop($walk);
+                if ($walk !== []) {
+                    $parent = $walk[count($walk) - 1][0];
+                    $low[$parent] = min($low[$parent], $low[$node]);
+                }
+
+                if ($low[$node] === $indices[$node]) {
+                    $component = [];
+                    do {
+                        $member = array_pop($stack);
+                        unset($onStack[$member]);
+                        $component[] = $member;
+                    } while ($member !== $node);
+
+                    if (count($component) > 1 || $readsItself) {
+                        foreach ($component as $member) {
+                            $circular[$member] = true;
+                        }
+                    } else {
+                        $order[] = $node;
+                    }
+                }
+            }
+        }
+
+        return [$order, $circular];
+    }
+
+    /**
+     * The formulas among those being worked out that fall in these ranges.
+     *
+     * @param  list<object>  $ranges
+     * @param  array<int, array<int, list<int>>>  $rowsOf  tab => col => rows, sorted
+     * @return \Generator<int, string>
+     */
+    private function inputsOf(string $node, array $ranges, array $rowsOf): \Generator
+    {
+        foreach ($ranges as $range) {
+            $tab = (int) $range->precedent_tab_id;
+            foreach ($rowsOf[$tab] ?? [] as $col => $rows) {
+                if ($col < $range->col_from || $col > $range->col_to) {
+                    continue;
+                }
+                [$low, $high] = [0, count($rows)];
+                while ($low < $high) {
+                    $middle = ($low + $high) >> 1;
+                    $rows[$middle] < $range->row_from ? $low = $middle + 1 : $high = $middle;
+                }
+                for ($i = $low, $last = count($rows); $i < $last && $rows[$i] <= $range->row_to; $i++) {
+                    yield $tab.':'.$rows[$i].':'.$col;
+                }
+            }
+        }
     }
 
     /**
@@ -449,64 +631,6 @@ class Recalculator
     }
 
     /**
-     * The formulas that take part in a cycle: Tarjan's strongly connected components of more than one
-     * formula, or one formula that reads itself.
-     *
-     * @param  array<string, array<string, true>>  $reads
-     * @return array<string, true>
-     */
-    protected function circular(array $reads): array
-    {
-        $index = 0;
-        $indices = [];
-        $low = [];
-        $stack = [];
-        $onStack = [];
-        $circular = [];
-
-        $connect = function (string $node) use (&$connect, &$index, &$indices, &$low, &$stack, &$onStack, &$circular, $reads): void {
-            $indices[$node] = $low[$node] = $index++;
-            $stack[] = $node;
-            $onStack[$node] = true;
-
-            foreach (array_keys($reads[$node] ?? []) as $input) {
-                if (! isset($reads[$input])) {
-                    continue;
-                }
-                if (! isset($indices[$input])) {
-                    $connect($input);
-                    $low[$node] = min($low[$node], $low[$input]);
-                } elseif (isset($onStack[$input])) {
-                    $low[$node] = min($low[$node], $indices[$input]);
-                }
-            }
-
-            if ($low[$node] === $indices[$node]) {
-                $component = [];
-                do {
-                    $member = array_pop($stack);
-                    unset($onStack[$member]);
-                    $component[] = $member;
-                } while ($member !== $node);
-
-                if (count($component) > 1 || isset($reads[$node][$node])) {
-                    foreach ($component as $member) {
-                        $circular[$member] = true;
-                    }
-                }
-            }
-        };
-
-        foreach (array_keys($reads) as $node) {
-            if (! isset($indices[$node])) {
-                $connect($node);
-            }
-        }
-
-        return $circular;
-    }
-
-    /**
      * Store a formula's answer. An answer of many cells lands on the cells below and to the right, unless
      * something is in the way or it would leave the sheet: then the formula answers #SPILL!.
      *
@@ -517,6 +641,14 @@ class Recalculator
         [$tab, $row, $col] = array_map('intval', explode(':', $node));
 
         $before = DB::table('cells')->where('sheet_tab_id', $tab)->where('row_index', $row)->where('col_index', $col)->first(['spill_rows', 'spill_cols']);
+        if (! isset($result['spill']) && $before?->spill_rows === null) {
+            // The common case by far: one cell, one answer, nothing spilled before or now.
+            DB::table('cells')->where('spreadsheet_id', $spreadsheetId)->where('sheet_tab_id', $tab)->where('row_index', $row)->where('col_index', $col)
+                ->update(['computed_value' => $result['value'], 'formula_error' => $result['error']]);
+
+            return;
+        }
+
         $landed = DB::table('cells')->where('sheet_tab_id', $tab)->where('spill_row', $row)->where('spill_col', $col)
             ->orderBy('row_index')->orderBy('col_index')->pluck('computed_value')->all();
         $this->removeSpill($tab, $row, $col);

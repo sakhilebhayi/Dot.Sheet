@@ -14,6 +14,7 @@ export class Together {
         this.here = document.getElementById('here');
         this.since = null;
         this.lost = false;
+        this.working = false;
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') this.beat();
         });
@@ -38,12 +39,24 @@ export class Together {
             editor.note('Connected again.');
         }
 
+        await this.follow(body.working);
+
         const first = this.since === null;
         this.since = body.at;
         this.draw(body.here);
         if (first) return;
         if (body.version !== editor.version()) await editor.reopen();
         else if (body.changed && !editor.busy()) await editor.refresh();
+    }
+
+    /** A huge sheet finishes its formulas in the background: say so, and show the answers when they are in. */
+    async follow(working) {
+        if (working && !this.working) this.editor.note('Some formulas here are still being worked out. The figures update when they are done.');
+        if (this.working && !working) {
+            this.editor.note('All the formulas here are worked out.');
+            if (!this.editor.busy()) await this.editor.refresh();
+        }
+        this.working = working;
     }
 
     draw(people) {

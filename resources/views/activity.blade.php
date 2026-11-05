@@ -3,7 +3,7 @@
         <section class="part">
             <div class="part-title">
                 <h2>Activity</h2>
-                <p>{{ $team ? "Who did what to {$team->name}'s workbooks and your private ones." : 'Who did what to your private workbooks.' }} Edits to cells are kept as copies of each sheet, not here.</p>
+                <p>{{ $team ? "Who did what to {$team->name}'s workbooks and your own." : 'Who did what to your workbooks.' }} Edits to cells are kept as copies of each sheet, not here.</p>
             </div>
             <div class="part-body">
                 @forelse ($events as $event)

@@ -8,7 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-/** What has been done to a business's workbooks, for its owner and admins. Anyone sees their own private workbooks. */
+/** What has been done to a business's workbooks, for its owner and admins. Anyone sees the workbooks they own. */
 class ActivityController extends Controller
 {
     private const PER_PAGE = 50;
@@ -22,7 +22,7 @@ class ActivityController extends Controller
         $oversees = IntegrationsController::oversees($user, $team);
 
         $events = AuditEvent::where(function ($query) use ($user, $team, $oversees) {
-            $query->where(fn ($private) => $private->where('owner_id', $user->id)->whereNull('team_id'));
+            $query->where('owner_id', $user->id);
             if ($oversees) {
                 $query->orWhere('team_id', $team?->id);
             }

@@ -46,13 +46,13 @@ classic editor keeps the switched-off version until it goes.
 until the multi-process race test in `tests/Feature/ProductionSettingsTest.php` has been run against the
 host. The code is live either way: while it is off the palette says it is not switched on yet.
 
-**Live updates.** The new editor shows other people's edits on reload. Anyone editing the same cell gets the
-last write. The classic editor's live updates need a websocket server, and `BROADCAST_CONNECTION` defaults
-to `null`, so this needs the broadcast decision from R35_AUDIT.md section 10 first.
+**Live typing.** The new editor brings in other people's edits about every 20 seconds, says who else is here, and two
+people changing one cell keep the first and offer the other theirs back. Typing letter by letter needs a websocket
+server, and `BROADCAST_CONNECTION` defaults to `null`, so this needs the broadcast decision from R35_AUDIT.md section 10.
 
 ## Known gaps this list does not close
 
-- Someone else's new comment appears when the panel next opens or the page next loads, as their edits do. There is no live update without the broadcast decision above.
+- Someone else's new comment appears when the panel next opens or the page next loads.
 - The classic editor shows merged cells unmerged, and does not stop values being typed into a hidden part of one.
 - A formula that changes because of another cell does not set off a workflow rule, in either editor.
 - A change of more than 200 cells checks no workflow rules, so one paste cannot send hundreds of emails.

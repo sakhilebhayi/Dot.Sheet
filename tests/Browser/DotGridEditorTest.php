@@ -4231,6 +4231,57 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
+    public function test_what_is_typed_with_no_connection_is_kept_and_saves_when_it_comes_back(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $browser->pause(300);
+            $browser->driver->executeScript(<<<'JS'
+                window.realFetch = window.fetch;
+                window.fetch = () => Promise.reject(new TypeError('offline'));
+            JS);
+
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['kept', WebDriverKeys::ENTER]);
+            $browser->waitForTextIn('#note', 'What you type is kept');
+            $this->assertSame('kept', $this->cell($browser, 4, 0));
+            $this->assertNull(Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->first());
+
+            $browser->driver->executeScript('window.fetch = window.realFetch');
+            $browser->waitUsing(10, 50, fn () => Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('raw_value') === 'kept');
+            $this->assertSame('kept', $this->cell($browser, 4, 0));
+        });
+    }
+
+    public function test_typing_lost_with_the_tab_can_be_put_back_on_the_next_visit(): void
+    {
+        [$user, $sheet, $tab] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab) {
+            $this->open($browser, $user, $sheet);
+            $browser->pause(300);
+            $browser->driver->executeScript('window.fetch = () => Promise.reject(new TypeError("offline")); window.onbeforeunload = null;');
+            $this->clickCell($browser, 4, 0);
+            $browser->driver->getKeyboard()->sendKeys(['saved by the net', WebDriverKeys::ENTER]);
+            $browser->waitForTextIn('#note', 'What you type is kept');
+
+            // The tab goes down with the typing still waiting, and no warning can stop it.
+            $browser->driver->executeScript('window.addEventListener("beforeunload", (e) => e.stopImmediatePropagation(), true)');
+            $left = $browser->driver->executeScript("return localStorage.getItem('sheet-unsaved:{$sheet->id}')");
+            $this->assertStringContainsString('saved by the net', (string) $left);
+
+            $browser->visit("/spreadsheets/{$sheet->id}");
+            $browser->waitForTextIn('#note', 'One change from your last visit did not reach the server.');
+            $browser->waitFor('#fill-offer:not([hidden])')->assertSeeIn('#fill-offer', 'Put back what was typed')->click('#fill-offer');
+            $browser->waitForTextIn('#note', 'Put back.');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 4, 0) === 'saved by the net');
+            $this->assertSame('saved by the net', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 4)->value('raw_value'));
+            $this->assertNull($browser->driver->executeScript("return localStorage.getItem('sheet-unsaved:{$sheet->id}')"));
+        });
+    }
+
     public function test_a_lost_connection_is_said_and_so_is_coming_back(): void
     {
         [$user, $sheet] = $this->expenseSheet();

@@ -489,6 +489,23 @@ async function open(id, stillWriting = false) {
     if (!pivots.closed) pivots.load();
 }
 
+async function saveToFiles() {
+    note('Saving to Dot.Files.');
+    const { ok, status, body } = await server.saveToFiles();
+    if (!ok) {
+        refused(status, body);
+        return;
+    }
+    note(body.version ? `Saved to Dot.Files as version ${body.version}.` : 'Saved to Dot.Files.');
+    if (!body.open_url) return;
+    fillOffer.textContent = 'Open in Dot.Files';
+    fillOffer.hidden = false;
+    fillOffer.onclick = () => {
+        fillOffer.hidden = true;
+        window.open(body.open_url, '_blank', 'noopener');
+    };
+}
+
 function showProtection(state) {
     protection = state;
     boot.canEdit = canEditWorkbook && !state.sealed && (boot.canKeep || !state.locked);
@@ -3048,6 +3065,7 @@ function choices(query) {
         ...(boot.canEdit ? [] : [{ label: 'Find', run: () => openFind() }]),
         { label: 'Comments', hint: 'Ctrl Alt M', run: () => notes.toggle(true) },
         { label: 'Version history', hint: 'Saved copies of this sheet', run: () => copies.toggle(true) },
+        ...(canEditWorkbook ? [{ label: 'Save to Dot.Files', hint: 'As an Excel workbook, a new version each time', run: saveToFiles }] : []),
         { label: 'Approval', hint: 'Ask for this workbook to be approved, or decide', run: () => approval.toggle(true) },
         { label: 'Protected cells', hint: 'What only the owner and admins can change', run: () => protectionPanel.toggle(true) },
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },

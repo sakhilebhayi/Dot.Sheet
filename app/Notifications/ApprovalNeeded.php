@@ -4,11 +4,13 @@ namespace App\Notifications;
 
 use App\Models\Spreadsheet;
 use App\Models\User;
+use App\Services\Integrations\ForwardNoticesToNotify;
+use App\Services\Integrations\TellsThroughNotify;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class ApprovalNeeded extends Notification
+class ApprovalNeeded extends Notification implements TellsThroughNotify
 {
     use Queueable;
 
@@ -16,7 +18,22 @@ class ApprovalNeeded extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        return app(ForwardNoticesToNotify::class)->channelsFor($this->spreadsheet->id);
+    }
+
+    public function notifySpreadsheetId(): int
+    {
+        return $this->spreadsheet->id;
+    }
+
+    public function notifyEvent(): string
+    {
+        return 'approval';
+    }
+
+    public function notifyTitle(): string
+    {
+        return 'Waiting for your approval';
     }
 
     public function toMail(object $notifiable): MailMessage

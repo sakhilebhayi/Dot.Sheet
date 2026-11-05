@@ -38,6 +38,7 @@ export class Server {
         this.imports = `/spreadsheets/${spreadsheetId}/import`;
         this.macrosAt = `/spreadsheets/${spreadsheetId}/macros`;
         this.approvalAt = `/spreadsheets/${spreadsheetId}/approval`;
+        this.filedAt = `/spreadsheets/${spreadsheetId}/filed`;
         this.queue = Promise.resolve();
     }
 
@@ -253,6 +254,10 @@ export class Server {
 
     setShareTemplate(on) {
         return json(`${this.shares}/template`, { method: 'POST', body: JSON.stringify({ on }) });
+    }
+
+    saveToFiles() {
+        return json(this.filedAt, { method: 'POST' });
     }
 
     approval() {

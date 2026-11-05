@@ -9,6 +9,7 @@ use App\Http\Controllers\GridCommentController;
 use App\Http\Controllers\GridController;
 use App\Http\Controllers\GridCopyController;
 use App\Http\Controllers\GridDuplicateController;
+use App\Http\Controllers\GridFilingController;
 use App\Http\Controllers\GridFormulaController;
 use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\GridProtectionController;
 use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
+use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
@@ -86,6 +88,7 @@ Route::middleware([
     // Import / Export
     // The browser-drawn editor and the API it works through.
     Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
+    Route::post('spreadsheets/{spreadsheet}/filed', [GridFilingController::class, 'store'])->middleware('throttle:10,1')->name('grid.filed');
     Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->middleware(RefuseSealedWorkbook::class)->name('grid.add');
     Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->middleware(RefuseSealedWorkbook::class)->name('grid.tabs.order');
     Route::prefix('spreadsheets/{spreadsheet}/approval')->name('grid.approval.')->middleware('throttle:120,1')->group(function () {
@@ -183,6 +186,9 @@ Route::middleware([
     Route::get('spreadsheets/{spreadsheet}/print-sheet', [SpreadsheetController::class, 'printSheet'])->middleware('throttle:60,1')->name('spreadsheets.print-sheet');
     Route::get('spreadsheets/{spreadsheet}/export/csv', [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');
     Route::get('spreadsheets/{spreadsheet}/export/excel', [SpreadsheetController::class, 'exportExcel'])->name('spreadsheets.export.excel');
+
+    Route::get('integrations', [IntegrationsController::class, 'index'])->name('integrations.index');
+    Route::post('integrations/{delivery}/again', [IntegrationsController::class, 'again'])->middleware('throttle:30,1')->name('integrations.again');
 
     // Invitations
     Route::get('spreadsheets/invitations/{token}/accept', [SpreadsheetController::class, 'acceptInvitation'])

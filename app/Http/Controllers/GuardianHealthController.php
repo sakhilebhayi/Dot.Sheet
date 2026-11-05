@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Guardian\Checks\CacheCheck;
 use App\Services\Guardian\Checks\DatabaseCheck;
 use App\Services\Guardian\Checks\ErrorRateCheck;
+use App\Services\Guardian\Checks\OutboxCheck;
 use App\Services\Guardian\Checks\QueueCheck;
 use App\Services\Guardian\Checks\SchedulerCheck;
 use App\Services\Guardian\Contracts\GuardianCheck;
@@ -27,6 +28,7 @@ class GuardianHealthController extends Controller
         SchedulerCheck::class,
         ErrorRateCheck::class,
         QueueCheck::class,
+        OutboxCheck::class,
     ];
 
     public function __invoke(): JsonResponse

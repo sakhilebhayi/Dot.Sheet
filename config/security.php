@@ -8,4 +8,10 @@ return [
     | stable on HTTPS.
     */
     'hsts_seconds' => (int) env('SECURITY_HSTS_SECONDS', 15552000),   // 180 days
+
+    /*
+    | The Content-Security-Policy is ENFORCED and nonce-based. SECURITY_CSP_REPORT_ONLY=true turns it back into a
+    | report-only policy without a deploy: the kill-switch if a real page turns out to need something it blocks.
+    */
+    'csp_report_only' => (bool) env('SECURITY_CSP_REPORT_ONLY', false),
 ];

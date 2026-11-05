@@ -326,7 +326,7 @@
             </div>
         </footer>
 
-        <script>
+        <script nonce="{{ Illuminate\Support\Facades\Vite::cspNonce() }}">
             if (window.matchMedia('(prefers-reduced-motion: no-preference)').matches && 'IntersectionObserver' in window) {
                 const io = new IntersectionObserver((entries) => {
                     entries.forEach((entry) => {

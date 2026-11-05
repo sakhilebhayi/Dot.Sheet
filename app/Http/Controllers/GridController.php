@@ -144,6 +144,7 @@ class GridController extends Controller
             'layout' => $sheetTab->fresh()->layout ?? (object) [],
             'tabs' => $this->tabs($spreadsheet),
             'version' => StructureVersion::current($spreadsheet->id),
+            'working' => Recalculator::isFinishing($sheetTab->id),
             'lastRow' => Cell::where('sheet_tab_id', $sheetTab->id)->max('row_index'),
             'lastCol' => Cell::where('sheet_tab_id', $sheetTab->id)->max('col_index'),
             'marks' => app(SheetComments::class)->marks($sheetTab->id),
@@ -1360,6 +1361,7 @@ class GridController extends Controller
             'changed' => $together->changedSince($spreadsheet->id, $input['since'] ?? null),
             'version' => StructureVersion::current($spreadsheet->id),
             'here' => $together->here($spreadsheet->id, $request->user()),
+            'working' => Recalculator::isFinishing($sheetTab->id),
         ]);
     }
 

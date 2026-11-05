@@ -126,7 +126,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ Illuminate\Support\Facades\Vite::cspNonce() }}">
     let chartInstance = null;
 
     document.addEventListener('livewire:initialized', () => {

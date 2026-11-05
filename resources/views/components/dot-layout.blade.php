@@ -6,6 +6,7 @@
         ['key' => 'sheets', 'label' => 'Spreadsheets', 'href' => route('dashboard')],
         $teams && $user->currentTeam ? ['key' => 'team', 'label' => 'Team', 'href' => route('teams.show', $user->currentTeam)] : null,
         App\Http\Controllers\IntegrationsController::oversees($user, $user->currentTeam) ? ['key' => 'integrations', 'label' => 'Integrations', 'href' => route('integrations.index')] : null,
+        ['key' => 'activity', 'label' => 'Activity', 'href' => route('activity')],
         ['key' => 'profile', 'label' => 'Profile', 'href' => route('profile.show')],
         Laravel\Jetstream\Jetstream::hasApiFeatures() ? ['key' => 'tokens', 'label' => 'API tokens', 'href' => route('api-tokens.index')] : null,
         $user->is_platform_operator ? ['key' => 'backups', 'label' => 'Backups', 'href' => route('operator.backups.index')] : null,

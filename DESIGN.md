@@ -478,6 +478,15 @@ solid ink. Red stays with negative figures and errors.
 340ms when the selection changes. Nothing moves at rest, on purpose: this is a tool people look at for
 hours, and the rule in the Overview outranks any wish for the page to keep breathing.
 
+### Integrations and Activity
+
+Both are settings pages: parts with their title on the left and `.entry` rows on the right. Integrations never says a
+platform works. It says whether it is set up and what last happened, and a call that did not go shows why, with
+Send again. Activity reads as one line per action with who and when, and has no controls: it is a record.
+
+Approval is a dock like the others. One sentence says where things stand, the note comes before the action, the first
+action is the button, and the record sits below once there is one.
+
 ## The classic editor
 
 A sheet's address opens the new editor. The classic editor stays beside it at `/classic` until the new

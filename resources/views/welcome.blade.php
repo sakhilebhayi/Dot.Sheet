@@ -72,6 +72,7 @@
             }
 
             .nav-top a, .nav-top button { color: var(--paper); }
+            .nav-top a.press { color: #1c1204; }
             .nav-top .nav-cream { color: rgba(250, 247, 236, 0.82); }
             .nav-scrolled a, .nav-scrolled button { color: var(--ink); }
             .nav-scrolled .nav-cream { color: var(--slate); }

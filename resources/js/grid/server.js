@@ -15,6 +15,18 @@ async function json(url, options = {}) {
     }
 }
 
+/** Try again until the server answers at all. What is sent this way says what a cell holds, so sending it twice is safe. */
+async function patiently(send, lost) {
+    for (let wait = 1000; ; wait = Math.min(wait * 2, 15000)) {
+        const answer = await send();
+        if (answer.status !== 0) return answer;
+        lost();
+        await new Promise((resolve) => {
+            setTimeout(resolve, wait);
+        });
+    }
+}
+
 /** A file goes as a form, so the browser sets its own content type. */
 async function upload(url, form) {
     try {
@@ -40,6 +52,7 @@ export class Server {
         this.approvalAt = `/spreadsheets/${spreadsheetId}/approval`;
         this.filedAt = `/spreadsheets/${spreadsheetId}/filed`;
         this.queue = Promise.resolve();
+        this.lost = () => {};
     }
 
     sheet(tab) {
@@ -297,7 +310,7 @@ export class Server {
     }
 
     edit(tab, version, edits, merges, comments) {
-        const send = () => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits, merges, comments }) });
+        const send = () => patiently(() => json(`${this.base}/${tab}/cells`, { method: 'POST', body: JSON.stringify({ version: version(), edits, merges, comments }) }), () => this.lost());
         const result = this.queue.then(send, send);
         this.queue = result;
         return result;

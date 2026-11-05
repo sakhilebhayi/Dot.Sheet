@@ -28,10 +28,7 @@ export class Together {
         const { ok, body, status } = await editor.server.pulse(editor.tab(), this.since);
         if (!ok) {
             // A refused answer is the app's to explain. No answer at all is the connection.
-            if (status === 0 && !this.lost) {
-                this.lost = true;
-                editor.note('Not connected. Changes may not save until the connection comes back.');
-            }
+            if (status === 0) this.disconnected();
             return;
         }
         if (this.lost) {
@@ -47,6 +44,12 @@ export class Together {
         if (first) return;
         if (body.version !== editor.version()) await editor.reopen();
         else if (body.changed && !editor.busy()) await editor.refresh();
+    }
+
+    disconnected() {
+        if (this.lost) return;
+        this.lost = true;
+        this.editor.note('Not connected. What you type is kept and saves when the connection comes back.');
     }
 
     /** A huge sheet finishes its formulas in the background: say so, and show the answers when they are in. */

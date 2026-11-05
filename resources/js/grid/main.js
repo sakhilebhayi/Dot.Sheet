@@ -13,6 +13,7 @@ import { SheetCheck } from './check';
 import { Ask } from './ask';
 import { Explain } from './explain';
 import { Together } from './together';
+import { Unsaved } from './unsaved';
 import { PlacedCharts } from './placed';
 import { ImportReport } from './report';
 import { FormulaHelp } from './suggest';
@@ -152,6 +153,7 @@ const pivots = new Pivots({
     refused,
     ask,
 });
+const unsaved = new Unsaved(boot.id);
 const together = new Together({
     server,
     every: boot.pulseEvery,
@@ -977,6 +979,8 @@ function failed(status, body) {
     return body.message || 'That was not saved. Try again.';
 }
 
+server.lost = () => together.disconnected();
+
 /** Show the edits now and send them; the server's answer then replaces what was guessed here. */
 async function write(edits, { remember: keep = true, merges, comments, record = keep } = {}) {
     if (!boot.canEdit || (edits.length === 0 && !merges && !comments)) return null;
@@ -995,8 +999,10 @@ async function write(edits, { remember: keep = true, merges, comments, record = 
     selected();
 
     sending++;
+    const safe = edits.length > 0 ? unsaved.add(tab, edits) : null;
     const { ok, status, body } = await server.edit(tab, () => version, edits, merges, comments);
     sending--;
+    unsaved.done(safe);
     edits.forEach(({ row, col }) => store.release(row, col));
 
     if (!ok) {
@@ -1020,6 +1026,32 @@ async function write(edits, { remember: keep = true, merges, comments, record = 
     if (body.merges) grid.setMerges(body.merges);
     await absorb(body, new Set(edits.map(({ row, col }) => `${row}:${col}`)));
     return body;
+}
+
+/** The last visit ended with typing that never reached the server: the tab closed, or the machine went down. */
+function offerWhatWasLeft() {
+    const left = unsaved.left();
+    if (left.length === 0 || !canEditWorkbook) return;
+
+    const count = left.reduce((total, entry) => total + entry.edits.length, 0);
+    note(`${count === 1 ? 'One change' : `${count} changes`} from your last visit did not reach the server.`);
+    fillOffer.textContent = 'Put back what was typed';
+    fillOffer.hidden = false;
+    fillOffer.onclick = async () => {
+        fillOffer.hidden = true;
+        for (const entry of left) {
+            const { ok, status, body } = await server.edit(entry.tab, () => version, entry.edits);
+            unsaved.done(entry.id);
+            if (!ok) {
+                refused(status, body);
+                return;
+            }
+            version = body.version;
+        }
+        await store.refresh();
+        grid.paint();
+        note('Put back. Anything someone else changed since was left as they had it.');
+    };
 }
 
 /** Someone else changed the cell while this person typed. Theirs stands until they say otherwise. */
@@ -3237,5 +3269,6 @@ if (tab !== null) {
             select(Number(askedCell[2]) - 1, columnIndex(askedCell[1]));
             notes.toggle(true);
         }
+        offerWhatWasLeft();
     });
 }

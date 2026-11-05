@@ -136,4 +136,8 @@ return [
     */
     'structure_ops_enabled' => filter_var(env('SHEET_STRUCTURE_OPS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
 
+    /*
+    | Days the record of who did what to a workbook is kept.
+    */
+    'audit_keep_days' => (int) env('SHEET_AUDIT_KEEP_DAYS', 730),
 ];

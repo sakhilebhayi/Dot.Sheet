@@ -34,7 +34,8 @@
     <h1>{{ $spreadsheet->name }}</h1>
     <p>{{ $tab->name }}</p>
     @unless ($forPdf)
-        <div class="press"><button type="button" onclick="print()">Print</button></div>
+        <div class="press"><button type="button">Print</button></div>
+        <script nonce="{{ Illuminate\Support\Facades\Vite::cspNonce() }}">document.querySelector('.press button').addEventListener('click', () => print());</script>
     @endunless
     @if ($page['too_large'])
         <p>This sheet is too large to lay out for paper. Download it as Excel instead.</p>

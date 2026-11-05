@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Vite;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /** Baseline browser protections are on every response, a route's own stricter header is kept, and the report-only policy reports to /csp-report. */
@@ -44,25 +46,55 @@ class SecurityHeadersTest extends TestCase
         $this->get('/__strict')->assertHeader('X-Frame-Options', 'DENY');
     }
 
-    public function test_the_policy_is_report_only_and_reports_to_the_csp_endpoint(): void
+    public function test_the_policy_is_enforced_and_reports_to_the_csp_endpoint(): void
     {
         $response = $this->get('/');
 
-        $policy = (string) $response->headers->get('Content-Security-Policy-Report-Only');
+        $policy = (string) $response->headers->get('Content-Security-Policy');
         $this->assertStringContainsString("default-src 'self'", $policy);
         $this->assertStringContainsString('report-uri /csp-report', $policy);
         $this->assertStringContainsString("frame-ancestors 'self'", $policy);
         $this->assertStringContainsString("object-src 'none'", $policy);
         $this->assertStringContainsString("base-uri 'self'", $policy);
-        $this->assertFalse($response->headers->has('Content-Security-Policy'), 'report-only: nothing is enforced yet');
+        $this->assertStringContainsString("script-src-attr 'none'", $policy);
+        $this->assertFalse($response->headers->has('Content-Security-Policy-Report-Only'));
+    }
+
+    public function test_the_page_scripts_carry_the_nonce_the_policy_announces(): void
+    {
+        $response = $this->get('/');
+
+        preg_match("/'nonce-([^']+)'/", (string) $response->headers->get('Content-Security-Policy'), $nonce);
+        $this->assertNotEmpty($nonce[1] ?? null);
+        $this->assertStringContainsString('<script nonce="'.$nonce[1].'">', (string) $response->getContent());
+        $this->assertStringNotContainsString('<script>', (string) $response->getContent());
+    }
+
+    public function test_the_nonce_is_new_on_every_response(): void
+    {
+        $first = (string) $this->get('/')->headers->get('Content-Security-Policy');
+        Vite::useCspNonce(Str::random(40));
+        $second = (string) $this->get('/')->headers->get('Content-Security-Policy');
+
+        $this->assertNotSame($first, $second);
+    }
+
+    public function test_the_kill_switch_goes_back_to_report_only(): void
+    {
+        config(['security.csp_report_only' => true]);
+
+        $response = $this->get('/');
+
+        $this->assertTrue($response->headers->has('Content-Security-Policy-Report-Only'));
+        $this->assertFalse($response->headers->has('Content-Security-Policy'));
     }
 
     public function test_the_policy_allows_the_outside_origins_the_layouts_load(): void
     {
-        $policy = (string) $this->get('/')->headers->get('Content-Security-Policy-Report-Only');
+        $policy = (string) $this->get('/')->headers->get('Content-Security-Policy');
 
         preg_match('/script-src ([^;]+);/', $policy, $script);
-        $this->assertStringContainsString("'unsafe-inline'", $script[1], 'Livewire and Jetstream render inline scripts');
+        $this->assertStringNotContainsString("'unsafe-inline'", $script[1]);
         $this->assertStringContainsString("'unsafe-eval'", $script[1], 'Alpine evaluates its expressions with the Function constructor');
 
         $this->assertMatchesRegularExpression('/style-src [^;]*https:\/\/fonts\.googleapis\.com/', $policy);

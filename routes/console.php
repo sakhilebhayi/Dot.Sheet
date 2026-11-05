@@ -33,4 +33,5 @@ Schedule::command('integrations:deliver')->everyMinute()->name('integrations-del
 Schedule::command('integrations:deliver --prune')->dailyAt('03:15')->name('integrations-prune');
 Schedule::command('integrations:analytics-snapshots')->dailyAt('04:30')->name('integrations-analytics')->withoutOverlapping();
 
+Schedule::command('sheet:prune-audit')->weekly()->name('prune-audit');
 Schedule::command('sheet:prune-versions')->dailyAt('03:20')->name('prune-versions')->withoutOverlapping();

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Auth\EcosystemAuthController;
 use App\Http\Controllers\CspReportController;
 use App\Http\Controllers\GridApprovalController;
@@ -19,9 +20,11 @@ use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\IntegrationsController;
+use App\Http\Controllers\ReadyController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
+use App\Http\Middleware\RecordWorkbookAction;
 use App\Http\Middleware\RefuseProtectedSheet;
 use App\Http\Middleware\RefuseSealedWorkbook;
 use App\Models\Spreadsheet;
@@ -68,6 +71,7 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
+    RecordWorkbookAction::class,
 ])->group(function () {
     Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');
 
@@ -76,21 +80,22 @@ Route::middleware([
     Route::post('spreadsheets/from-idea', [SpreadsheetController::class, 'fromIdea'])->middleware('throttle:10,1')->name('spreadsheets.from-idea');
     Route::post('spreadsheets/from-file', [SpreadsheetController::class, 'fromFile'])->middleware('throttle:20,1')->name('spreadsheets.from-file');
     Route::post('spreadsheets/from-team-template', [GridDuplicateController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-team-template');
-    Route::resource('spreadsheets', SpreadsheetController::class)->except('show')->middlewareFor('update', RefuseSealedWorkbook::class);
+    Route::resource('spreadsheets', SpreadsheetController::class)->except('show')
+        ->middlewareFor(['store', 'destroy'], 'throttle:120,1')->middlewareFor('update', ['throttle:120,1', RefuseSealedWorkbook::class]);
     // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
     Route::get('spreadsheets/{spreadsheet}/asked', [GridAskController::class, 'record'])->name('grid.asked');
-    Route::post('spreadsheets/{spreadsheet}/asked/{prompt}/applied', [GridAskController::class, 'applied'])->name('grid.asked.applied');
+    Route::post('spreadsheets/{spreadsheet}/asked/{prompt}/applied', [GridAskController::class, 'applied'])->middleware('throttle:120,1')->name('grid.asked.applied');
     Route::post('spreadsheets/{spreadsheet}/duplicate', [GridDuplicateController::class, 'workbook'])->middleware('throttle:20,1')->name('spreadsheets.duplicate');
     Route::get('spreadsheets/{spreadsheet}/classic', [SpreadsheetController::class, 'classic'])->name('spreadsheets.classic');
     Route::get('spreadsheets/{spreadsheet}/print', [SpreadsheetController::class, 'printOf'])->name('spreadsheets.print');
 
     // Import / Export
     // The browser-drawn editor and the API it works through.
-    Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}');
+    Route::redirect('spreadsheets/{spreadsheet}/grid', '/spreadsheets/{spreadsheet}')->middleware('throttle:120,1');
     Route::post('spreadsheets/{spreadsheet}/filed', [GridFilingController::class, 'store'])->middleware('throttle:10,1')->name('grid.filed');
-    Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->middleware(RefuseSealedWorkbook::class)->name('grid.add');
-    Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->middleware(RefuseSealedWorkbook::class)->name('grid.tabs.order');
+    Route::post('spreadsheets/{spreadsheet}/tabs', [GridController::class, 'addSheet'])->middleware(['throttle:120,1', RefuseSealedWorkbook::class])->name('grid.add');
+    Route::post('spreadsheets/{spreadsheet}/tabs/order', [GridTabController::class, 'order'])->middleware(['throttle:120,1', RefuseSealedWorkbook::class])->name('grid.tabs.order');
     Route::prefix('spreadsheets/{spreadsheet}/approval')->name('grid.approval.')->middleware('throttle:120,1')->group(function () {
         Route::get('/', [GridApprovalController::class, 'index'])->name('index');
         Route::post('ask', [GridApprovalController::class, 'ask'])->name('ask');
@@ -178,7 +183,7 @@ Route::middleware([
         Route::get('trace/{row}/{col}', [GridController::class, 'trace'])->whereNumber(['row', 'col'])->name('trace');
     });
 
-    Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->middleware(RefuseSealedWorkbook::class)->name('spreadsheets.import');
+    Route::post('spreadsheets/{spreadsheet}/import', [SpreadsheetController::class, 'import'])->middleware(['throttle:30,1', RefuseSealedWorkbook::class])->name('spreadsheets.import');
     Route::get('spreadsheets/{spreadsheet}/import/batches/{batchId}', [SpreadsheetController::class, 'importBatchStatus'])->name('spreadsheets.import.batch-status');
     Route::get('spreadsheets/{spreadsheet}/export/workbook/{format}', [SpreadsheetController::class, 'exportWorkbook'])->whereIn('format', ['xlsx', 'ods'])->middleware('throttle:20,1')->name('spreadsheets.export.workbook');
     Route::get('spreadsheets/{spreadsheet}/export/pdf', [SpreadsheetController::class, 'exportPdf'])->middleware('throttle:20,1')->name('spreadsheets.export.pdf');
@@ -187,6 +192,7 @@ Route::middleware([
     Route::get('spreadsheets/{spreadsheet}/export/csv', [SpreadsheetController::class, 'exportCsv'])->name('spreadsheets.export.csv');
     Route::get('spreadsheets/{spreadsheet}/export/excel', [SpreadsheetController::class, 'exportExcel'])->name('spreadsheets.export.excel');
 
+    Route::get('activity', ActivityController::class)->name('activity');
     Route::get('integrations', [IntegrationsController::class, 'index'])->name('integrations.index');
     Route::post('integrations/{delivery}/again', [IntegrationsController::class, 'again'])->middleware('throttle:30,1')->name('integrations.again');
 
@@ -198,6 +204,9 @@ Route::middleware([
         Route::get('/backups', fn () => view('operator.backups'))->name('backups.index');
     });
 });
+
+// Readiness for uptime monitors: /up says PHP answers, this says the app can do its job.
+Route::get('/ready', ReadyController::class)->name('ready');
 
 // Public liveness probe for the cron scheduler and queue worker, watched from GitHub every
 // 15 minutes by .github/workflows/scheduler-watchdog.yml.

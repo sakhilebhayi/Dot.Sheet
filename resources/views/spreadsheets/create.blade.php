@@ -63,6 +63,23 @@
             @error('file')<p class="error">{{ $message }}</p>@enderror
         </section>
 
+        @if ($ours->isNotEmpty())
+            <section class="starts" aria-labelledby="ours-title">
+                <h2 id="ours-title">Start from your team's templates</h2>
+                <p>A new workbook with everything in the template. The template itself stays as it is.</p>
+                <ul>
+                    @foreach ($ours as $template)
+                        <li>
+                            <button type="submit" name="source" value="{{ $template->id }}" formaction="{{ route('spreadsheets.from-team-template') }}" formnovalidate>
+                                <b>{{ $template->name }}</b>
+                                <span>{{ $template->team?->name }}</span>
+                            </button>
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         <section class="starts" aria-labelledby="starts-title">
             <h2 id="starts-title">Or start from a template</h2>
             <p>Working formulas, allowed values and summaries, ready for your figures. Nothing in them is made up.</p>

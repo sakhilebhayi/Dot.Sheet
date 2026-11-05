@@ -19,11 +19,13 @@ class Spreadsheet extends Model
         'public_enabled',
         'public_token',
         'public_expires_at',
+        'is_template',
     ];
 
     protected $casts = [
         'settings' => 'json',
         'public_enabled' => 'boolean',
+        'is_template' => 'boolean',
         'public_expires_at' => 'datetime',
     ];
 

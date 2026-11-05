@@ -53,6 +53,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | How often an open page asks what has changed
+    |--------------------------------------------------------------------------
+    |
+    | Without a broadcast server, others' changes arrive this many seconds late at most. Only a
+    | page in view asks. Lower it and every open workbook costs the host more requests.
+    |
+    */
+    'pulse_seconds' => (int) env('SHEET_PULSE_SECONDS', 20),
+
+    /*
+    |--------------------------------------------------------------------------
     | Largest import that runs inside the request
     |--------------------------------------------------------------------------
     |

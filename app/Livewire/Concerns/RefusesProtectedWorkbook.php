@@ -5,6 +5,7 @@ namespace App\Livewire\Concerns;
 use App\Models\SheetProtection;
 use App\Models\Spreadsheet;
 use App\Services\SheetProtections;
+use App\Services\WorkbookApprovals;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -23,8 +24,13 @@ trait RefusesProtectedWorkbook
     {
         $user = Auth::user();
 
-        return $user !== null && $user->can('update', $spreadsheet)
-            && SheetProtection::where('spreadsheet_id', $spreadsheet->id)->exists()
-            && ! app(SheetProtections::class)->isKeeper($user, $spreadsheet);
+        if ($user === null || ! $user->can('update', $spreadsheet)) {
+            return false;
+        }
+        if (app(WorkbookApprovals::class)->isSealed($spreadsheet->id)) {
+            return true;
+        }
+
+        return SheetProtection::where('spreadsheet_id', $spreadsheet->id)->exists() && ! app(SheetProtections::class)->isKeeper($user, $spreadsheet);
     }
 }

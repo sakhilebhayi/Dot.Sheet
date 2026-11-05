@@ -16,6 +16,7 @@ use App\Services\SheetComments;
 use App\Services\SheetMacros;
 use App\Services\SheetNames;
 use App\Services\SheetProtections;
+use App\Services\SheetTogether;
 use App\Services\SheetVersions;
 use Facebook\WebDriver\WebDriverBy;
 use Facebook\WebDriver\WebDriverKeys;
@@ -4071,6 +4072,151 @@ class DotGridEditorTest extends DuskTestCase
 
             $browser->driver->executeScript("[...document.querySelectorAll('#ask-answer button')].find(b => b.textContent === 'B3:B3').click()");
             $browser->waitForTextIn('#ref', 'B3');
+        });
+    }
+
+    private function beat(Browser $browser): void
+    {
+        $browser->driver->executeScript("document.dispatchEvent(new Event('visibilitychange'))");
+    }
+
+    public function test_what_someone_else_changed_arrives_and_who_is_here_shows(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Sipho']);
+        $sheet->sharedUsers()->attach($friend->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $friend) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->pause(300);
+            app(SheetTogether::class)->here($sheet->id, $friend);
+            sleep(1);
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 0, 'value' => 'Changed by Sipho']], $friend->id);
+
+            $this->beat($browser);
+            $browser->waitForTextIn('#here', 'Sipho also here');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Changed by Sipho');
+            $this->assertNoConsoleErrors($browser);
+        });
+    }
+
+    public function test_two_people_typing_in_one_cell_lose_nothing_silently(): void
+    {
+        [$user, $sheet, $tab] = $this->expenseSheet();
+        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Sipho']);
+        $sheet->sharedUsers()->attach($friend->id, ['permission' => 'edit']);
+
+        $this->browse(function (Browser $browser) use ($user, $sheet, $tab, $friend) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $this->clickCell($browser, 1, 0);
+            app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 1, 'col' => 0, 'value' => 'Theirs']], $friend->id);
+
+            $browser->driver->getKeyboard()->sendKeys(['Mine', WebDriverKeys::ENTER]);
+            $browser->waitForTextIn('#note', 'Sipho changed A2 while you were typing, to Theirs.');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Theirs');
+
+            $browser->waitFor('#fill-offer:not([hidden])')->click('#fill-offer');
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 1, 0) === 'Mine');
+            $this->assertSame('Mine', Cell::where('sheet_tab_id', $tab->id)->where('row_index', 1)->where('col_index', 0)->value('raw_value'));
+        });
+    }
+
+    public function test_a_workbook_is_asked_for_approved_sealed_and_reopened(): void
+    {
+        [$owner, $sheet] = $this->sheet();
+        $editor = User::factory()->withPersonalTeam()->create(['name' => 'Asker']);
+        $admin = User::factory()->withPersonalTeam()->create(['name' => 'Decider']);
+        $sheet->sharedUsers()->attach($editor->id, ['permission' => 'edit']);
+        $sheet->sharedUsers()->attach($admin->id, ['permission' => 'admin']);
+
+        $this->browse(function (Browser $browser) use ($editor, $admin, $sheet) {
+            $this->open($browser, $editor, $sheet);
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'has not been through approval');
+            $browser->type('#approval-note', 'For the board');
+            $this->pressIn($browser, '#approval', 'Ask for approval');
+            $browser->waitForTextIn('#note', 'Asked for approval.');
+            $browser->waitForTextIn('#approval-list', 'For the board');
+            $browser->assertDontSeeIn('#approval-body', 'Approve');
+
+            $this->open($browser, $admin, $sheet);
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Waiting for a decision.');
+            $this->pressIn($browser, '#approval', 'Approve');
+            $browser->waitForTextIn('#note', 'Approved. The workbook is sealed');
+            $browser->waitForTextIn('#approval-body', 'Nobody can change it until it is reopened.');
+
+            $browser->click('#approval-close');
+            $this->clickCell($browser, 2, 2);
+            $browser->driver->getKeyboard()->sendKeys('x');
+            $browser->waitForTextIn('#note', 'This workbook is approved. Reopen it to change it.');
+
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Nobody can change it');
+            $this->pressIn($browser, '#approval', 'Reopen');
+            $browser->waitForTextIn('#note', 'Reopened.');
+            $browser->click('#approval-close');
+            $this->clickCell($browser, 2, 2);
+            $browser->driver->getKeyboard()->sendKeys(['y', WebDriverKeys::ENTER]);
+            $browser->waitUsing(5, 25, fn () => $this->cell($browser, 2, 2) === 'y');
+
+            $this->runCommand($browser, 'Approval');
+            $browser->waitForTextIn('#approval-body', 'Reopened.');
+            $this->pressIn($browser, '#approval', 'Ask for approval');
+            $browser->waitForTextIn('#approval-body', 'Waiting for a decision.');
+            $browser->assertDontSeeIn('#approval-body', 'Approve');
+            $this->pressIn($browser, '#approval', 'Take it back');
+            $browser->waitForTextIn('#approval-body', 'Taken back.');
+        });
+    }
+
+    public function test_a_workbook_goes_to_a_team_and_a_teammate_starts_from_it_as_a_template(): void
+    {
+        [$owner, $sheet] = $this->sheet();
+        $team = $owner->currentTeam;
+        $sheet->update(['team_id' => null]);
+        $mate = User::factory()->withPersonalTeam()->create();
+        $team->users()->attach($mate, ['role' => 'editor']);
+
+        $this->browse(function (Browser $browser) use ($owner, $mate, $sheet, $team) {
+            $this->open($browser, $owner, $sheet);
+            $browser->pause(300);
+            $browser->click('#do-share');
+            $browser->waitForTextIn('#share-place-said', 'Private.');
+            $browser->assertMissing('#share-template-row:not([hidden])');
+            $browser->select('#share-place', (string) $team->id);
+            $browser->waitForTextIn('#share-place-said', "In {$team->name}.");
+            $browser->waitForTextIn('#note', 'This belongs to the team now.');
+            $browser->waitFor('#share-template-row:not([hidden])')->check('#share-template');
+            $browser->waitForTextIn('#note', 'Your team can start from this now.');
+            $this->assertTrue((bool) $sheet->fresh()->is_template);
+
+            $browser->loginAs($mate)->visit('/spreadsheets/create');
+            $browser->waitForText("Start from your team's templates");
+            $browser->pause(500);
+            $browser->press((string) $sheet->name);
+            $browser->waitUsing(10, 50, fn () => Spreadsheet::where('owner_id', $mate->id)->exists());
+            $this->assertSame($sheet->name, Spreadsheet::where('owner_id', $mate->id)->value('name'));
+        });
+    }
+
+    public function test_a_lost_connection_is_said_and_so_is_coming_back(): void
+    {
+        [$user, $sheet] = $this->expenseSheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->openWithoutWaitingForSales($browser, $user, $sheet);
+            $browser->pause(300);
+            $browser->driver->executeScript(<<<'JS'
+                window.realFetch = window.fetch;
+                window.fetch = () => Promise.reject(new TypeError('offline'));
+            JS);
+            $this->beat($browser);
+            $browser->waitForTextIn('#note', 'Not connected.');
+
+            $browser->driver->executeScript('window.fetch = window.realFetch');
+            $this->beat($browser);
+            $browser->waitForTextIn('#note', 'Connected again.');
         });
     }
 }

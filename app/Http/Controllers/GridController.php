@@ -25,6 +25,7 @@ use App\Services\SheetMerges;
 use App\Services\SheetProtections;
 use App\Services\SheetSearch;
 use App\Services\SheetStructureService;
+use App\Services\SheetTogether;
 use App\Services\SheetVersions;
 use App\Services\SheetWorkflows;
 use App\Services\SortRefused;
@@ -107,6 +108,7 @@ class GridController extends Controller
                 'canKeep' => app(SheetProtections::class)->isKeeper(Auth::user(), $spreadsheet),
                 'scripts' => (bool) config('sheet.scripts_enabled'),
                 'told' => session('success'),
+                'pulseEvery' => (int) config('sheet.pulse_seconds') * 1000,
                 'importReport' => $spreadsheet->settings['import_report'] ?? null,
                 'showReport' => session('import_report', false),
                 'structure' => (bool) config('sheet.structure_ops_enabled'),
@@ -178,6 +180,8 @@ class GridController extends Controller
             'edits.*.col' => 'required|integer|min:0|max:'.(SheetStructureService::GRID_COLS - 1),
             'edits.*.value' => 'present|nullable|string|max:32767',
             'edits.*.x' => 'sometimes|nullable|array',
+            // What the cell held when the person started typing: someone else may have changed it since.
+            'edits.*.was' => 'sometimes|nullable|string|max:32767',
             ...$this->mergeRules('merges.add'),
             ...$this->mergeRules('merges.remove'),
             // Undo of a sort or a cut: where the comments that moved were.
@@ -190,9 +194,14 @@ class GridController extends Controller
 
         $edits = array_map(function (array $e) {
             $edit = ['row' => (int) $e['row'], 'col' => (int) $e['col'], 'value' => (string) ($e['value'] ?? '')];
+            if (array_key_exists('was', $e)) {
+                $edit['was'] = (string) ($e['was'] ?? '');
+            }
 
             return array_key_exists('x', $e) ? $edit + ['x' => CellFormat::clean($e['x'])] : $edit;
         }, $input['edits']);
+        /** @var list<array<string, mixed>> $conflicts */
+        $conflicts = [];
 
         $merges = isset($input['merges']) ? [$sheetTab->id => [
             'add' => $this->areas($input['merges']['add'] ?? []),
@@ -203,9 +212,15 @@ class GridController extends Controller
             $spreadsheet,
             $sheetTab,
             (int) $input['version'],
-            fn () => [$sheetTab->id => $edits],
+            function () use ($edits, $sheetTab, &$conflicts) {
+                [$fair, $conflicts] = app(SheetTogether::class)->sortOut($sheetTab->id, $edits);
+
+                return [$sheetTab->id => $fair];
+            },
             $writer,
-            [],
+            function () use (&$conflicts) {
+                return array_filter(['conflicts' => $conflicts]);
+            },
             $merges,
             moveComments: isset($input['comments']) ? fn () => app(SheetComments::class)->place($spreadsheet->id, $input['comments']) : null,
         );
@@ -1330,6 +1345,21 @@ class GridController extends Controller
             ...(isset($changes[$sheetTab->id]) ? ['merges' => $changes[$sheetTab->id]['list']] : []),
             ...($commentsBack !== [] ? ['marks' => app(SheetComments::class)->marks($sheetTab->id)] : []),
             ...(is_callable($extra) ? $extra() : $extra),
+        ]);
+    }
+
+    /** Who else is here, and whether anything changed since the page last asked. */
+    public function pulse(Request $request, Spreadsheet $spreadsheet, SheetTab $sheetTab, SheetTogether $together): JsonResponse
+    {
+        $this->authorizeTab('view', $spreadsheet, $sheetTab);
+
+        $input = $request->validate(['since' => 'sometimes|nullable|string|max:32']);
+
+        return response()->json([
+            'at' => now()->toDateTimeString(),
+            'changed' => $together->changedSince($spreadsheet->id, $input['since'] ?? null),
+            'version' => StructureVersion::current($spreadsheet->id),
+            'here' => $together->here($spreadsheet->id, $request->user()),
         ]);
     }
 

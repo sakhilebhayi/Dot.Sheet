@@ -18,6 +18,9 @@ class RefuseProtectedSheet
 {
     private const STILL_ALLOWED = ['grid.comments.*', 'grid.copies.store', 'grid.duplicate', 'grid.dashboard', 'grid.ask', 'grid.protections.*'];
 
+    /** An approved workbook gains no sheets either. */
+    private const STILL_ALLOWED_WHEN_APPROVED = ['grid.comments.*', 'grid.copies.store', 'grid.ask', 'grid.protections.*'];
+
     public function __construct(private SheetProtections $protections) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -27,13 +30,18 @@ class RefuseProtectedSheet
         $user = $request->user();
 
         // Someone who cannot edit at all is the controller's to refuse, and is told nothing about protection.
-        if ($request->isMethodSafe() || $request->routeIs(...self::STILL_ALLOWED) || ! $spreadsheet instanceof Spreadsheet
+        if ($request->isMethodSafe() || ! $spreadsheet instanceof Spreadsheet
             || ! $tab instanceof SheetTab || $tab->spreadsheet_id !== $spreadsheet->id || $user === null || ! $user->can('update', $spreadsheet)) {
             return $next($request);
         }
 
         try {
-            $this->protections->refuseSheet($spreadsheet, $tab->id, $user);
+            if (! $request->routeIs(...self::STILL_ALLOWED_WHEN_APPROVED)) {
+                $this->protections->refuseSealed($spreadsheet);
+            }
+            if (! $request->routeIs(...self::STILL_ALLOWED)) {
+                $this->protections->refuseSheet($spreadsheet, $tab->id, $user);
+            }
         } catch (ProtectionRefused $refused) {
             return response()->json(['message' => $refused->getMessage()], 422);
         }

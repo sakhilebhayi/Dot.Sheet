@@ -77,6 +77,26 @@ class GridDuplicateController extends Controller
             : redirect()->route('spreadsheets.show', $copy);
     }
 
+    /** Start from a workbook a team offers as a template. It comes in as a new workbook, the original untouched. */
+    public function fromTemplate(Request $request): RedirectResponse
+    {
+        $input = $request->validate(['source' => 'required|integer', 'name' => 'nullable|string|max:255']);
+        $source = Spreadsheet::where('is_template', true)->whereIn('team_id', $request->user()->allTeams()->pluck('id'))->findOrFail($input['source']);
+
+        try {
+            $copy = $this->making(function () use ($source, $request, $input) {
+                $copy = $this->duplicates->workbook($source, $request->user());
+                $copy->update(['name' => trim((string) ($input['name'] ?? '')) ?: $source->name]);
+
+                return $copy;
+            });
+        } catch (DuplicateRefused $refused) {
+            return back()->with('error', $refused->getMessage());
+        }
+
+        return $copy === null ? back()->with('error', WriteLock::BUSY_MESSAGE) : redirect()->route('spreadsheets.show', $copy);
+    }
+
     /**
      * @template T
      *

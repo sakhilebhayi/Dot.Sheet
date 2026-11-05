@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SheetProtection;
+use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,8 @@ class SheetProtections
     public const CELLS_MESSAGE = 'Those cells are protected. Ask the workbook\'s owner to change them.';
 
     public const SOME_CELLS_MESSAGE = 'Part of this sheet is protected, so this cannot run on it. Ask the workbook\'s owner.';
+
+    public const SEALED_MESSAGE = 'This workbook is approved, so it cannot be changed. A keeper can reopen it.';
 
     public const ALREADY_MESSAGE = 'This sheet is already protected.';
 
@@ -49,14 +52,16 @@ class SheetProtections
     }
 
     /**
-     * @return array{locked: bool, ranges: list<array{r1: int, c1: int, r2: int, c2: int}>}
+     * @return array{locked: bool, sealed: bool, ranges: list<array{r1: int, c1: int, r2: int, c2: int}>}
      */
     public function state(int $sheetTabId): array
     {
         $all = SheetProtection::where('sheet_tab_id', $sheetTabId)->get();
+        $spreadsheetId = (int) SheetTab::whereKey($sheetTabId)->value('spreadsheet_id');
 
         return [
             'locked' => $all->contains(fn (SheetProtection $p) => $p->isWholeSheet()),
+            'sealed' => app(WorkbookApprovals::class)->isSealed($spreadsheetId),
             'ranges' => $all->reject(fn (SheetProtection $p) => $p->isWholeSheet())->map(fn (SheetProtection $p) => $this->area($p))->values()->all(),
         ];
     }
@@ -108,6 +113,18 @@ class SheetProtections
     }
 
     /**
+     * An approved workbook stays as it was approved, for keepers too.
+     *
+     * @throws ProtectionRefused
+     */
+    public function refuseSealed(Spreadsheet $spreadsheet): void
+    {
+        if (app(WorkbookApprovals::class)->isSealed($spreadsheet->id)) {
+            throw new ProtectionRefused(self::SEALED_MESSAGE);
+        }
+    }
+
+    /**
      * The sheet as a whole may not change.
      *
      * @throws ProtectionRefused
@@ -142,6 +159,7 @@ class SheetProtections
      */
     public function refuseChange(Spreadsheet $spreadsheet, array $plans, array $merges, ?User $user): void
     {
+        $this->refuseSealed($spreadsheet);
         $tabs = array_unique([...array_keys($plans), ...array_keys($merges)]);
         $all = SheetProtection::whereIn('sheet_tab_id', $tabs)->get()->groupBy('sheet_tab_id');
         if ($all->isEmpty() || $this->isKeeper($user, $spreadsheet)) {
@@ -177,6 +195,7 @@ class SheetProtections
      */
     public function refuseDelete(Spreadsheet $spreadsheet, int $sheetTabId, string $axis, int $at, int $count, ?User $user): void
     {
+        $this->refuseSealed($spreadsheet);
         if ($this->isKeeper($user, $spreadsheet)) {
             return;
         }

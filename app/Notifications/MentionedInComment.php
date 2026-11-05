@@ -2,11 +2,13 @@
 
 namespace App\Notifications;
 
+use App\Services\Integrations\ForwardNoticesToNotify;
+use App\Services\Integrations\TellsThroughNotify;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MentionedInComment extends Notification
+class MentionedInComment extends Notification implements TellsThroughNotify
 {
     use Queueable;
 
@@ -25,7 +27,22 @@ class MentionedInComment extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        return app(ForwardNoticesToNotify::class)->channelsFor($this->spreadsheetId);
+    }
+
+    public function notifySpreadsheetId(): int
+    {
+        return $this->spreadsheetId;
+    }
+
+    public function notifyEvent(): string
+    {
+        return 'mention';
+    }
+
+    public function notifyTitle(): string
+    {
+        return 'You were mentioned in a comment';
     }
 
     /**

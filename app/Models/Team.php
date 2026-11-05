@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\TeamFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Jetstream\Events\TeamCreated;
 use Laravel\Jetstream\Events\TeamDeleted;
 use Laravel\Jetstream\Events\TeamUpdated;
@@ -47,7 +48,7 @@ class Team extends JetstreamTeam
         ];
     }
 
-    public function spreadsheets()
+    public function spreadsheets(): HasMany
     {
         return $this->hasMany(Spreadsheet::class);
     }

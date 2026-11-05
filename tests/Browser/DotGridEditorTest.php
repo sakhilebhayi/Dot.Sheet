@@ -10,6 +10,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use App\Services\CellWriter;
+use App\Services\Integrations\Outbox;
 use App\Services\PivotTableService;
 use App\Services\SheetCharts;
 use App\Services\SheetComments;
@@ -4197,6 +4198,36 @@ class DotGridEditorTest extends DuskTestCase
             $browser->press((string) $sheet->name);
             $browser->waitUsing(10, 50, fn () => Spreadsheet::where('owner_id', $mate->id)->exists());
             $this->assertSame($sheet->name, Spreadsheet::where('owner_id', $mate->id)->value('name'));
+        });
+    }
+
+    public function test_a_workbook_is_saved_to_dot_files_or_says_why_it_cannot_be(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $browser->pause(300);
+            $this->runCommand($browser, 'Save to Dot.Files');
+            $browser->waitForTextIn('#note', 'Dot.Files is not set up on this server yet.');
+        });
+    }
+
+    public function test_the_integrations_page_shows_what_happened_and_fits_a_phone(): void
+    {
+        [$user] = $this->sheet();
+        $team = $user->currentTeam;
+        $row = app(Outbox::class)->push('notify', $team->id, 'sheet.mention', 'journey', []);
+        $row->forceFill(['status' => 'given_up', 'next_attempt_at' => null, 'last_error' => 'Dot.Notify refused the event as invalid.'])->save();
+
+        $this->browse(function (Browser $browser) use ($user, $row) {
+            $browser->loginAs($user)->visit('/integrations')->waitForText('Connected platforms');
+            $browser->resize(375, 760)->pause(200);
+            $this->assertFalse((bool) $browser->driver->executeScript('return document.documentElement.scrollWidth > innerWidth'));
+            $browser->resize(1280, 900);
+
+            $browser->pause(400)->press('Send again')->waitForText('It will go again in the next minute.');
+            $this->assertSame('pending', $row->fresh()->status);
         });
     }
 

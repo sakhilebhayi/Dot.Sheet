@@ -2,6 +2,9 @@
 
 return [
 
+    // Where a new person makes an account: public sign-up here is closed.
+    'signup_url' => env('DOT_SIGNUP_URL', 'https://infodot.co.za/register'),
+
     /*
     |--------------------------------------------------------------------------
     | Dot Platform Registry

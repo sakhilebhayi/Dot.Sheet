@@ -8,10 +8,12 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\InfoDot\IdentityClient;
 use App\Services\InfoDot\InfoDotUnavailable;
+use App\Support\EntitlementRefusal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\PersonalAccessToken;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class EcosystemAuthController extends Controller
@@ -28,7 +30,7 @@ class EcosystemAuthController extends Controller
      * page: the credential is not shown, echoed, flashed or logged. A GET with ?token= is no longer honoured
      * (the route sends it to the login page), and a token in the query string of a POST is ignored.
      */
-    public function handle(Request $request): RedirectResponse
+    public function handle(Request $request): Response
     {
         if ($request->isMethod('post') && ! $this->postedFromInfoDot($request)) {
             return $this->refused();
@@ -80,7 +82,7 @@ class EcosystemAuthController extends Controller
             : 'We could not sign you in through InfoDot. Please open this app again from InfoDot.');
     }
 
-    public function redeem(Request $request, IdentityClient $infoDot, ProvisionUserFromInfoDot $provision, SyncTeamsFromInfoDot $syncTeams): RedirectResponse
+    public function redeem(Request $request, IdentityClient $infoDot, ProvisionUserFromInfoDot $provision, SyncTeamsFromInfoDot $syncTeams): Response
     {
         $token = $request->post('token');
 
@@ -95,6 +97,12 @@ class EcosystemAuthController extends Controller
                 $identity = $infoDot->redeem($token);
             } catch (InfoDotUnavailable) {
                 abort(503, 'Sign-in through InfoDot is unavailable right now. Please try again in a moment.');
+            }
+
+            // R-50: InfoDot marks each company with whether it holds this platform. When none does, nobody is
+            // signed in, created or synced: the person gets a plain page that points at InfoDot.
+            if ($identity && SyncTeamsFromInfoDot::nothingEntitled($identity)) {
+                return EntitlementRefusal::response($request, SyncTeamsFromInfoDot::refusalReason($identity));
             }
 
             $user = $identity ? $provision($identity) : null;

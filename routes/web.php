@@ -24,6 +24,7 @@ use App\Http\Controllers\ReadyController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
+use App\Http\Middleware\EnsureCompanyEntitled;
 use App\Http\Middleware\RecordWorkbookAction;
 use App\Http\Middleware\RefuseProtectedSheet;
 use App\Http\Middleware\RefuseSealedWorkbook;
@@ -71,6 +72,8 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
+    // R-50: a company that no longer holds Dot.Sheet (InfoDot decides) sees a plain page here instead of its data.
+    EnsureCompanyEntitled::class,
     RecordWorkbookAction::class,
 ])->group(function () {
     Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');

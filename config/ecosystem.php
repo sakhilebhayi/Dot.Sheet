@@ -82,6 +82,13 @@ return [
         'secret' => env('INFODOT_SERVICE_SECRET'),
         'timeout' => (int) env('INFODOT_REDEEM_TIMEOUT', 5),
         'provision' => (bool) env('INFODOT_PROVISION_USERS', true),
+
+        // R-50: while someone is signed in, ask InfoDot (at most every ten minutes per company) whether their current
+        // company still holds Dot.Sheet. Any failure to get an answer lets the person carry on. False stops asking.
+        'entitlement_check' => (bool) env('SHEET_ENTITLEMENT_CHECK', true),
+        // Where the question goes: {companies_url}/{company uuid}/platforms. Blank: beside the redeem address.
+        'companies_url' => env('INFODOT_COMPANIES_URL'),
+        'entitlement_timeout' => (int) env('INFODOT_ENTITLEMENT_TIMEOUT', 3),
     ],
 
 ];

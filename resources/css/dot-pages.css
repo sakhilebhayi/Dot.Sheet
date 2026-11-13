@@ -119,6 +119,19 @@
 .modal-panel h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
 .modal-body { margin: 0 0 4px; }
 
+/* The arrival: the logo, who is here, what the product is for, and the one thing to do first. */
+.arrive { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px 28px; padding: 24px 28px 24px 20px; border-bottom: 1px dotted var(--dot); background: var(--sheet); }
+.arrive-logo { display: block; width: 96px; height: 96px; }
+.arrive-say { min-width: 0; }
+.arrive h2 { margin: 0 0 8px; font-size: clamp(28px, 2.6vw, 40px); font-weight: 600; line-height: 1.05; letter-spacing: -.025em; text-wrap: balance; overflow-wrap: break-word; }
+.arrive p { margin: 0; max-width: 62ch; font-size: 16px; line-height: 1.45; text-wrap: pretty; }
+.arrive-do { display: grid; justify-items: end; gap: 10px; }
+.button.lead { min-height: 48px; padding: 12px 26px; font-size: 16px; }
+.button.edged { box-shadow: inset 0 0 0 1px var(--dot); }
+.arrive-back { display: flex; gap: 18px; }
+.arrive-back a { color: var(--soft); text-decoration: underline; text-decoration-color: var(--dot); text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color .15s, text-decoration-color .15s; }
+.arrive-back a:hover { color: var(--thread); text-decoration-color: currentColor; }
+
 /* The list of sheets beside the print of the one in view */
 .desk { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 42%); }
 .ledger { grid-column: 1; grid-row: 1; min-width: 0; overflow: auto; scrollbar-color: var(--faint) transparent; }
@@ -180,8 +193,8 @@
 .first figure { display: flex; flex-direction: column; gap: 8px; margin: 0; }
 .first figure > div { position: relative; height: 320px; }
 .first figcaption { color: var(--soft); font-size: 12px; font-weight: 500; }
-.first h2 { margin: 0 0 8px; font-size: clamp(28px, 2.6vw, 40px); font-weight: 600; line-height: 1.05; letter-spacing: -.025em; }
-.first p { margin: 0 0 18px; }
+.first h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+.first p { margin: 0; max-width: 52ch; }
 
 
 #confirm { padding: 20px; width: min(440px, calc(100vw - 24px)); }
@@ -211,7 +224,6 @@
     .bar #open-palette { display: none; }
     .bar .grow { display: none; }
     .bar .line { order: 3; flex: 1 1 50%; }
-    .bar .line + .button { order: 4; margin-left: 0; }
     h1 { min-width: 0; flex: 0 1 auto; }
     .fields > div { display: block; padding-block: 8px; }
     .fields > div > label { display: block; margin-bottom: 4px; color: var(--soft); }
@@ -219,6 +231,13 @@
     .part { grid-template-columns: minmax(0, 1fr); padding: 16px 12px; }
     .ticks { grid-template-columns: minmax(0, 1fr); }
     .entry { align-items: flex-start; flex-wrap: wrap; padding-block: 8px; }
+    .arrive { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 20px 12px; }
+    .arrive-logo { width: 72px; height: 72px; }
+    .arrive p { font-size: 15px; }
+    .arrive-do { justify-items: stretch; }
+    .button.lead { justify-content: center; }
+    .arrive-back { gap: 4px; margin-left: -10px; }
+    .arrive-back a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; }
     .first { grid-template-columns: minmax(0, 1fr); align-content: start; padding: 24px 12px; }
     .first figure { min-height: 280px; }
     .account { inset: 48px 8px auto auto; }

@@ -24,6 +24,13 @@
         'duplicate' => route('spreadsheets.duplicate', $sheet),
     ];
     $first = $spreadsheets->first();
+
+    // The arrival: who this is and which company they are working in, from their own record. A personal team is not
+    // a company, so it is not named as one.
+    $person = auth()->user();
+    $firstName = Str::of($person->name)->trim()->before(' ')->toString();
+    $company = $person->currentTeam && ! $person->currentTeam->personal_team ? $person->currentTeam->name : null;
+    $infodot = rtrim((string) config('ecosystem.platforms.infodot.url'), '/');
 @endphp
 <x-dot-layout title="Your spreadsheets" description="Every spreadsheet you can reach, with its shape, its size and when it last changed." page="sheets">
     <x-slot:head>
@@ -36,8 +43,32 @@
                 <span class="sr">Filter the list by name</span>
                 <input id="filter" type="search" placeholder="Filter this list" autocomplete="off" spellcheck="false">
             </label>
-            <a class="button" href="{{ route('spreadsheets.create') }}">New spreadsheet</a>
         </x-slot:bar>
+    @endif
+
+    <section class="arrive" aria-labelledby="arrive-title">
+        <img class="arrive-logo" src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet" width="96" height="96">
+        <div class="arrive-say">
+            <h2 id="arrive-title">See what every formula reads</h2>
+            <p>
+                Welcome, {{ $firstName }}.
+                @if ($company)
+                    Dot.Sheet is where {{ $company }} keeps its figures: on dot paper, with a thread from each formula to the cells it reads.
+                @else
+                    Dot.Sheet is where you keep your figures: on dot paper, with a thread from each formula to the cells it reads.
+                @endif
+            </p>
+        </div>
+        <div class="arrive-do">
+            <a class="button lead" href="{{ route('spreadsheets.create') }}" data-primary-action>New spreadsheet</a>
+            <nav class="arrive-back" aria-label="Dot ecosystem">
+                <a href="{{ $infodot }}/home">InfoDot</a>
+                <a href="{{ $infodot }}/platforms">Platforms</a>
+            </nav>
+        </div>
+    </section>
+
+    @if ($first)
 
         <x-slot:status>
             <span>Spreadsheets<b id="s-count">{{ $spreadsheets->count() }}</b></span>
@@ -66,7 +97,7 @@
                     <div><dt>Shared with</dt><dd id="stage-shared"></dd></div>
                 </dl>
                 <div class="deeds">
-                    <a class="button" id="stage-open" href="{{ route('spreadsheets.show', $first) }}">Open</a>
+                    <a class="button quiet edged" id="stage-open" href="{{ route('spreadsheets.show', $first) }}">Open</a>
                     <form id="stage-duplicate" method="POST" action="{{ route('spreadsheets.duplicate', $first) }}">
                         @csrf
                         <button class="button quiet" type="submit">Duplicate</button>
@@ -123,8 +154,7 @@
         <div class="first">
             <div>
                 <h2>Your first spreadsheet starts here</h2>
-                <p>Each one you make gets a print on this page: a dot for every cell and a thread for every formula.</p>
-                <a class="button" href="{{ route('spreadsheets.create') }}">New spreadsheet</a>
+                <p>You have no spreadsheets yet, and nobody has shared one with you. Each one you make gets a print on this page: a dot for every cell and a thread for every formula.</p>
             </div>
             <figure>
                 <div><svg id="example" role="img" aria-label="An example print"></svg></div>

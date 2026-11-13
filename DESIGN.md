@@ -462,6 +462,14 @@ screen. The account (team switching and signing out) is one quiet button in the 
 print), and they stop where the content stops. Labels sit in the first column at 188px, so a settings form reads as rows of a sheet
 and aligns with the editor. Column headers name real columns and sort them.
 
+**The arrival.** The list of spreadsheets is where a person lands from InfoDot, so it opens with one
+band above the list: the original logo (`public/dot_sheet.png`, never redrawn), a headline, one sentence
+that welcomes the person by first name and names their company from their own record, and the page's
+one filled button, New spreadsheet (`data-primary-action`). Under the button sit the two quiet links
+back, InfoDot and Platforms, built from `ecosystem.platforms.infodot.url`. Everything else on the page
+is quiet: Open on the print is an outlined button. The band has no motion of its own; the page's settle
+is the one moment. The signed-in app is light only, so the band is too.
+
 **The print.** One colour for each kind of cell: dot for text, ink for a number, loss for a negative
 number, thread for a formula, with a key beside the large print. Threads run from a formula to the
 first corner of what it reads. The print shows the top left of the fullest tab. Its dots sit as far

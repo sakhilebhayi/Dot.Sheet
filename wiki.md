@@ -68,7 +68,7 @@ Sharing permission tiers (`spreadsheet_user.permission`): `view`, `comment`, `ed
 
 ## 5. Ecosystem SSO — Verified
 
-`app/Http/Controllers/Auth/EcosystemAuthController.php` was checked against the shared SSO contract used across the ecosystem (as documented in Dot.Billing's wiki and the pattern repeated in every sibling platform):
+`app/Http/Controllers/Auth/EcosystemAuthController.php` was checked against the shared SSO contract used across the ecosystem (the pattern repeated in every sibling platform):
 
 ```php
 $accessToken = PersonalAccessToken::findToken($request->query('token'));
@@ -86,7 +86,7 @@ return redirect()->route('dashboard');   // this app's own home route
 
 **Confirmed correct and complete**: Sanctum `PersonalAccessToken` lookup, `ecosystem:read` ability check, expiry check, one-time-use delete, `Auth::login()`, redirect to `dashboard` (this app's own route, not a hardcoded hub URL). This matches the pattern used across the rest of the ecosystem exactly.
 
-**`DB_DATABASE` vs `infodot`:** at the start of this pass, `.env.example` had `DB_DATABASE` commented out (`# DB_DATABASE=laravel`), which meant `config/database.php`'s `env('DB_DATABASE', 'laravel')` default would silently point a fresh install at a `laravel` database instead of the shared `infodot` one used by every sibling platform (Dot.Billing's `.env.example`, by comparison, sets `DB_DATABASE=infodot` explicitly). Fixed in this pass — see Change Log. `.env.production.example` was left as-is (MySQL/`dotsheet`, Pusher instead of Reverb) since it may represent a deliberately different production target; that drift from the shared-Postgres ecosystem convention is flagged in §8 rather than changed blind.
+**`DB_DATABASE` vs `infodot`:** at the start of this pass, `.env.example` had `DB_DATABASE` commented out (`# DB_DATABASE=laravel`), which meant `config/database.php`'s `env('DB_DATABASE', 'laravel')` default would silently point a fresh install at a `laravel` database instead of the shared `infodot` one used by every sibling platform. Fixed in this pass — see Change Log. `.env.production.example` was left as-is (MySQL/`dotsheet`, Pusher instead of Reverb) since it may represent a deliberately different production target; that drift from the shared-Postgres ecosystem convention is flagged in §8 rather than changed blind.
 
 ## 6. Security Scan — Findings and Fixes
 
@@ -128,7 +128,7 @@ The task brief specifically asked for cross-tenant/cross-user IDOR checks on by-
 
 ## 9. Branding
 
-`dot_sheet.png` (repo root) was already wired into `welcome.blade.php`, `navigation-menu.blade.php`, `application-mark.blade.php`, and `authentication-card-logo.blade.php` prior to this pass. This pass found and fixed a gap: `resources/views/layouts/app.blade.php` — the main authenticated layout used by the dashboard and every spreadsheet page — had **no favicon `<link>` at all** in its `<head>`, while `guest.blade.php` and `welcome.blade.php` used a single full-size `dot_sheet.png` as the favicon rather than sized icons. Standardized to match the convention already established in Dot.Billing: generated `public/favicon-32x32.png`, `public/favicon-16x16.png`, and `public/apple-touch-icon.png` via `sips`, and added the three `<link>` tags to all three layouts (`app.blade.php`, `guest.blade.php`, `welcome.blade.php`).
+`dot_sheet.png` (repo root) was already wired into `welcome.blade.php`, `navigation-menu.blade.php`, `application-mark.blade.php`, and `authentication-card-logo.blade.php` prior to this pass. This pass found and fixed a gap: `resources/views/layouts/app.blade.php` — the main authenticated layout used by the dashboard and every spreadsheet page — had **no favicon `<link>` at all** in its `<head>`, while `guest.blade.php` and `welcome.blade.php` used a single full-size `dot_sheet.png` as the favicon rather than sized icons. Standardized to match the ecosystem convention: generated `public/favicon-32x32.png`, `public/favicon-16x16.png`, and `public/apple-touch-icon.png` via `sips`, and added the three `<link>` tags to all three layouts (`app.blade.php`, `guest.blade.php`, `welcome.blade.php`).
 
 ## 10. Connecting to Dot.Brain
 
@@ -143,7 +143,7 @@ Dot.Sheet is registered in the InfoDot ecosystem config (`InfoDot/config/ecosyst
 | `outcome` | Verification of any Dot.Brain recommendation |
 | `incident` | The dashboard breakage in §7 is exactly the kind of incident this ecosystem's anti-fragile principle (Manifesto #6) says should become a tracked knowledge asset once a publishing path exists |
 
-Given that spreadsheet content can be arbitrary user/business data, any aggregation published outward should default to a stricter-than-ecosystem-default anonymity floor, similar to Dot.Billing's stance on money-movement data — this repo has no aggregation or publishing code yet, so this is a requirement to design in before publishing begins, not an enforced control today.
+Given that spreadsheet content can be arbitrary user/business data, any aggregation published outward should default to a stricter-than-ecosystem-default anonymity floor — this repo has no aggregation or publishing code yet, so this is a requirement to design in before publishing begins, not an enforced control today.
 
 ## 11. Roadmap / Open Questions
 

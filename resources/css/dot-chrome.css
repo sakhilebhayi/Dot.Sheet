@@ -142,3 +142,37 @@ input::placeholder { color: var(--soft); opacity: 1; }
     *, *::before { animation: none !important; transition: none !important; }
     .threads path.draw { stroke-dashoffset: 0; }
 }
+
+/* Dot UI (shared header search and platform switcher): map the shared tokens onto this platform's own.
+   Only the dropdown surfaces and the switcher's buttons take these; the pill itself is the shared one, unmapped. */
+:root {
+    --dsr-panel: var(--sheet);
+    --dsr-hover: var(--read);
+    --dsr-rule: var(--faint);
+    --dsr-rule-strong: var(--dot);
+    --dsr-text: var(--ink);
+    --dsr-text-2: var(--ink);
+    --dsr-text-3: var(--soft);
+    --dsr-filter-h: 34px;
+    --dsr-filter-bg: var(--raised);
+    --dsr-filter-border: var(--faint);
+    --dsr-filter-border-focus: var(--thread);
+}
+.pages .bar .dsw {
+    --dsw-btn-ink: var(--ink);
+    --dsw-btn-border: var(--dot);
+    --dsw-btn-bg-hover: var(--raised);
+    --dsw-focus: var(--thread);
+}
+/* The switcher's panel hangs from the bar, so the bar sits above the sheet it overlaps. */
+.pages .bar { position: relative; z-index: 2; }
+.pages .bar .dsr { flex: 0 1 360px; min-width: 0; }
+.pages .bar .dsr-filter { flex: 0 1 280px; min-width: 0; }
+@media (max-width: 720px) {
+    /* Title, switcher and account share the first row; the find pill and the list filter each take a full row below. */
+    .pages .bar h1 { flex: 0 1 auto; min-width: 0; }
+    .pages .bar .dsw { margin-left: auto; }
+    .pages .bar .who { margin-left: 0; max-width: 9ch; }
+    .pages .bar .dsr { order: 3; flex: 1 0 100%; }
+    .pages .bar .dsr-filter { order: 4; flex: 1 0 100%; }
+}

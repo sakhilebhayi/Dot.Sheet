@@ -39,10 +39,7 @@
 
     @if ($first)
         <x-slot:bar>
-            <label class="line">
-                <span class="sr">Filter the list by name</span>
-                <input id="filter" type="search" placeholder="Filter this list" autocomplete="off" spellcheck="false">
-            </label>
+            <x-dot.filter-search id="filter" name="filter" placeholder="Filter this list" label="Filter the list by name" />
         </x-slot:bar>
     @endif
 

@@ -20,6 +20,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureCompanyEntitled
 {
+    /** Session key: what InfoDot said at sign-in about the personal workspace (a bool), absent when it said nothing. */
+    public const PERSONAL = 'infodot.personal_entitled';
+
     public function __construct(private CompanyEntitlement $entitlement) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -29,9 +32,17 @@ class EnsureCompanyEntitled
         }
 
         $user = $request->user();
-        $company = $user instanceof User ? $user->currentTeam : null;
+        $current = $user instanceof User ? $user->currentTeam : null;
+        $company = $current instanceof Team ? $current : null;
 
-        if (! $company instanceof Team || blank($company->infodot_team_uuid)) {
+        // A workspace that is not an InfoDot company (the local personal team, or one never linked) is never asked about.
+        // Individuals hold the free core only: if InfoDot said at sign-in that the personal workspace does not hold this
+        // platform, such a workspace is not a way round the check. True, or nothing remembered, carries on.
+        if ($company === null || $company->personal_team || blank($company->infodot_team_uuid)) {
+            if ($user instanceof User && $request->hasSession() && $request->session()->get(self::PERSONAL) === false) {
+                return EntitlementRefusal::response($request, 'needs_company', $user, $company);
+            }
+
             return $next($request);
         }
 

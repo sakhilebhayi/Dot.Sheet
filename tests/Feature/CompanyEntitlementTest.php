@@ -216,6 +216,74 @@ class CompanyEntitlementTest extends TestCase
         $this->assertSame(0, $this->platformCalls());
     }
 
+    public function test_the_personal_answer_is_remembered_at_sign_in(): void
+    {
+        $personal = fn (?bool $entitled) => $this->company('33333333-3333-4333-8333-333333333333', 'Ann Team', 'owner', $entitled, $entitled === false ? 'no_personal_access' : null, personal: true);
+        $acme = $this->company(self::ACME, 'Acme Ltd', 'owner', true);
+
+        $this->signIn('ann@acme.test', [$personal(false), $acme], self::ACME)->assertRedirect(route('dashboard'));
+        $this->assertFalse(session(EnsureCompanyEntitled::PERSONAL));
+
+        $this->signIn('ann@acme.test', [$personal(true), $acme], self::ACME);
+        $this->assertTrue(session(EnsureCompanyEntitled::PERSONAL));
+
+        // An InfoDot from before R-50 sends no mark: nothing is remembered, and an earlier answer is dropped.
+        $this->signIn('ann@acme.test', [$personal(null), $acme], self::ACME);
+        $this->assertNull(session(EnsureCompanyEntitled::PERSONAL));
+    }
+
+    public function test_a_personal_workspace_refused_at_sign_in_is_not_a_way_round_the_check(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $personal = $user->currentTeam;
+        $sheet = Spreadsheet::create(['uuid' => (string) Str::uuid(), 'owner_id' => $user->id, 'team_id' => $personal->id, 'name' => 'My own sums']);
+        $acme = Team::forceCreate(['user_id' => $user->id, 'name' => 'Acme Ltd', 'personal_team' => false, 'infodot_team_uuid' => self::ACME]);
+        $unlinked = Team::forceCreate(['user_id' => $user->id, 'name' => 'Side project', 'personal_team' => false]);
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+
+        foreach ([$personal, $unlinked] as $team) {
+            $user->switchTeam($team);
+            $this->actingAs($user->fresh())->withSession([EnsureCompanyEntitled::PERSONAL => false])
+                ->get('/dashboard')
+                ->assertStatus(403)
+                ->assertSee('Dot.Sheet needs a company that has switched it on')
+                ->assertSee('href="https://infodot.co.za/platforms/sheet"', false)
+                ->assertSee('Acme Ltd')
+                ->assertDontSee('My own sums')
+                ->assertDontSee('Side project');
+        }
+
+        $this->getJson("/spreadsheets/{$sheet->id}/tabs/{$sheet->sheetTabs()->firstOrFail()->id}/cells")->assertStatus(403);
+        $this->assertSame(0, $this->platformCalls(), 'a team with no InfoDot company is never asked about');
+
+        // Nothing was deleted or altered, and the person can move to the entitled company.
+        $this->assertSame('My own sums', $sheet->fresh()->name);
+        $this->put('/current-team', ['team_id' => $acme->id])->assertRedirect();
+        $this->get('/dashboard')->assertOk();
+        $this->assertSame(1, $this->platformCalls());
+    }
+
+    public function test_a_personal_workspace_that_holds_the_core_or_was_never_answered_carries_on(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = Spreadsheet::create(['uuid' => (string) Str::uuid(), 'owner_id' => $user->id, 'team_id' => $user->currentTeam->id, 'name' => 'My own sums']);
+        $this->infodotAnswers([]);
+
+        // true: the free core. Absent: an older InfoDot, or a session that began before this release.
+        $this->actingAs($user)->withSession([EnsureCompanyEntitled::PERSONAL => true])->get('/dashboard')->assertOk()->assertSee('My own sums');
+        $this->flushSession();
+        $this->actingAs($user)->get('/dashboard')->assertOk()->assertSee('My own sums');
+        $this->assertSame(0, $this->platformCalls());
+    }
+
+    public function test_the_remembered_personal_answer_does_not_touch_an_entitled_company(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+
+        $this->actingAs($user)->withSession([EnsureCompanyEntitled::PERSONAL => false])->get('/dashboard')->assertOk()->assertSee('Acme payroll 2026');
+    }
+
     // ---- during a session -------------------------------------------------------------------------------------
 
     public function test_an_entitled_company_carries_on_and_names_itself_to_infodot(): void

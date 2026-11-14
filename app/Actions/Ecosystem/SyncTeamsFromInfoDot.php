@@ -74,6 +74,19 @@ class SyncTeamsFromInfoDot
     }
 
     /**
+     * What redeem said about the person's personal workspace for this platform: true or false, or null when it said
+     * nothing (no personal workspace listed, or no `entitled` key, or a value that is not a boolean).
+     *
+     * @param  array<string, mixed>  $identity
+     */
+    public static function personalEntitled(array $identity): ?bool
+    {
+        $personal = collect($identity['teams'] ?? [])->first(fn ($t) => is_array($t) && ($t['personal'] ?? false) === true && array_key_exists('entitled', $t));
+
+        return is_array($personal) && is_bool($personal['entitled']) ? $personal['entitled'] : null;
+    }
+
+    /**
      * True when InfoDot listed workspaces for the person and not one of them may use this platform.
      *
      * @param  array<string, mixed>  $identity

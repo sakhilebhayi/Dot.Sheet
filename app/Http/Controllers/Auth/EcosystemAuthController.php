@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Actions\Ecosystem\ProvisionUserFromInfoDot;
 use App\Actions\Ecosystem\SyncTeamsFromInfoDot;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureCompanyEntitled;
 use App\Models\User;
 use App\Services\InfoDot\IdentityClient;
 use App\Services\InfoDot\InfoDotUnavailable;
@@ -116,6 +117,11 @@ class EcosystemAuthController extends Controller
 
         // Auth::login() also regenerates the session id (no fixation).
         Auth::login($user);
+
+        // R-50: what InfoDot said about the person's personal workspace for this platform, kept with the sign-in. Absent
+        // key: nothing is remembered (and any earlier answer is dropped), so an older InfoDot changes nothing.
+        $personal = SyncTeamsFromInfoDot::personalEntitled($identity ?? []);
+        $personal === null ? $request->session()->forget(EnsureCompanyEntitled::PERSONAL) : $request->session()->put(EnsureCompanyEntitled::PERSONAL, $personal);
 
         return $this->safeRedirect($request->post('redirect')) ?? redirect()->route('dashboard');
     }

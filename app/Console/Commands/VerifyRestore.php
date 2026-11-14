@@ -25,7 +25,7 @@ class VerifyRestore extends Command
 {
     protected $signature = 'sheet:verify-restore {--connection=restore : Database connection holding the restored copy} {--against= : A connection to compare row counts with} {--sample=25 : Encrypted values to test}';
 
-    protected $description = 'Check a restored Dot.Sheets database: schema, row counts, and that encrypted values decrypt with this APP_KEY';
+    protected $description = 'Check a restored Dot.Sheet database: schema, row counts, and that encrypted values decrypt with this APP_KEY';
 
     /** The tables that hold the businesses' work, counted in the report. */
     public const COUNTED = ['teams', 'users', 'spreadsheets', 'sheet_tabs', 'cells', 'spreadsheet_versions', 'comments', 'chart_configs', 'pivot_tables',

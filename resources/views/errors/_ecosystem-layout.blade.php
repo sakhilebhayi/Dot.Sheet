@@ -90,6 +90,8 @@
             @media (hover: hover) and (pointer: fine) {
                 .link-underline:hover { background-size: 100% 1px; }
             }
+            :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+            ::selection { background: var(--accent); color: var(--ink); }
         </style>
     </head>
     <body>
@@ -104,6 +106,9 @@
                     <img src="{{ asset($logoLightPath ?? 'dot_sheet.png') }}" alt="Dot.Sheet" style="height: 40px; width: auto;">
                 </a>
                 <div style="display: flex; align-items: center; gap: 12px;">
+                    @hasSection('nav')
+                        @yield('nav')
+                    @else
                     @auth
                         <a href="{{ route('dashboard') }}" class="press" style="padding: 10px 20px; background: var(--accent); color: #12231f; font-family: var(--font-display); font-weight: 600; font-size: 14px; border-radius: 999px; text-decoration: none;">Dashboard</a>
                     @else
@@ -111,6 +116,7 @@
                             <a href="{{ route('login') }}" class="link-underline" style="color: rgba(255,255,255,0.85); font-size: 14px; text-decoration: none; padding-bottom: 1px;">Sign in</a>
                         @endif
                     @endauth
+                    @endif
                 </div>
             </nav>
         </header>

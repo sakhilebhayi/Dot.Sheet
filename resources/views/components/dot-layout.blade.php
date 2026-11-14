@@ -24,7 +24,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex">
-    <title>{{ $title }}: Dot.Sheets</title>
+    <title>{{ $title }}: Dot.Sheet</title>
     @if ($description)
         <meta name="description" content="{{ $description }}">
     @endif
@@ -69,7 +69,7 @@
             @csrf
             <button type="submit">Sign out</button>
         </form>
-        <p class="soft">Dot.Sheets</p>
+        <p class="soft">Dot.Sheet</p>
     </div>
 
     <main class="sheet page" id="sheet">{{ $slot }}</main>

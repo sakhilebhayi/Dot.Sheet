@@ -3062,6 +3062,8 @@ class DotGridEditorTest extends DuskTestCase
             JS);
             $this->assertContains($name, [$sheet->name, 'Another one']);
             $browser->waitForTextIn('#stage-title', $name);
+            // The arrival band above the ledger moved this button down the page: bring it into the window first.
+            $browser->driver->executeScript("document.querySelector('#stage-duplicate button').scrollIntoView({ block: 'center' });");
             $browser->click('#stage-duplicate button');
             $browser->waitUsing(10, 50, fn () => Spreadsheet::where('name', $name.' copy')->exists());
 

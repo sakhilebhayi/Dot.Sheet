@@ -40,7 +40,7 @@ class EnsureCompanyEntitled
         // platform, such a workspace is not a way round the check. True, or nothing remembered, carries on.
         if ($company === null || $company->personal_team || blank($company->infodot_team_uuid)) {
             if ($user instanceof User && $request->hasSession() && $request->session()->get(self::PERSONAL) === false) {
-                return EntitlementRefusal::response($request, 'needs_company', $user, $company);
+                return $this->refuse($request, 'needs_company', $user, $company);
             }
 
             return $next($request);
@@ -52,6 +52,19 @@ class EnsureCompanyEntitled
             return $next($request);
         }
 
-        return EntitlementRefusal::response($request, $answer['status'], $user, $company);
+        return $this->refuse($request, $answer['status'], $user, $company);
+    }
+
+    /**
+     * A Livewire component request is stopped with an exception, not a returned page: Livewire discards a non-redirect
+     * response from persistent middleware, answers 302 and has already run the action. aborting 403 stops it for real.
+     */
+    private function refuse(Request $request, ?string $status, ?User $user, ?Team $company): Response
+    {
+        if ($request->headers->has('X-Livewire')) {
+            abort(403, EntitlementRefusal::wording($status)[0]);
+        }
+
+        return EntitlementRefusal::response($request, $status, $user, $company);
     }
 }

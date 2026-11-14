@@ -334,6 +334,14 @@ jobs:
             echo "== docroot build/ did not exist; linked to $APPDIR/public/build"
           fi
 
+          # ---- static files that live in public/ but are served from the docroot
+          # The shared Dot UI (public/dot-ui: CSS, fonts, logos, script) is not part of public/build. While the docroot
+          # is the folder above the app (not <app>/public) Apache serves ITS copy, which git never refreshes: a new
+          # shared file would 404. Mirror it. Skipped once the document root is <app>/public.
+          if [ -n "${APP_REAL:-}" ] && [ "${CURRENT_DOCROOT:-}" != "$APP_REAL/public" ] && [ ! -f "$DEPLOY_PATH/.docroot-is-public" ]; then
+            if [ -d public/dot-ui ] && [ ! -L "$DOCROOT/dot-ui" ]; then mkdir -p "$DOCROOT/dot-ui" && rsync -a --delete public/dot-ui/ "$DOCROOT/dot-ui/" && echo "== docroot dot-ui/ mirrored"; fi
+          fi
+
           # ---- database
           echo "== Pending migrations:"
           $PHP artisan migrate:status --pending 2>&1 | tail -25 || true

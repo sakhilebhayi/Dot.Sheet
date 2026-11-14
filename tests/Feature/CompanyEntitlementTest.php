@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -51,6 +52,13 @@ class CompanyEntitlementTest extends TestCase
             'redeem_url' => self::REDEEM, 'platform' => 'sheet', 'secret' => $this->bearer, 'timeout' => 2, 'provision' => true,
             'entitlement_check' => true, 'companies_url' => null, 'entitlement_timeout' => 2,
         ]]);
+
+        // The bar's platform switcher (dot-ui) reads the same InfoDot endpoint. These tests count the ENTITLEMENT check's
+        // calls, so the switcher is answered from a fixed cache entry here; what it shows and asks is tested in DotUiHeaderTest.
+        config(['ecosystem.infodot.switcher_cache_key' => 'test:switcher-answer']);
+        Cache::put('test:switcher-answer', ['ok' => true, 'personal' => false, 'rows' => [
+            ['key' => 'sheet', 'name' => 'Dot.Sheet', 'entitled' => true, 'plain' => false, 'status' => 'active'],
+        ]], 3600);
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------

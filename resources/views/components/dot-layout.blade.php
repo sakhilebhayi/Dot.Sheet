@@ -15,6 +15,8 @@
         ['label' => 'New spreadsheet', 'href' => route('spreadsheets.create'), 'group' => 'Do'],
         ...array_map(fn (array $tab) => ['label' => $tab['label'], 'href' => $tab['href'], 'group' => 'Go to'], $tabs),
     ];
+    $company = $user->currentTeam;
+    $companyUuid = $company && ! $company->personal_team && filled($company->infodot_team_uuid) ? (string) $company->infodot_team_uuid : null;
     $told = session('flash.banner') ?? session('success') ?? session('status') ?? session('error') ?? $errors->first();
 @endphp
 <!doctype html>
@@ -30,7 +32,13 @@
     @endif
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
-    @vite(['resources/css/dot-pages.css', 'resources/js/pages/shell.js'])
+    <link rel="stylesheet" href="/dot-ui/css/dot-fonts.css">
+    <link rel="stylesheet" href="/dot-ui/css/dot-tokens.css">
+    <link rel="stylesheet" href="/dot-ui/css/dot-search.css">
+    <link rel="stylesheet" href="/dot-ui/css/dot-switcher-fonts.css">
+    <link rel="stylesheet" href="/dot-ui/css/dot-switcher.css">
+    <script src="/dot-ui/js/dot-switcher.js" defer></script>
+    @vite(['resources/css/dot-pages.css', 'resources/js/pages/shell.js', 'resources/js/pages/header-find.js'])
     {{ $head ?? '' }}
     @if ($livewire)
         @livewireStyles
@@ -44,7 +52,16 @@
         <h1>{{ $title }}</h1>
         {{ $bar ?? '' }}
         <span class="grow"></span>
-        <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
+        <x-dot.search
+            name="find"
+            placeholder="Find anything"
+            label="Find anything"
+            hint="Ctrl K"
+            readonly
+            aria-haspopup="dialog"
+            :form-attributes="['data-find-trigger' => '']" />
+        <button class="sr" id="open-palette" type="button" hidden>Find anything</button>
+        <x-dot.switcher platform="sheet" :company="$companyUuid" :company-name="$companyUuid ? $company->name : null" logos="/dot-ui/img/platforms" />
         <button class="tool quiet who" type="button" popovertarget="account">{{ $user->name }}</button>
     </header>
 

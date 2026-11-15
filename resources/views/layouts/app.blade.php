@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dot-roboto">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -11,7 +11,8 @@
     @endif
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
-    @vite(['resources/css/signed-in.css', 'resources/js/app.js'])
+    <x-dot-head />
+    @vite(['resources/css/signed-in.css', 'resources/js/app.js', 'resources/js/pages/header-search.js'])
     @livewireStyles
 </head>
 <body class="classic">

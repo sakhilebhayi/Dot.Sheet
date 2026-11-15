@@ -1,4 +1,4 @@
-<div class="w-full h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+<div class="w-full classic-stage flex flex-col bg-gray-50 dark:bg-gray-900">
     @if ($structureNotice !== '')
         <div role="status" class="flex items-center justify-between gap-3 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 border-b border-amber-300 dark:border-amber-700 px-4 py-2 text-sm">
             <span>{{ $structureNotice }}</span>
@@ -7,8 +7,6 @@
     @endif
     <!-- The one bar -->
     <header class="bar">
-        <a class="mark" href="{{ route('dashboard') }}" aria-label="All spreadsheets"></a>
-        <h1>{{ $spreadsheet->name }}</h1>
         <div id="activeUsers" wire:ignore class="side"></div>
         <label class="line">
             <span id="cellRef">A1</span>
@@ -47,7 +45,7 @@
     @endif
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex gap-0 overflow-hidden">
+    <div class="classic-body flex-1 flex gap-0 overflow-hidden">
         <!-- Spreadsheet Grid Container -->
         <div class="flex-1 flex flex-col bg-white dark:bg-gray-800 min-w-0">
             <!-- Row Header with Column Letters -->

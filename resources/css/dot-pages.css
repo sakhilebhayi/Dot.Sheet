@@ -1,16 +1,18 @@
 /* The signed-in pages: see "Signed-in pages" in DESIGN.md. */
 @import './dot-chrome.css';
+@import './dot-ui-map.css';
 
 :root {
     --row-page: 40px;
     --row-print: 52px;
+    --tools-h: 61px;
 }
 
 /* A dialog inside the page has to sit above the bar and the foot. */
 .sheet { z-index: 1; }
 
 /* The page settles in, and the bar and the foot stay where they are. */
-.bar { view-transition-name: bar; }
+.dh { view-transition-name: bar; }
 .foot { view-transition-name: foot; }
 .sheet { view-transition-name: sheet; }
 ::view-transition-old(sheet) { animation: .12s ease-out both fade-out; }
@@ -19,9 +21,6 @@
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes settle { from { opacity: 0; translate: 0 6px; } }
 
-.bar .grow { flex: 1; }
-.bar .line { flex: 0 1 280px; }
-.who { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 
 .part .button.quiet { box-shadow: inset 0 0 0 1px var(--dot); }
 .button.ruin { background: none; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
@@ -132,11 +131,16 @@
 .arrive-back a { color: var(--soft); text-decoration: underline; text-decoration-color: var(--dot); text-decoration-thickness: 1px; text-underline-offset: 3px; transition: color .15s, text-decoration-color .15s; }
 .arrive-back a:hover { color: var(--thread); text-decoration-color: currentColor; }
 
+/* A page's own title, where the old bar held it: one quiet row at the head of the page. */
+.pagetitle { flex: none; padding: 14px 20px; border-bottom: 1px dotted var(--dot); background: var(--sheet); font-size: 20px; line-height: 1.3; }
+
 /* The list of sheets beside the print of the one in view */
 .desk { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 42%); }
 .ledger { grid-column: 1; grid-row: 1; min-width: 0; overflow: auto; scrollbar-color: var(--faint) transparent; }
 .ledger table { width: 100%; border-collapse: collapse; }
-.ledger thead th { position: sticky; top: 0; z-index: 1; height: 30px; padding: 0; background: var(--sheet); font-size: 12px; font-weight: 500; text-align: left; color: var(--soft); }
+.ledger-tools { position: sticky; top: 0; z-index: 2; padding: 8px 12px 8px 20px; border-bottom: 1px dotted var(--dot); background: var(--sheet); }
+.ledger-tools .dsr-filter { width: min(100%, 320px); }
+.ledger thead th { position: sticky; top: var(--tools-h); z-index: 1; height: 30px; padding: 0; background: var(--sheet); font-size: 12px; font-weight: 500; text-align: left; color: var(--soft); }
 .ledger th button { width: 100%; height: 30px; padding: 0 12px; white-space: nowrap; border: 0; background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; transition: color .15s; }
 .ledger th button:hover { color: var(--ink); }
 .ledger th[aria-sort], .ledger th[aria-sort] button:hover { color: var(--ink); font-weight: 600; }
@@ -203,34 +207,45 @@
 #confirm p { margin: 0 0 16px; }
 #confirm .deeds { padding: 0; }
 
+/* Under 1100px the list takes the whole width, every column shown, and the print of the sheet in view sits under it. */
 @media (max-width: 1100px) {
-    .ledger .wide { display: none; }
-}
-
-@media (max-width: 720px) {
-    :root { --label: 112px; }
     .page { overflow: auto; }
     .desk { flex: none; display: flex; flex-direction: column; }
     .ledger { overflow: visible; order: 1; }
     .stage { order: 2; overflow: visible; border-left: 0; border-top: 1px dotted var(--dot); scroll-margin-top: 0; }
+    .stage h2 { padding: 16px 20px 10px; }
+    .plate { height: 260px; flex: none; }
+}
+
+@media (max-width: 720px) {
+    :root { --label: 112px; }
+    .pagetitle { padding: 12px; }
+    .ledger-tools { padding: 8px 12px; }
+    .ledger-tools .dsr-filter { width: 100%; }
     .stage h2 { padding: 16px 12px 10px; }
-    .plate { height: 240px; flex: none; margin: 0 12px; }
+    .plate { height: 240px; margin: 0 12px; }
     .key { margin-inline: 12px; }
     .deeds { padding: 10px 12px; }
-    .ledger td.thumb, .ledger th:first-child { padding-left: 12px; }
     .thumb svg { width: 60px; }
-    .ledger thead th { top: 0; }
-    .tool.who { display: inline-block; order: 2; max-width: 14ch; margin-left: auto; padding-inline: 6px; }
-    .bar #open-palette { display: none; }
-    .bar .grow { display: none; }
-    .bar .line { order: 3; flex: 1 1 50%; }
-    h1 { min-width: 0; flex: 0 1 auto; }
-    .fields > div { display: block; padding-block: 8px; }
-    .fields > div > label { display: block; margin-bottom: 4px; color: var(--soft); }
-    .rows > div { padding-inline: 12px; }
-    .part { grid-template-columns: minmax(0, 1fr); padding: 16px 12px; }
-    .ticks { grid-template-columns: minmax(0, 1fr); }
-    .entry { align-items: flex-start; flex-wrap: wrap; padding-block: 8px; }
+
+    /* The list as cards: all of a sheet's facts stay, sorting stays (the headings become sort chips). */
+    .ledger table, .ledger tbody, .ledger thead { display: block; }
+    .ledger thead tr { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px dotted var(--dot); background: var(--sheet); }
+    .ledger thead th { position: static; display: block; width: auto; height: auto; padding: 0; box-shadow: none; }
+    .ledger thead th:first-child { display: none; }
+    .ledger th button { width: auto; height: 44px; padding: 0 16px; border-radius: 999px; background: var(--raised); color: var(--ink); }
+    .ledger th[aria-sort] button { box-shadow: inset 0 0 0 1.5px var(--thread); }
+    .ledger tbody tr { position: relative; display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; padding: 12px; border-bottom: 1px dotted var(--dot); }
+    .ledger tbody tr[hidden] { display: none; }
+    .ledger td { position: static; display: block; height: auto; min-width: 0; padding: 0; border: 0; white-space: normal; }
+    .ledger td::before { content: attr(data-label); display: block; color: var(--soft); font-size: 12px; font-weight: 500; }
+    .ledger td.thumb { grid-row: 1 / span 4; padding: 0; align-self: start; }
+    .ledger td.thumb::before, .ledger td.name::before { content: none; }
+    .ledger td.name { grid-column: 2 / -1; display: block; width: auto; max-width: none; overflow: visible; font-size: 16px; overflow-wrap: anywhere; }
+    .ledger td.name a { display: flex; align-items: center; min-height: 44px; }
+    .ledger td.fig, .ledger td.wide { text-align: left; }
+    .ledger td a::after { inset: 0; }
+    .ledger td.thumb { z-index: 1; }
     .arrive { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 20px 12px; }
     .arrive-logo { width: 72px; height: 72px; }
     .arrive p { font-size: 15px; }
@@ -240,7 +255,30 @@
     .arrive-back a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; }
     .first { grid-template-columns: minmax(0, 1fr); align-content: start; padding: 24px 12px; }
     .first figure { min-height: 280px; }
-    .account { inset: 48px 8px auto auto; }
+    .fields > div { display: block; padding-block: 8px; }
+    .fields > div > label { display: block; margin-bottom: 4px; color: var(--soft); }
+    .rows > div { padding-inline: 12px; }
+    .part { grid-template-columns: minmax(0, 1fr); padding: 16px 12px; }
+    .ticks { grid-template-columns: minmax(0, 1fr); }
+    .entry { align-items: flex-start; flex-wrap: wrap; padding-block: 8px; }
+}
+
+/* Touch and tablet: every control is a 44px target. */
+@media (max-width: 1024px), (pointer: coarse) {
+    .button, .tool { min-height: 44px; }
+    .button { padding-inline: 18px; }
+    .ledger thead th { height: 44px; }
+    .ledger th button { height: 44px; }
+    .dot-field, .form input, .form select, .fields .dot-field, .start-line input { min-height: 44px; font-size: 16px; }
+    .tick { min-height: 44px; }
+    .choices button { min-height: 44px; padding-block: 12px; }
+    .link, .entry .link { display: inline-flex; align-items: center; min-height: 44px; }
+    .account a, .account button { min-height: 44px; }
+    .tabs button, .tabs a { min-height: 44px; display: inline-flex; align-items: center; }
+    .arrive-back a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; }
+    .arrive-back { gap: 4px; margin-left: -10px; }
+    .stage h2 a { display: inline-block; min-height: 44px; }
+    .ledger td.name a { display: block; overflow: hidden; text-overflow: ellipsis; min-height: 44px; line-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -57,7 +57,7 @@ class SignedInLayoutAssetsTest extends TestCase
             ->getContent());
 
         $this->assertStringContainsString('resources/css/dot-pages.css', $html);
-        $this->assertStringContainsString('resources/js/pages/shell.js', $html);
+        $this->assertStringContainsString('resources/js/pages/header-search.js', $html);
         $this->assertStringNotContainsString('cdn.tailwindcss.com', $html);
         $this->assertStringNotContainsString('unpkg.com', $html);
         $this->assertStringNotContainsString('fonts.googleapis.com', $html);
@@ -108,7 +108,7 @@ class SignedInLayoutAssetsTest extends TestCase
     {
         $layout = file_get_contents(resource_path('views/layouts/app.blade.php'));
 
-        $this->assertStringContainsString("@vite(['resources/css/signed-in.css', 'resources/js/app.js'])", $layout);
+        $this->assertStringContainsString("@vite(['resources/css/signed-in.css', 'resources/js/app.js', 'resources/js/pages/header-search.js'])", $layout);
         $this->assertStringContainsString('@livewireScripts', $layout);
         $this->assertStringNotContainsString('cdn.tailwindcss.com', $layout);
         $this->assertStringNotContainsString('unpkg.com', $layout);

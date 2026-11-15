@@ -97,8 +97,10 @@ class SecurityHeadersTest extends TestCase
         $this->assertStringNotContainsString("'unsafe-inline'", $script[1]);
         $this->assertStringContainsString("'unsafe-eval'", $script[1], 'Alpine evaluates its expressions with the Function constructor');
 
-        $this->assertMatchesRegularExpression('/style-src [^;]*https:\/\/fonts\.googleapis\.com/', $policy);
-        $this->assertMatchesRegularExpression('/font-src [^;]*https:\/\/fonts\.gstatic\.com/', $policy);
+        // R-52: type is Roboto, served from this origin, so no font host is named any more.
+        $this->assertStringNotContainsString('fonts.googleapis.com', $policy);
+        $this->assertStringNotContainsString('fonts.gstatic.com', $policy);
+        $this->assertMatchesRegularExpression("/font-src 'self' data:;/", $policy);
         $this->assertMatchesRegularExpression('/img-src [^;]*data: blob:[^;]*https:\/\/images\.unsplash\.com/', $policy);
         $this->assertMatchesRegularExpression('/img-src [^;]*https:\/\/ui-avatars\.com/', $policy, "Jetstream's default avatar");
         $this->assertStringContainsString("connect-src 'self' wss: https:", $policy);

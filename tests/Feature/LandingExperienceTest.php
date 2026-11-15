@@ -167,7 +167,9 @@ class LandingExperienceTest extends TestCase
             ->assertSee(route('spreadsheets.show', $sheet))
             ->assertSee(route('spreadsheets.duplicate', $sheet))
             ->assertSee('id="stage-delete"', false)
-            ->assertSee('id="open-palette"', false);
+            // The find pill is the header search now (R-52): a real input, and the pages and actions it offers are still printed.
+            ->assertSee('class="dsr-input"', false)
+            ->assertSee('id="commands"', false);
     }
 
     public function test_the_platform_list_holds_only_current_platforms(): void

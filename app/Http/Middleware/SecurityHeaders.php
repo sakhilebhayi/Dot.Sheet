@@ -59,7 +59,7 @@ class SecurityHeaders
     }
 
     /**
-     * Outside origins in use: Google Fonts (stylesheet host and font host), Unsplash (landing and sign-in photographs) and ui-avatars.com,
+     * Outside origins in use: Unsplash (landing and sign-in photographs) and ui-avatars.com,
      * which Jetstream's HasProfilePhoto uses for a user's default avatar. Charts are bundled by Vite, so no script CDN is needed.
      */
     private function policy(string $nonce, bool $reportOnly): string
@@ -72,8 +72,8 @@ class SecurityHeaders
             "script-src 'self' 'nonce-{$nonce}' 'unsafe-eval'{$dev}",
             // The report-only page is the classic editor, which is why it reports rather than blocks.
             $reportOnly ? "script-src-attr 'unsafe-inline'" : "script-src-attr 'none'",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com{$dev}",
-            "font-src 'self' data: https://fonts.gstatic.com",
+            "style-src 'self' 'unsafe-inline'{$dev}",
+            "font-src 'self' data:",
             "img-src 'self' data: blob: https://images.unsplash.com https://ui-avatars.com",
             "media-src 'self' blob:",
             // Local development talks to Reverb over plaintext ws:; production websockets are wss: only.

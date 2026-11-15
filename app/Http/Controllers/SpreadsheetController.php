@@ -51,11 +51,14 @@ class SpreadsheetController extends Controller
         $user = auth()->user();
 
         // Everything this person can reach: their own sheets, sheets shared with them, their teams' sheets.
-        $spreadsheets = Spreadsheet::where('owner_id', $user->id)
-            ->orWhereHas('sharedUsers', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            })
-            ->orWhereIn('team_id', $user->allTeams()->pluck('id'))
+        // The three ways of reaching a workbook are ORed inside ONE group: any condition added after it is ANDed with the whole group, never with the last OR only.
+        $spreadsheets = Spreadsheet::where(function ($reach) use ($user) {
+            $reach->where('owner_id', $user->id)
+                ->orWhereHas('sharedUsers', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                })
+                ->orWhereIn('team_id', $user->allTeams()->pluck('id'));
+        })
             ->with('owner', 'team', 'sheetTabs:id,spreadsheet_id,name,sort_order')
             ->withCount([
                 'cells',

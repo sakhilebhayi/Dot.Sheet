@@ -64,15 +64,13 @@
 /*
  * The font stacks and the ease-out curve, declared `inline` and NOT as plain
  * theme variables: the layouts (guest, welcome, error pages) define their own
- * `--font-mono` (Space Mono) and `--ease-out` on :root, and a shared name would
+ * `--font-mono` (the system monospace) and `--ease-out` on :root, and a shared name would
  * make `font-mono`, preflight's `code`/`pre` rule and the `ease-out` utility
  * pick those values instead of Tailwind's.
  */
 @theme inline {
-    --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-    --default-font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: var(--dot-font-sans), 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --default-font-family: var(--dot-font-sans), 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
         monospace;
     --default-mono-font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',

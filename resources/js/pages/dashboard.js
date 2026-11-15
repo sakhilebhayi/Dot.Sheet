@@ -234,9 +234,6 @@ if (rows.length) {
         next.querySelector('a').focus();
     });
 
-    // The palette can reach any sheet by name.
-    window.dotCommands = () => rows.map((row) => ({ label: facts(row).name, href: facts(row).open, group: 'Spreadsheets' }));
-
     const confirm = byId('confirm');
     byId('stage-delete').addEventListener('click', (e) => {
         byId('confirm-name').textContent = e.currentTarget.dataset.name;

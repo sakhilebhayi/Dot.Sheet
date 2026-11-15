@@ -25,6 +25,8 @@
 @import './tailwind-dot-palette.css';
 /* Under the utilities: unlayered, its plain button and input rules would beat them in every panel. */
 @import './dot-chrome.css' layer(chrome);
+/* The shared header's token mapping is unlayered: dot-ui's own CSS is, and a layered mapping would lose to it. */
+@import './dot-ui-map.css';
 
 /*
  * Class names exist only in the Blade views (the grid cells, toolbar, panels and
@@ -296,3 +298,34 @@
 .classic .fixed h2, .classic .fixed h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .classic #analysisPanel { width: 380px; }
 .classic .bg-red-600, .classic .bg-red-500, .classic .bg-red-700, .classic .hover\:bg-red-700:hover { background-color: var(--ink); color: var(--sheet); }
+
+/* The classic editor sits under the shared header: its stage is the viewport less the header. */
+.classic-stage { height: calc(100vh - var(--dot-header-offset, 56px)); height: calc(100dvh - var(--dot-header-offset, 56px)); }
+
+/* The classic editor on a phone, a tablet or a touch screen: every control is a 44px target and the long rows of tools wrap instead of leaving the screen. */
+@media (max-width: 860px), (pointer: coarse) {
+    body.classic button, body.classic summary, body.classic #formulaInput, body.classic header.bar > .tool,
+    body.classic #formatToolbar a, body.classic #formatToolbar select, body.classic #formatToolbar input:not([type='color']),
+    body.classic aside select, body.classic aside input:not([type='checkbox']):not([type='color']),
+    body.classic .account a, body.classic .account .menu-item { min-height: 44px; min-width: 44px; }
+    body.classic #formatToolbar a { display: inline-flex; align-items: center; }
+    /* The select-all corner sits in a fixed 32px header row that the virtual grid's rows are aligned to: it keeps its geometry. */
+    body.classic .grid-head button { min-height: 0; min-width: 0; }
+    body.classic label:has(> input[type='checkbox']) { min-height: 44px; }
+    /* The colour pickers carry an inline height of 6px; a target needs more. */
+    body.classic input[type='color'] { width: 44px !important; height: 44px !important; }
+    body.classic summary { display: flex; align-items: center; }
+    body.classic #formulaInput { font-size: 16px; }
+    body.classic #formatToolbar { gap: 6px 8px; padding-inline: 12px; }
+}
+/* The long rows of the more-tools drawer wrap at every width: one of them was 635px wide and left the screen. */
+body.classic .more-tools > div, body.classic .more-tools > div > div { flex-wrap: wrap; max-width: 100%; }
+
+/* On a phone the grid is the point: the toolbar scrolls inside a capped height and the side panels sit under the grid instead of beside it (they left it 40px wide). */
+@media (max-width: 860px) {
+    body.classic #formatToolbar { max-height: 104px; overflow-y: auto; overscroll-behavior: contain; }
+    body.classic .classic-body { flex-direction: column; }
+    body.classic .classic-body > #cellPropertiesPanel,
+    body.classic .classic-body > #analysisPanel { width: auto; max-height: 26dvh; flex: none; border-left: 0; border-top: 1px dotted var(--dot); }
+    body.classic .classic-body > .flex-1 { min-height: 0; }
+}

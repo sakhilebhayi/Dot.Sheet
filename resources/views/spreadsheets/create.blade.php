@@ -1,4 +1,4 @@
-<x-dot-layout title="New spreadsheet" description="Name a new spreadsheet and choose who it belongs to." page="sheets">
+<x-dot-layout title="New spreadsheet" description="Name a new spreadsheet and choose who it belongs to." page="sheets" :heading="false">
     <form class="make" action="{{ route('spreadsheets.store') }}" method="POST" enctype="multipart/form-data">
         @csrf
         <label class="sr" for="name">Name</label>

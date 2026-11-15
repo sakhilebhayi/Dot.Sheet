@@ -32,16 +32,10 @@
     $company = $person->currentTeam && ! $person->currentTeam->personal_team ? $person->currentTeam->name : null;
     $infodot = rtrim((string) config('ecosystem.platforms.infodot.url'), '/');
 @endphp
-<x-dot-layout title="Your spreadsheets" description="Every spreadsheet you can reach, with its shape, its size and when it last changed." page="sheets">
+<x-dot-layout title="Your spreadsheets" description="Every spreadsheet you can reach, with its shape, its size and when it last changed." page="sheets" :heading="false">
     <x-slot:head>
         @vite(['resources/js/pages/dashboard.js'])
     </x-slot:head>
-
-    @if ($first)
-        <x-slot:bar>
-            <x-dot.filter-search id="filter" name="filter" placeholder="Filter this list" label="Filter the list by name" />
-        </x-slot:bar>
-    @endif
 
     <section class="arrive" aria-labelledby="arrive-title">
         <img class="arrive-logo" src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet" width="96" height="96">
@@ -104,6 +98,9 @@
             </aside>
 
             <section class="ledger" aria-label="All spreadsheets">
+                <div class="ledger-tools">
+                    <x-dot.filter-search id="filter" name="filter" placeholder="Filter this list" label="Filter the list by name" />
+                </div>
                 <table>
                     <thead>
                         <tr>
@@ -122,11 +119,11 @@
                             <tr data-id="{{ $sheet->id }}" data-print="{{ route('spreadsheets.print', $sheet) }}" data-facts="{{ json_encode($row) }}">
                                 <td class="thumb"><svg aria-hidden="true"></svg></td>
                                 <td class="name"><a href="{{ $row['open'] }}">{{ $sheet->name }}</a></td>
-                                <td class="fig wide">{{ $row['sheetCount'] }}</td>
-                                <td class="fig">{{ $row['cells'] }}</td>
-                                <td class="fig wide">{{ $row['formulas'] }}</td>
-                                <td class="fig">{{ $row['edited'] }}</td>
-                                <td class="wide">{{ $row['owner'] }}</td>
+                                <td class="fig wide" data-label="Tabs">{{ $row['sheetCount'] }}</td>
+                                <td class="fig" data-label="Cells">{{ $row['cells'] }}</td>
+                                <td class="fig wide" data-label="Formulas">{{ $row['formulas'] }}</td>
+                                <td class="fig" data-label="Edited">{{ $row['edited'] }}</td>
+                                <td class="wide" data-label="Owner">{{ $row['owner'] }}</td>
                             </tr>
                         @endforeach
                     </tbody>

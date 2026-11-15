@@ -14,8 +14,8 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * The signed-in bar carries the shared Dot UI (dot-ui): the find pill (a trigger for the existing Cmd/Ctrl+K
- * palette, which did not change) and the platform switcher. The dashboard's list filter is the shared compact filter.
+ * The signed-in bar is the shared Dot UI header (dot-ui 0.6.0): the search pill (a real input with results; the editor keeps
+ * its own Cmd/Ctrl+K command palette) and the platform switcher. The dashboard's list filter is the shared compact filter.
  * The switcher only ever shows what InfoDot says the CURRENT company holds, linking through InfoDot's /go.
  */
 class DotUiHeaderTest extends TestCase
@@ -80,35 +80,59 @@ class DotUiHeaderTest extends TestCase
         return $m[0];
     }
 
-    // ── The find pill: a trigger for the palette ─────────────────────────────
+    // ── The search pill: a real input with results (R-52) ───────────────────
 
-    public function test_the_find_pill_is_the_shared_pill_and_opens_the_unchanged_palette(): void
+    public function test_the_search_pill_is_the_shared_pill_a_real_input_with_results_under_it(): void
     {
         $this->fakeInfoDot([self::url(self::ACME) => Http::response(self::body(self::ACME))]);
         $html = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd'))->get(route('dashboard'))->assertOk()->getContent();
 
         $this->assertStringContainsString('class="dsr-input"', $html, 'the shared pill');
-        $this->assertMatchesRegularExpression('/<input[^>]*\breadonly\b[^>]*>/', $html, 'the pill reads nothing: it only opens the palette');
-        $this->assertStringContainsString('data-find-trigger', $html);
-        $this->assertStringContainsString('placeholder="Find anything"', $html);
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*\breadonly\b[^>]*class="dsr-input"|<input[^>]*class="dsr-input"[^>]*\breadonly\b/', $html, 'the pill can be typed in');
+        $this->assertStringNotContainsString('data-find-trigger', $html);
+        $this->assertStringContainsString('placeholder="Search spreadsheets and pages"', $html);
         $this->assertStringContainsString('Ctrl K', $html);
+        $this->assertStringContainsString('data-dsr-nav', $html, 'the shared results keyboard model');
+        $this->assertStringContainsString('data-dsr-enter-first', $html);
+        $this->assertStringContainsString('data-dsr-escape-clear', $html);
+        $this->assertStringContainsString('data-search-url="'.route('search').'"', $html);
+        $this->assertStringContainsString('Looking in your spreadsheets...', $html, 'the loading line');
 
-        // The palette, its command list and its trigger id are exactly what shell.js binds to.
-        $this->assertStringContainsString('<dialog id="palette"', $html);
-        $this->assertStringContainsString('id="open-palette"', $html);
+        // The pages and actions the search offers locally.
         $this->assertStringContainsString('id="commands"', $html);
         $this->assertStringContainsString('"label":"New spreadsheet"', $html);
         $this->assertStringContainsString('"group":"Go to"', $html);
-        $this->assertSame(1, substr_count($html, 'id="open-palette"'));
-        $this->assertSame(1, substr_count($html, 'id="found"'));
+
+        // The old trigger-only palette is gone: one search, one place.
+        $this->assertStringNotContainsString('<dialog id="palette"', $html);
+        $this->assertStringNotContainsString('id="open-palette"', $html);
     }
 
-    public function test_the_shared_search_script_is_not_loaded_so_the_palette_keeps_ctrl_k_to_itself(): void
+    public function test_the_shared_search_scripts_are_loaded_so_ctrl_k_focuses_the_pill(): void
     {
         $this->fakeInfoDot([self::url(self::ACME) => Http::response(self::body(self::ACME))]);
         $html = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd'))->get(route('dashboard'))->getContent();
 
-        $this->assertStringNotContainsString('dot-search.js', $html);
+        foreach (['dot-search.js', 'dot-search-results.js', 'dot-nav.js', 'dot-switcher.js'] as $script) {
+            $this->assertStringContainsString('/dot-ui/js/'.$script, $html);
+        }
+        $this->assertStringContainsString('data-dsr-shortcut', $html, 'the hint binds Ctrl or Cmd K');
+    }
+
+    public function test_the_editor_keeps_its_own_ctrl_k_and_its_pill_does_not_bind_it(): void
+    {
+        $this->fakeInfoDot([self::url(self::ACME) => Http::response(self::body(self::ACME))]);
+        $user = $this->memberOf(self::ACME, 'Acme Ltd', 'Payroll');
+        $sheet = Spreadsheet::where('name', 'Payroll')->firstOrFail();
+
+        $html = $this->actingAs($user)->get(route('spreadsheets.show', $sheet))->assertOk()->getContent();
+
+        $this->assertStringContainsString('class="dsr-input"', $html, 'the editor header has the search too');
+        $this->assertStringNotContainsString('data-dsr-shortcut', $html, 'Ctrl or Cmd K belongs to the editor command palette there');
+        $this->assertStringContainsString('<dialog id="palette"', $html, 'the editor command palette');
+        $this->assertSame(1, substr_count($html, 'id="open-palette"'));
+        $this->assertSame(1, substr_count($html, 'id="commands"'));
+        $this->assertSame(1, substr_count($html, 'data-dh-menu-button'), 'one menu button: the phone menu');
     }
 
     public function test_a_guest_sees_no_pill_and_no_switcher(): void
@@ -124,6 +148,7 @@ class DotUiHeaderTest extends TestCase
         $html = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd', 'Payroll'))->get(route('dashboard'))->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('/<input[^>]*\bid="filter"[^>]*\bclass="dsr-filter"[^>]*>|<input[^>]*\bclass="dsr-filter"[^>]*\bid="filter"[^>]*>/', $html);
+        $this->assertStringContainsString('class="ledger-tools"', $html, 'the filter sits with the list');
         $this->assertStringContainsString('placeholder="Filter this list"', $html);
         $this->assertStringContainsString('aria-label="Filter the list by name"', $html);
         $this->assertStringNotContainsString('<label class="line">', $html);
@@ -244,7 +269,7 @@ class DotUiHeaderTest extends TestCase
         $user = $this->memberOf(self::ACME, 'Acme Ltd');
 
         foreach ([route('activity'), route('profile.show')] as $page) {
-            $this->actingAs($user)->get($page)->assertOk()->assertSee('data-dsw-trigger', false)->assertSee('data-find-trigger', false);
+            $this->actingAs($user)->get($page)->assertOk()->assertSee('data-dsw-trigger', false)->assertSee('class="dsr-input"', false)->assertSee('data-dh-menu-button', false);
         }
     }
 
@@ -256,7 +281,7 @@ class DotUiHeaderTest extends TestCase
         $response = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd'))->get(route('dashboard'))->assertOk();
         $html = $response->getContent();
 
-        foreach (['css/dot-fonts.css', 'css/dot-tokens.css', 'css/dot-search.css', 'css/dot-switcher-fonts.css', 'css/dot-switcher.css', 'js/dot-switcher.js'] as $asset) {
+        foreach (['css/dot-roboto.css', 'css/dot-type.css', 'css/dot-tokens.css', 'css/dot-search.css', 'css/dot-switcher.css', 'css/dot-header.css', 'js/dot-switcher.js', 'js/dot-nav.js', 'js/dot-search.js', 'js/dot-search-results.js'] as $asset) {
             $this->assertStringContainsString('/dot-ui/'.$asset, $html, $asset.' is linked from this site');
             $this->assertFileExists(public_path('dot-ui/'.$asset));
         }

@@ -153,7 +153,7 @@ class DotPagesTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user) {
             $this->signIn($browser, $user)->visit('/dashboard');
-            $browser->click('.who')->waitFor('#account');
+            $browser->click('.dh-account__btn')->waitFor('.dh-account .dh-menu');
             $browser->press('Sign out');
             $browser->waitForLocation('/');
             $browser->visit('/dashboard')->assertPathIs('/login');

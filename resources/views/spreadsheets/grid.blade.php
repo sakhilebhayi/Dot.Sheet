@@ -1,39 +1,45 @@
 <!doctype html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dot-roboto">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $spreadsheet->name }}: Dot.Sheet</title>
-    @vite(['resources/css/dot-grid.css', 'resources/js/grid/main.js'])
+    <meta name="robots" content="noindex">
+    <x-dot-head />
+    @vite(['resources/css/dot-grid.css', 'resources/js/pages/header-search.js', 'resources/js/grid/main.js'])
 </head>
-<body class="shell">
-    <a class="skip" href="#sheet">Skip to the sheet</a>
-
+<body class="shell editor">
     <div class="top">
-    <header class="bar">
-        <a class="mark" href="{{ route('dashboard') }}" aria-label="All spreadsheets"></a>
-        <h1>{{ $spreadsheet->name }}</h1>
+    <x-sheet-header :title="$spreadsheet->name" editor />
+
+    <div class="bar tools">
+        <p class="phone-name" aria-hidden="true">{{ $spreadsheet->name }}</p>
         <label class="line">
             <span id="ref" aria-live="off"></span>
             <span class="sr">Cell contents</span>
-            <input id="line" autocomplete="off" spellcheck="false">
+            <input id="line" autocomplete="off" spellcheck="false" inputmode="text" enterkeyhint="done">
         </label>
         <div class="fmt" role="toolbar" aria-label="Format selection">
             <button type="button" id="do-bold" aria-label="Bold" aria-pressed="false"><b>B</b></button>
             <button type="button" id="do-percent" aria-label="Percent">%</button>
             <button type="button" id="do-rand" aria-label="Rand">R</button>
-            <button type="button" id="do-more" aria-label="More formatting" aria-expanded="false" aria-controls="formatbar">Aa</button>
+            <button type="button" id="do-more" aria-label="More formatting" aria-expanded="false" aria-controls="formatbar"><span aria-hidden="true">Aa</span><span class="fmt-word">Format</span></button>
         </div>
-        <button class="tool" id="open-palette" type="button">Find anything<kbd>⌘K</kbd></button>
-        <p class="here" id="here" hidden></p>
-        <button class="tool quiet" id="do-explain" type="button" hidden>Explain</button>
-        <button class="tool quiet" id="do-comments" type="button" aria-expanded="false" aria-controls="notes">Comments<b id="notes-count" hidden></b></button>
-        <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
-        @if ($boot['canShare'])
-            <button class="button share" id="do-share" type="button" aria-expanded="false" aria-controls="sharing">Share</button>
-        @endif
-    </header>
+        <div class="acts">
+            <p class="here" id="here" hidden></p>
+            <button class="tool quiet" id="do-comments" type="button" aria-expanded="false" aria-controls="notes">Comments<b id="notes-count" hidden></b></button>
+            @if ($boot['canShare'])
+                <button class="button share" id="do-share" type="button" aria-expanded="false" aria-controls="sharing">Share</button>
+            @endif
+            <button class="tool quiet more-btn" type="button" popovertarget="editor-more" aria-label="More actions">More</button>
+            <div class="more" id="editor-more" popover aria-label="More actions">
+                <button class="tool" id="open-palette" type="button">Commands<kbd>Ctrl K</kbd></button>
+                <button class="tool quiet" id="do-explain" type="button" hidden>Explain</button>
+                <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
+            </div>
+        </div>
+    </div>
 
     <div class="formatbar" id="formatbar" role="toolbar" aria-label="Format cells" hidden>
         <div class="set">

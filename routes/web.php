@@ -22,6 +22,7 @@ use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\ReadyController;
 use App\Http\Controllers\SchedulerProbeController;
+use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SpreadsheetController;
 use App\Http\Middleware\AuthenticateGuardian;
 use App\Http\Middleware\EnsureCompanyEntitled;
@@ -77,6 +78,8 @@ Route::middleware([
     RecordWorkbookAction::class,
 ])->group(function () {
     Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');
+    // The header search: spreadsheets and sheet tabs this person can reach, by name.
+    Route::get('/search', SearchController::class)->middleware('throttle:60,1')->name('search');
 
     // Spreadsheet routes
     Route::post('spreadsheets/from-template', [SpreadsheetController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-template');

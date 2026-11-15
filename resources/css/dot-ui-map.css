@@ -1,0 +1,55 @@
+/*
+ * Dot UI (dot-ui 0.6.0): the shared header, search and platform switcher mapped onto this platform's own tokens (DESIGN.md).
+ *
+ * UNLAYERED on purpose. dot-ui's CSS is unlayered, and an unlayered rule beats a layered one whatever the specificity, so a mapping
+ * written inside @layer would be ignored (docs/SEARCH.md, "Host CSS pitfalls"). signed-in.css therefore imports this file outside its layers.
+ */
+:root {
+    /* The bar: dot paper's desk colour, ink text, the thread blue as the accent. */
+    --dh-bg: var(--desk);
+    --dh-ink: var(--ink);
+    --dh-ink-2: var(--soft);
+    --dh-rule: var(--faint);
+    --dh-hover: var(--raised);
+    --dh-accent: var(--thread);
+    --dh-focus: var(--thread);
+    --dh-avatar-bg: var(--thread);
+    --dh-avatar-ink: var(--on-thread);
+    --dh-radius: 10px;
+    --dh-logo-h: 30px;
+    --dh-search-w: clamp(280px, 30vw, 560px);
+
+    /* The search's surfaces. The pill itself is the shared one. */
+    --dsr-panel: var(--sheet);
+    --dsr-hover: var(--read);
+    --dsr-rule: var(--faint);
+    --dsr-rule-strong: var(--dot);
+    --dsr-text: var(--ink);
+    --dsr-text-2: var(--ink);
+    --dsr-text-3: var(--soft);
+    --dsr-filter-h: 44px;
+    --dsr-filter-bg: var(--raised);
+    --dsr-filter-border: var(--faint);
+    --dsr-filter-border-focus: var(--thread);
+}
+.dh .dsw, .dsw {
+    --dsw-btn-ink: var(--ink);
+    --dsw-btn-border: var(--dot);
+    --dsw-btn-bg-hover: var(--raised);
+    --dsw-focus: var(--thread);
+}
+/* The switcher's panel hangs from the bar and follows the panel tokens (the sheet's paper). */
+.sheet-header { z-index: 40; }
+.sheet-header .dh-brand img { width: auto; height: var(--dh-logo-h); }
+.sheet-header .dh-status { min-width: 0; }
+.sheet-header .sheet-name { max-width: 40ch; }
+/* The header holds a spreadsheet's name: not a link, not a control. */
+.sheet-header .dh-context { max-width: 20ch; }
+
+/* Result rows are 44px tall at every width (the pilots measured 40.7 to 41.6px at 861 to 1024px). */
+.dsr .dsr-item { min-height: 44px; }
+
+/* Phones with no room for the name beside five 44px controls: it moves into the tools row (grid.blade.php), the h1 stays for screen readers. */
+@media (max-width: 599px) {
+    .sheet-header .dh-status .sheet-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

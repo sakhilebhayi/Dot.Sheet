@@ -1,5 +1,6 @@
 /* The Dot Grid editor: see DESIGN.md. The cell sizes in dot-chrome.css are read by resources/js/grid. */
 @import './dot-chrome.css';
+@import './dot-ui-map.css';
 
 /* The sheet. No ruled lines: a cell is the space between four dots. */
 .canvas { position: relative; }
@@ -328,6 +329,74 @@ button.where:hover { translate: 0 -1px; }
 .confirm p { margin: 0 0 16px; max-width: 52ch; line-height: 1.5; }
 .confirm .deeds { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* The tools row under the shared header: the formula line, quick format buttons and the actions.
+   Wide: one row. Tablet: the formula line has a row of its own (the old bar was 1134px wide and clipped Share). Phone: see the 860px block. */
+.tools { flex-wrap: wrap; gap: 6px 14px; padding: 6px 20px 8px; }
+.tools .phone-name { display: none; }
+.tools .line { order: 1; flex: 1 1 100%; }
+.tools .fmt { order: 2; }
+.tools .acts { order: 3; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.tools .here { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
+.fmt-word { display: none; }
+.more-btn { display: none; }
+/* Wide: the less used actions sit inline. The popover keeps its attribute, and a closed one is not displayed, so on a phone it is a sheet. */
+.more { display: contents; }
+@media (min-width: 1180px) {
+    .tools .line { flex: 1 1 280px; }
+}
+@media (max-width: 860px) {
+    .tools { gap: 6px 8px; padding: 6px 12px 8px; }
+    .tools .fmt { order: 2; }
+    .tools .fmt button:not(#do-more) { display: none; }
+    .tools #do-more { display: inline-flex; align-items: center; gap: 6px; width: auto; min-width: 44px; height: 44px; padding: 0 12px; border-radius: 999px; background: var(--raised); }
+    .tools #do-more > span[aria-hidden] { display: none; }
+    .fmt-word { display: inline; }
+    .tools .acts { flex: 1 1 auto; justify-content: flex-end; gap: 6px; margin-left: 0; }
+    .tools .acts > .tool, .tools .acts > .button { min-height: 44px; padding-inline: 12px; }
+    .more-btn { display: inline-block; }
+    /* The actions that do not fit a phone's row wait in a sheet from the bottom edge. */
+    .more { position: fixed; inset: auto 0 0 0; display: none; width: 100%; max-height: min(60dvh, 360px); margin: 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); overflow: auto; border: 0; border-radius: 14px 14px 0 0; background: var(--sheet); color: var(--ink); box-shadow: 0 -12px 40px rgb(21 32 27 / .24); }
+    .more:popover-open { display: grid; gap: 2px; }
+    .more::backdrop { background: rgb(21 32 27 / .28); }
+    .more .tool { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 14px; border-radius: 10px; text-align: left; }
+    .more .tool[hidden] { display: none; }
+    .more kbd { display: none; }
+    /* Format: a sheet of its own, so ten small controls are not squeezed into the header. */
+    .formatbar:not([hidden]) { position: fixed; inset: auto 0 0 0; z-index: 30; max-height: 52dvh; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); overflow: auto; border-radius: 14px 14px 0 0; background: var(--sheet); box-shadow: 0 -12px 40px rgb(21 32 27 / .24); }
+    .formatbar .set button, .formatbar .swatches button { min-width: 44px; min-height: 44px; }
+    .formatbar .swatches button { width: 44px; height: 44px; }
+    .formatbar select { height: 44px; font-size: 16px; }
+    .formatbar #do-fewer, .formatbar #do-more-places { min-width: 44px; }
+}
+@media (max-width: 599px) {
+    .tools .phone-name { display: block; order: 0; flex: 1 1 100%; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+}
+@media (max-width: 860px), (pointer: coarse) {
+    .tools .line { min-height: 44px; }
+    #line { min-height: 44px; font-size: 16px; }
+    .tabs button, .tabs a { min-height: 44px; display: inline-flex; align-items: center; }
+    .tabs .add { min-width: 44px; justify-content: center; }
+    .fmt button { width: 44px; height: 44px; }
+    .tool, .button { min-height: 44px; }
+}
+@media (max-width: 1024px), (pointer: coarse) {
+    .fmt button { width: 44px; height: 44px; }
+    .tool, .button { min-height: 44px; min-width: 44px; }
+    /* Panels, find, rules: buttons and fields are 44px targets, and a field is 16px so iOS does not zoom. */
+    .dock button, .rulebar button, .findbar button, .formatbar button, .dock-form button, .picks button, .where, .noted-here, .pick { min-height: 44px; min-width: 44px; }
+    .dock select, .dock input:not([type='checkbox']), .dock textarea, .rulebar select, .rulebar input, .findbar input:not([type='checkbox']), .formatbar select { min-height: 44px; font-size: 16px; }
+    .formatbar #do-fewer, .formatbar #do-more-places { min-width: 44px; }
+    .tick { min-height: 44px; }
+    .tabs button, .tabs a { min-height: 44px; display: inline-flex; align-items: center; }
+}
+/* The sheet tabs scroll sideways when they are many: a fade at the edge that has more behind it (resources/js/pages/scroll-cue.js). */
+.tabs[data-cue='end'] { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.tabs[data-cue='start'] { mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.tabs[data-cue='both'] { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+.tabs { scrollbar-width: thin; scrollbar-color: var(--faint) transparent; scroll-padding-inline: 28px; }
+.foot { min-width: 0; }
+.edit, .formula-help .help-call { font-family: var(--mono); }
+
 @media (max-width: 720px) {
     .findbar { padding: 0 12px 8px; }
     .formatbar { gap: 4px 12px; padding: 0 12px 8px; }
@@ -343,7 +412,6 @@ button.where:hover { translate: 0 -1px; }
     .dock { flex: 1.3 1 0; width: auto; padding: 10px 12px 0; }
     #sharing, #copies, #names, #protection, #approval, #assistant, #explain, #check, #ask, #report, #charts, #pivots, #macros { flex-grow: 3; }
     #charts, #pivots { width: auto; }
-    .bar .share { display: none; }
     .dock .deeds button { padding: 8px 10px; }
     .findbar input:not([type]) { width: 100%; }
     .findbar label:not(.tick) { flex: 1 1 100%; }

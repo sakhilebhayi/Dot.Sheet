@@ -22,6 +22,7 @@ import { Pivots } from './pivots';
 import { Server } from './server';
 import { Sharing } from './sharing';
 import { hasContent, Store } from './store';
+import { cue } from '../pages/scroll-cue';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const byId = (id) => document.getElementById(id);
@@ -569,6 +570,7 @@ function drawTabs() {
         buttons.push(add);
     }
     nav.replaceChildren(...buttons);
+    cue(nav);
 }
 
 /* Sheets */

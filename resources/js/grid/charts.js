@@ -124,7 +124,7 @@ function settings(chart, surface, ink, soft, faint, figure) {
     const round = chart.type === 'pie' || chart.type === 'doughnut';
     const scatter = chart.type === 'scatter';
     const across = chart.type === 'hbar';
-    const font = { family: 'Hanken Grotesk', size: 12 };
+    const font = { family: 'Roboto', size: 12 };
     const single = chart.type === 'histogram' || chart.type === 'waterfall';
     const shown = scatter ? Math.max(1, chart.series.length - 1) : single ? 1 : chart.series.length;
     const axis = {

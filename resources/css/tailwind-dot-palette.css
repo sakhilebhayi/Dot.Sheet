@@ -249,8 +249,8 @@
     --color-red-900: #c62a12;
     --color-red-950: #c62a12;
 
-    --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
-    --font-mono: 'Hanken Grotesk', system-ui, sans-serif;
+    --font-sans: var(--dot-font-sans, 'Roboto', system-ui, sans-serif);
+    --font-mono: var(--dot-font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
     --radius-sm: 3px;
     --radius: 3px;
     --radius-md: 10px;

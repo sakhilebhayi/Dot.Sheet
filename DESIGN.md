@@ -35,36 +35,36 @@ colors:
   cell-fill-stone: "#E4E9E3"
 typography:
   title:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 16px
     fontWeight: 600
     lineHeight: 1.3
     letterSpacing: -0.01em
   body:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.3
     fontFeature: '"tnum"'
   body-strong:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 14px
     fontWeight: 600
     lineHeight: 1.3
     fontFeature: '"tnum"'
   label:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.3
   display:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 40px
     fontWeight: 600
     lineHeight: 1.05
     letterSpacing: -0.025em
   display-phone:
-    fontFamily: Hanken Grotesk
+    fontFamily: Roboto
     fontSize: 28px
     fontWeight: 600
     lineHeight: 1.05
@@ -243,8 +243,16 @@ that size. Never redraw or recolour it. The full logo goes where it has room: si
 
 ## Typography
 
-One family, Hanken Grotesk, self-hosted. Tabular figures everywhere in the grid and status line, so
-columns of numbers align. Hierarchy comes from weight: totals and headings are 600, figures 400.
+One family, Roboto (R-52, owner rule for the whole ecosystem; it replaced Hanken Grotesk), self-hosted by the shared Dot UI
+(`public/dot-ui/css/dot-roboto.css`, `dot-type.css`; `class="dot-roboto"` on every `<html>`). Tabular figures everywhere in
+the grid and status line, so columns of numbers align (Roboto has `tnum`). Hierarchy comes from weight: totals and headings
+are 600, figures 400. The sizes in this file stay: title 16, body 14, label 12, display 40 (28 on a phone).
+
+One exception, by design: cell references and the formula line (`#ref`, `#line`, the cell editor and the function help's call
+line) are set in the system monospace (`--mono`, the shared `--dot-font-mono`), because a reference such as `AB12` and a formula
+read better in equal-width glyphs. Cell values are Roboto. Charts draw in Roboto. No other face loads anywhere (the sign-in,
+registration, legal and error pages used Fraunces, Sora and Space Mono from Google Fonts; they are Roboto now, and the CSP no
+longer names a font host).
 
 Negative numbers use a true minus sign, and thousands are grouped with a space.
 
@@ -494,6 +502,36 @@ Send again. Activity reads as one line per action with who and when, and has no 
 
 Approval is a dock like the others. One sentence says where things stand, the note comes before the action, the first
 action is the button, and the record sits below once there is one.
+
+## The header (R-52)
+
+Every signed-in page, the editor and the classic editor included, wears the shared Dot UI header (dot-ui 0.6.0), mapped onto this
+palette in `resources/css/dot-ui-map.css` (unlayered: dot-ui's CSS is). One Blade partial prints it: `<x-sheet-header>`.
+
+- **Bar:** the mark (cut from the master logo, `resources/images/dot-sheet-mark.png`, built by Vite so the deploy's build mirror carries it), the primary pages (Spreadsheets, Team, Activity; a
+  `Workspace` group holds Integrations, API tokens and Backups where the person may see them), the search centred on the
+  three-column grid, the platform switcher, the account menu. Profile, the team switch, New team and Sign out are in the account menu.
+- **The page's own title** is the first row of the page (`.pagetitle`), or the arrival band on the dashboard. There is no footer tab strip
+  any more: the pages are in the header and, on a phone, in its drawer.
+- **The editor** keeps the room for the spreadsheet's name: no primary nav in its bar (every page is in the account menu and the phone
+  menu), and a tools row under the bar holds the formula line, the quick formats and the actions. Up to 1179px the formula line has a row of
+  its own; the actions never leave the screen.
+- **A phone is view first.** Editing a spreadsheet on a phone is limited by nature and this does not pretend otherwise: the formula line
+  is a 44px, 16px field; `Format` opens the format toolbar as a sheet from the bottom edge; `Comments` and `Share` stay in reach;
+  `More` opens a sheet with the command palette, Explain and the classic editor. The spreadsheet's name moves into the tools row
+  under 600px (the bar has room for five 44px controls and no more); the h1 stays for screen readers.
+- **The sheet tabs** at the foot scroll sideways when they are many and fade the edge that has more behind it.
+- **The dashboard's list** shows every column from 721px (under 1100px the print of the sheet in view sits under the list instead of
+  beside it) and becomes cards under 720px: the same facts, the headings become 44px sort chips, the whole card is the link.
+
+### Search and Ctrl or Cmd K
+
+The header search is a real input with results under it, on every page. It finds spreadsheets and sheet tabs the person can reach (the
+same reach as the dashboard: `GET /search`, `SearchController`, parameterised, wildcards escaped, capped, throttled), and this
+app's pages and actions (printed with the header as `#commands`). Ctrl or Cmd K **focuses that pill on every page except the
+editor**. In the editor Ctrl or Cmd K opens the editor's own command palette (`resources/js/grid/main.js`: go to a cell, find and
+replace, freeze, sort, sheets, charts, and so on), so the editor's pill shows no `Ctrl K` hint and does not bind it; the palette is also the
+`Commands` button in the tools row.
 
 ## The classic editor
 

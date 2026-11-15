@@ -1,10 +1,6 @@
 /* What the editor and the signed-in pages share: tokens, the bar, the foot, the palette. See DESIGN.md. */
-@font-face {
-    font-family: 'Hanken Grotesk';
-    src: url('../fonts/hanken-grotesk.woff2') format('woff2');
-    font-weight: 400 700;
-    font-display: swap;
-}
+/* Type: Roboto, self-hosted by the shared Dot UI (public/dot-ui/css/dot-roboto.css, loaded before this file).
+   Figures sit in tabular columns everywhere (Roboto has tnum); cell references and formulas use --mono. */
 
 /* Every page opts in: a transition that ends on a page that has not opted in is an error in the console. */
 @view-transition { navigation: auto; }
@@ -29,6 +25,8 @@
     --chart-5: #b5791a;
     --chart-6: #b0498c;
     --ease: cubic-bezier(.2, .7, .1, 1);
+    --sans: var(--dot-font-sans, 'Roboto', system-ui, sans-serif);
+    --mono: var(--dot-font-mono, ui-monospace, 'SF Mono', Menlo, Consolas, monospace);
 
     --row: 30px;
     --col: 104px;
@@ -49,7 +47,7 @@ body {
     margin: 0;
     background: var(--desk);
     color: var(--ink);
-    font: 400 14px/1.3 'Hanken Grotesk', system-ui, sans-serif;
+    font: 400 14px/1.35 var(--sans);
     font-variant-numeric: tabular-nums;
 }
 button, input { font: inherit; color: inherit; }
@@ -60,15 +58,13 @@ button, input { font: inherit; color: inherit; }
 .skip { position: absolute; left: 12px; top: -48px; z-index: 20; padding: 8px 12px; background: var(--ink); color: var(--sheet); border-radius: 999px; }
 .skip:focus { top: 8px; }
 
-/* The one quiet bar */
+/* The tools row under the shared header (the formula line and the actions), and the classic editor's bar. The header itself is the shared Dot UI one: dot-ui-map.css. */
 .bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; min-width: 0; }
-.mark { width: 44px; height: 29px; flex: none; background: url('../images/dot-sheet-mark.png') left center / contain no-repeat; transition: scale .3s var(--ease); }
-.mark:hover { scale: 1.06; }
-h1 { margin: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.sheet-name, .pagetitle { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; border-bottom: 1.5px solid var(--ink); }
 .line:focus-within { border-bottom-color: var(--thread); }
-#ref { flex: none; min-width: 44px; color: var(--soft); }
-#line { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; outline: none; }
+#ref { flex: none; min-width: 44px; color: var(--soft); font-family: var(--mono); font-size: 13px; }
+#line { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; outline: none; font-family: var(--mono); font-size: 13px; }
 .fmt { display: flex; gap: 2px; }
 .fmt button, .tool { border: 0; background: none; cursor: pointer; transition: background .15s, translate .15s var(--ease); }
 .fmt button { width: 30px; height: 30px; border-radius: 50%; }
@@ -79,6 +75,7 @@ h1 { margin: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; whit
 .tool { padding: 7px 12px; border-radius: 999px; white-space: nowrap; text-decoration: none; }
 .tool.quiet { color: var(--soft); }
 kbd { margin-left: 6px; font: inherit; color: var(--soft); }
+.sheet-header kbd, .dsr kbd { margin-left: 0; }
 
 .sheet { position: relative; margin: 0 12px; overflow: auto; background: var(--sheet); border-radius: 14px; outline: none; overscroll-behavior: contain; scrollbar-color: var(--faint) transparent; }
 .sheet:focus-visible { box-shadow: inset 0 0 0 1px var(--faint); }
@@ -108,7 +105,6 @@ dialog::backdrop { background: rgb(21 32 27 / .28); }
 #found span { color: var(--soft); text-align: right; }
 #found .none { padding: 12px; color: var(--soft); }
 
-.bar .line input { flex: 1; min-width: 0; padding: 7px 0; border: 0; background: none; outline: none; }
 input::placeholder { color: var(--soft); opacity: 1; }
 .button { display: inline-flex; align-items: center; min-height: 34px; padding: 7px 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--sheet); font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; transition: translate .2s var(--ease), background .15s; }
 .button:hover { translate: 0 -2px; }
@@ -125,12 +121,9 @@ input::placeholder { color: var(--soft); opacity: 1; }
 @media (max-width: 720px) {
     .bar { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
     .line { order: 3; flex-basis: 100%; }
-    .fmt, kbd, .tool.quiet { display: none; }
     .n { padding-right: 6px; }
-    .tool { margin-left: auto; }
     .sheet { margin: 0 6px; border-radius: 10px; }
     .foot { flex-wrap: wrap; gap: 6px; min-width: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
-    /* The tabs scroll inside the foot: left unshrinkable, five of them made the whole page wider than a phone. */
     .tabs { flex: 0 1 auto; max-width: 100%; }
     .tabs button, .tabs a { padding: 8px 12px; }
     .note { order: 3; flex-basis: 100%; }
@@ -141,38 +134,4 @@ input::placeholder { color: var(--soft); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before { animation: none !important; transition: none !important; }
     .threads path.draw { stroke-dashoffset: 0; }
-}
-
-/* Dot UI (shared header search and platform switcher): map the shared tokens onto this platform's own.
-   Only the dropdown surfaces and the switcher's buttons take these; the pill itself is the shared one, unmapped. */
-:root {
-    --dsr-panel: var(--sheet);
-    --dsr-hover: var(--read);
-    --dsr-rule: var(--faint);
-    --dsr-rule-strong: var(--dot);
-    --dsr-text: var(--ink);
-    --dsr-text-2: var(--ink);
-    --dsr-text-3: var(--soft);
-    --dsr-filter-h: 34px;
-    --dsr-filter-bg: var(--raised);
-    --dsr-filter-border: var(--faint);
-    --dsr-filter-border-focus: var(--thread);
-}
-.pages .bar .dsw {
-    --dsw-btn-ink: var(--ink);
-    --dsw-btn-border: var(--dot);
-    --dsw-btn-bg-hover: var(--raised);
-    --dsw-focus: var(--thread);
-}
-/* The switcher's panel hangs from the bar, so the bar sits above the sheet it overlaps. */
-.pages .bar { position: relative; z-index: 2; }
-.pages .bar .dsr { flex: 0 1 360px; min-width: 0; }
-.pages .bar .dsr-filter { flex: 0 1 280px; min-width: 0; }
-@media (max-width: 720px) {
-    /* Title, switcher and account share the first row; the find pill and the list filter each take a full row below. */
-    .pages .bar h1 { flex: 0 1 auto; min-width: 0; }
-    .pages .bar .dsw { margin-left: auto; }
-    .pages .bar .who { margin-left: 0; max-width: 9ch; }
-    .pages .bar .dsr { order: 3; flex: 1 0 100%; }
-    .pages .bar .dsr-filter { order: 4; flex: 1 0 100%; }
 }

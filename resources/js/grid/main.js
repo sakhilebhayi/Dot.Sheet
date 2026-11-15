@@ -23,6 +23,7 @@ import { Server } from './server';
 import { Sharing } from './sharing';
 import { hasContent, Store } from './store';
 import { cue } from '../pages/scroll-cue';
+import '../pages/editor-more';
 
 const boot = JSON.parse(document.getElementById('boot').textContent);
 const byId = (id) => document.getElementById(id);

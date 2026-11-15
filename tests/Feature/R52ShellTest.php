@@ -205,7 +205,7 @@ class R52ShellTest extends TestCase
         $sheet = $this->sheetFor($user, 'Fuel log');
         $html = $this->actingAs($user)->get(route('spreadsheets.show', $sheet))->assertOk()->getContent();
 
-        foreach (['id="line"', 'id="ref"', 'id="do-comments"', 'id="do-share"', 'id="open-palette"', 'id="do-explain"', 'id="do-more"', 'id="formatbar"', 'popovertarget="editor-more"', 'href="'.route('spreadsheets.classic', $sheet).'"'] as $needle) {
+        foreach (['id="line"', 'id="ref"', 'id="do-comments"', 'id="do-share"', 'id="open-palette"', 'id="do-explain"', 'id="do-more"', 'id="formatbar"', 'id="more-btn"', 'data-more', 'href="'.route('spreadsheets.classic', $sheet).'"'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
         $this->assertStringContainsString('class="fmt-word">Format<', $html, 'the phone treatment: a labelled Format button opens the toolbar sheet');

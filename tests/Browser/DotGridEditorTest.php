@@ -603,7 +603,7 @@ class DotGridEditorTest extends DuskTestCase
     {
         // On a phone the palette button waits in the More sheet (R-52); on a wide screen it is in the tools row.
         if (! $browser->driver->executeScript("return document.getElementById('open-palette').getClientRects().length > 0")) {
-            $browser->click('.more-btn')->waitFor('#editor-more:popover-open');
+            $browser->click('.more-btn')->waitFor('#editor-more[data-open]');
         }
 
         $browser->click('#open-palette')->waitFor('#find')->keys('#find', $name, WebDriverKeys::ENTER);

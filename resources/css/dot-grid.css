@@ -339,8 +339,8 @@ button.where:hover { translate: 0 -1px; }
 .tools .here { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
 .fmt-word { display: none; }
 .more-btn { display: none; }
-/* Wide: the less used actions sit inline. The popover keeps its attribute, and a closed one is not displayed, so on a phone it is a sheet. */
-.more { display: contents; }
+/* Wide: the less used actions sit inline in the tools row. On a phone they are a sheet (resources/js/pages/editor-more.js). */
+.more, .more-in { display: contents; }
 @media (min-width: 1180px) {
     .tools .line { flex: 1 1 280px; }
 }
@@ -354,10 +354,10 @@ button.where:hover { translate: 0 -1px; }
     .tools .acts { flex: 1 1 auto; justify-content: flex-end; gap: 6px; margin-left: 0; }
     .tools .acts > .tool, .tools .acts > .button { min-height: 44px; padding-inline: 12px; }
     .more-btn { display: inline-block; }
-    /* The actions that do not fit a phone's row wait in a sheet from the bottom edge. */
-    .more { position: fixed; inset: auto 0 0 0; display: none; width: 100%; max-height: min(60dvh, 360px); margin: 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); overflow: auto; border: 0; border-radius: 14px 14px 0 0; background: var(--sheet); color: var(--ink); box-shadow: 0 -12px 40px rgb(21 32 27 / .24); }
-    .more:popover-open { display: grid; gap: 2px; }
-    .more::backdrop { background: rgb(21 32 27 / .28); }
+    /* The actions that do not fit a phone's row wait in a sheet from the bottom edge; the dim layer around it is the tap-away. */
+    .more { position: fixed; inset: 0; z-index: 60; display: none; align-items: flex-end; background: rgb(21 32 27 / .28); }
+    .more[data-open] { display: flex; }
+    .more-in { display: grid; gap: 2px; width: 100%; max-height: min(60dvh, 360px); padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); overflow: auto; border-radius: 14px 14px 0 0; background: var(--sheet); color: var(--ink); box-shadow: 0 -12px 40px rgb(21 32 27 / .24); }
     .more .tool { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0 14px; border-radius: 10px; text-align: left; }
     .more .tool[hidden] { display: none; }
     .more kbd { display: none; }

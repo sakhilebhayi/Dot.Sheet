@@ -34,8 +34,8 @@
             @endif
             <button class="tool quiet more-btn" type="button" popovertarget="editor-more" aria-label="More actions">More</button>
             <div class="more" id="editor-more" popover aria-label="More actions">
-                <button class="tool" id="open-palette" type="button">Commands<kbd>Ctrl K</kbd></button>
-                <button class="tool quiet" id="do-explain" type="button" hidden>Explain</button>
+                <button class="tool" id="open-palette" type="button" popovertarget="editor-more" popovertargetaction="hide">Commands<kbd>Ctrl K</kbd></button>
+                <button class="tool quiet" id="do-explain" type="button" popovertarget="editor-more" popovertargetaction="hide" hidden>Explain</button>
                 <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
             </div>
         </div>

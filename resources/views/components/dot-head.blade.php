@@ -1,12 +1,5 @@
-{{-- The shared Dot UI assets of every signed-in page (dot-ui 0.6.0): Roboto, the type scale, the search, the switcher and the header. All from this origin. --}}
-<link rel="preload" href="/dot-ui/fonts/roboto/roboto-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/dot-ui/css/dot-roboto.css">
-<link rel="stylesheet" href="/dot-ui/css/dot-type.css">
-<link rel="stylesheet" href="/dot-ui/css/dot-tokens.css">
-<link rel="stylesheet" href="/dot-ui/css/dot-search.css">
-<link rel="stylesheet" href="/dot-ui/css/dot-switcher.css">
-<link rel="stylesheet" href="/dot-ui/css/dot-header.css">
-<script src="/dot-ui/js/dot-search.js" defer></script>
-<script src="/dot-ui/js/dot-search-results.js" defer></script>
-<script src="/dot-ui/js/dot-switcher.js" defer></script>
-<script src="/dot-ui/js/dot-nav.js" defer></script>
+{{-- The shared Dot UI assets of every signed-in page (dot-ui 0.6.1): one minified stylesheet (Roboto, type scale, tokens, search, switcher, header) first in the head, and one deferred script,
+     js/dot-ui.min.js: search, results controller, switcher and header behaviour. This host's header search (resources/js/pages/header-search.js) calls DotSearchResults.attach(), so it loads the
+     bundle with the controller inside rather than dot-ui-core.min.js (where the controller is lazy and attach() does not exist). All from this origin. --}}
+<link rel="stylesheet" href="/dot-ui/css/dot-ui.min.css">
+<script src="/dot-ui/js/dot-ui.min.js" defer></script>

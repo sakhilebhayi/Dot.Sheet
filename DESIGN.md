@@ -244,7 +244,7 @@ that size. Never redraw or recolour it. The full logo goes where it has room: si
 ## Typography
 
 One family, Roboto (R-52, owner rule for the whole ecosystem; it replaced Hanken Grotesk), self-hosted by the shared Dot UI
-(`public/dot-ui/css/dot-roboto.css`, `dot-type.css`; `class="dot-roboto"` on every `<html>`). Tabular figures everywhere in
+(`public/dot-ui/css/dot-ui.min.css` on signed-in pages, `dot-roboto.min.css` + `dot-type.min.css` on the guest, welcome and error pages; `class="dot-roboto"` on every `<html>`). Tabular figures everywhere in
 the grid and status line, so columns of numbers align (Roboto has `tnum`). Hierarchy comes from weight: totals and headings
 are 600, figures 400. The sizes in this file stay: title 16, body 14, label 12, display 40 (28 on a phone).
 

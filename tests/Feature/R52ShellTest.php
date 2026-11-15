@@ -62,8 +62,12 @@ class R52ShellTest extends TestCase
         foreach ($pages as $name => $response) {
             $html = $response->assertOk()->getContent();
             $this->assertMatchesRegularExpression('/<html[^>]*class="[^"]*\bdot-roboto\b/', $html, $name.' opts in to Roboto');
-            $this->assertStringContainsString('/dot-ui/css/dot-roboto.css', $html, $name);
-            $this->assertStringContainsString('/dot-ui/css/dot-type.css', $html, $name);
+            // Signed-in pages link the one bundle (Roboto + type scale + header); the guest, welcome and error pages link the two small files.
+            $this->assertTrue(
+                str_contains($html, '/dot-ui/css/dot-ui.min.css')
+                || (str_contains($html, '/dot-ui/css/dot-roboto.min.css') && str_contains($html, '/dot-ui/css/dot-type.min.css')),
+                $name.' links Roboto and the type scale from dot-ui'
+            );
             $this->assertStringNotContainsString('fonts.googleapis.com', $html, $name.' loads no Google font');
             $this->assertStringNotContainsString('fonts.gstatic.com', $html, $name);
             foreach (['Fraunces', 'Sora', 'Space Mono', 'Hanken', 'Archivo', 'Big Shoulders', 'Figtree'] as $face) {

@@ -113,9 +113,8 @@ class DotUiHeaderTest extends TestCase
         $this->fakeInfoDot([self::url(self::ACME) => Http::response(self::body(self::ACME))]);
         $html = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd'))->get(route('dashboard'))->getContent();
 
-        foreach (['dot-search.js', 'dot-search-results.js', 'dot-nav.js', 'dot-switcher.js'] as $script) {
-            $this->assertStringContainsString('/dot-ui/js/'.$script, $html);
-        }
+        $this->assertStringContainsString('/dot-ui/js/dot-ui.min.js', $html, 'one bundle: search, results controller, nav and switcher (header-search.js calls attach())');
+        $this->assertStringContainsString('/dot-ui/css/dot-ui.min.css', $html);
         $this->assertStringContainsString('data-dsr-shortcut', $html, 'the hint binds Ctrl or Cmd K');
     }
 
@@ -281,7 +280,7 @@ class DotUiHeaderTest extends TestCase
         $response = $this->actingAs($this->memberOf(self::ACME, 'Acme Ltd'))->get(route('dashboard'))->assertOk();
         $html = $response->getContent();
 
-        foreach (['css/dot-roboto.css', 'css/dot-type.css', 'css/dot-tokens.css', 'css/dot-search.css', 'css/dot-switcher.css', 'css/dot-header.css', 'js/dot-switcher.js', 'js/dot-nav.js', 'js/dot-search.js', 'js/dot-search-results.js'] as $asset) {
+        foreach (['css/dot-ui.min.css', 'js/dot-ui.min.js'] as $asset) {
             $this->assertStringContainsString('/dot-ui/'.$asset, $html, $asset.' is linked from this site');
             $this->assertFileExists(public_path('dot-ui/'.$asset));
         }

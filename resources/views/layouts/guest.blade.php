@@ -14,8 +14,8 @@
 
         <!-- Fonts -->
         <link rel="preload" href="/dot-ui/fonts/roboto/roboto-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-        <link rel="stylesheet" href="/dot-ui/css/dot-roboto.css">
-        <link rel="stylesheet" href="/dot-ui/css/dot-type.css">
+        <link rel="stylesheet" href="/dot-ui/css/dot-roboto.min.css">
+        <link rel="stylesheet" href="/dot-ui/css/dot-type.min.css">
 
         <!-- Vite -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])

@@ -137,7 +137,10 @@ export class FormulaHelp {
 
     place(input) {
         const box = input.getBoundingClientRect();
-        this.panel.style.left = `${Math.max(8, Math.min(box.left, innerWidth - this.panel.offsetWidth - 8))}px`;
+        // The formula line starts at the left edge now (the title moved up into the header), so a list hung from its left would sit over
+        // the first columns, the very cells being picked. It hangs from the line's right edge instead; a cell's own editor keeps its left.
+        const left = input.id === 'line' ? box.right - this.panel.offsetWidth : box.left;
+        this.panel.style.left = `${Math.max(8, Math.min(left, innerWidth - this.panel.offsetWidth - 8))}px`;
         const below = box.bottom + 4;
         const fits = below + this.panel.offsetHeight < innerHeight;
         this.panel.style.top = `${fits ? below : Math.max(8, box.top - this.panel.offsetHeight - 4)}px`;

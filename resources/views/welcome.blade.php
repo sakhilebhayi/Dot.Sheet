@@ -72,6 +72,8 @@
             .link-underline {
                 background-image: linear-gradient(currentColor, currentColor);
                 background-position: 0 100%;
+                background-origin: content-box;
+                background-clip: content-box;
                 background-repeat: no-repeat;
                 transition: background-size 220ms var(--ease-out);
             }
@@ -108,26 +110,26 @@
                 </a>
 
                 <div class="hidden md:flex items-center gap-8 font-mono text-[13px] tracking-wide uppercase nav-cream">
-                    <a href="#capabilities" class="link-underline pb-0.5">Product</a>
-                    <a href="#features" class="link-underline pb-0.5">Features</a>
+                    <a href="#capabilities" class="link-underline inline-flex items-center py-3">Product</a>
+                    <a href="#features" class="link-underline inline-flex items-center py-3">Features</a>
                 </div>
 
                 @if (Route::has('login'))
                     <div class="flex items-center gap-3">
                         @auth
-                            <a href="{{ url('/dashboard') }}" class="press flex items-center gap-2 px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
+                            <a href="{{ url('/dashboard') }}" class="press flex items-center gap-2 min-h-[44px] px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
                                 Dashboard
                             </a>
                         @else
-                            <a href="{{ route('login') }}" class="hidden sm:block text-sm font-medium nav-cream transition-colors">
+                            <a href="{{ route('login') }}" class="hidden sm:inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-sm font-medium nav-cream transition-colors">
                                 Sign in
                             </a>
-                            <a href="{{ $join }}" class="press px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
+                            <a href="{{ $join }}" class="press inline-flex items-center min-h-[44px] px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
                                 Create account
                             </a>
                         @endauth
 
-                        <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden press p-2 -mr-2" aria-label="Toggle menu">
+                        <button @click="mobileMenuOpen = !mobileMenuOpen" class="md:hidden press inline-flex items-center justify-center min-h-[44px] min-w-[44px] -mr-2" aria-label="Toggle menu">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path x-show="!mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 7h16M4 12h16M4 17h16"></path>
                                 <path x-show="mobileMenuOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18L18 6M6 6l12 12"></path>
@@ -317,13 +319,13 @@
         <!-- Footer -->
         <footer class="py-14 px-5 sm:px-8 border-t border-[var(--line)] bg-[var(--paper)]">
             <div class="max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-                <a href="/" class="flex items-center gap-2.5">
+                <a href="/" class="flex items-center gap-2.5 min-w-[44px]">
                     <img src="{{ asset('dot_sheet.png') }}" alt="Dot.Sheet" class="h-11 w-auto opacity-90">
                 </a>
                 <div class="flex items-center gap-6 font-mono text-xs tracking-wide uppercase text-[var(--slate)]">
-                    <a href="{{ route('policy.show') }}" class="hover:text-[var(--ink)] transition-colors">Privacy</a>
-                    <a href="{{ route('cookies') }}" class="hover:text-[var(--ink)] transition-colors">Cookies</a>
-                    <a href="{{ route('terms.show') }}" class="hover:text-[var(--ink)] transition-colors">Terms</a>
+                    <a href="{{ route('policy.show') }}" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-[var(--ink)] transition-colors">Privacy</a>
+                    <a href="{{ route('cookies') }}" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-[var(--ink)] transition-colors">Cookies</a>
+                    <a href="{{ route('terms.show') }}" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] hover:text-[var(--ink)] transition-colors">Terms</a>
                 </div>
                 <p class="font-mono text-xs tracking-wide text-[var(--slate)]">
                     &copy; {{ date('Y') }} Dot.Sheet. Collaborative spreadsheets for the Dot ecosystem.

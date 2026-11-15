@@ -163,7 +163,8 @@
                 display: flex;
                 align-items: center;
                 gap: 0.55rem;
-                margin-bottom: 1.4rem;
+                min-height: 44px;
+                margin-bottom: 0.9rem;
             }
 
             .ds-checkbox {
@@ -178,6 +179,9 @@
                 font-size: 0.84rem;
                 color: var(--slate);
                 cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                min-height: 44px;
             }
 
             /* ── Buttons ── */
@@ -217,6 +221,9 @@
             }
 
             .ds-link {
+                display: inline-flex;
+                align-items: center;
+                min-height: 44px;
                 color: var(--ink);
                 font-weight: 600;
                 text-decoration: underline;

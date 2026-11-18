@@ -60,6 +60,10 @@ class SheetProvisioner implements UserProvisioner
 
     public function sendClaimCode(Authenticatable $user, string $code, int $minutes): void
     {
+        if (! $user instanceof User) {
+            return;
+        }
+
         Mail::to($user->email)->send(new SsoClaimCodeMail($user->name, $code, $minutes));
     }
 }

@@ -1,7 +1,8 @@
 @php
     // Public sign-up here is closed: an account starts on InfoDot, and this app makes its side at the first sign-in.
     $open = \Laravel\Fortify\Features::enabled(\Laravel\Fortify\Features::registration());
-    $join = $open ? route('register') : config('ecosystem.signup_url');
+    $join = \App\Support\CentralSignIn::register($open ? route('register') : config('ecosystem.signup_url'));
+    $signIn = \App\Support\CentralSignIn::login();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth dot-roboto">
@@ -121,7 +122,7 @@
                                 Dashboard
                             </a>
                         @else
-                            <a href="{{ route('login') }}" class="hidden sm:inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-sm font-medium nav-cream transition-colors">
+                            <a href="{{ $signIn }}" class="hidden sm:inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-sm font-medium nav-cream transition-colors">
                                 Sign in
                             </a>
                             <a href="{{ $join }}" class="press inline-flex items-center min-h-[44px] px-5 py-2.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] text-sm font-display font-semibold rounded-lg transition-colors">
@@ -152,7 +153,7 @@
                     <a href="#capabilities" class="px-3 py-2.5">Product</a>
                     <a href="#features" class="px-3 py-2.5">Features</a>
                     @guest
-                        <a href="{{ route('login') }}" class="px-3 py-2.5">Sign in</a>
+                        <a href="{{ $signIn }}" class="px-3 py-2.5">Sign in</a>
                     @endguest
                 </div>
             </div>
@@ -202,7 +203,7 @@
                                 See what's on the grid
                             </a>
                         </div>
-                        @unless($open)<p class="mt-4 text-sm text-[rgba(250,247,236,0.82)]">Accounts are made on InfoDot. Dot.Sheet opens from there.</p>@endunless
+                        @unless($open)<p class="mt-4 text-sm text-[rgba(250,247,236,0.82)]">Accounts are made on InfoDot. @if (\App\Support\CentralSignIn::active())Sign in or create one there and you come straight back.@else Dot.Sheet opens from there.@endif</p>@endunless
                     @endguest
                 </div>
             </div>
@@ -308,7 +309,7 @@
                         <a href="{{ $join }}" class="press px-8 py-3.5 bg-[var(--gold)] hover:bg-[var(--gold-soft)] text-[#1c1204] font-display font-semibold rounded-lg transition-colors">
                             Create account
                         </a>
-                        <a href="{{ route('login') }}" class="press px-8 py-3.5 text-[var(--paper)] font-medium rounded-lg border border-[var(--line-dark)] hover:border-[rgba(250,247,236,0.4)] transition-colors">
+                        <a href="{{ $signIn }}" class="press px-8 py-3.5 text-[var(--paper)] font-medium rounded-lg border border-[var(--line-dark)] hover:border-[rgba(250,247,236,0.4)] transition-colors">
                             Sign in
                         </a>
                     </div>

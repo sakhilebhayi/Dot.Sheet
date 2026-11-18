@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\Ecosystem\ProvisionUserFromInfoDot;
+use App\Exceptions\ClaimRequired;
 use App\Livewire\AiAnalysisPanel;
 use App\Livewire\AiFormulaModal;
 use App\Livewire\AiNaturalLanguageQuery;
@@ -273,19 +274,25 @@ class SheetStateIntegrityTest extends TestCase
         $this->assertTrue($this->theirs->sharedUsers()->whereKey($this->person->id)->exists());
     }
 
-    public function test_an_infodot_sign_in_to_an_unproven_account_leaves_the_teams_it_had_joined(): void
+    /** R-54: this used to detach every membership at the first InfoDot sign-in. It now goes to the claim flow and keeps them. */
+    public function test_an_infodot_sign_in_to_an_unproven_account_goes_to_the_claim_flow_and_keeps_the_teams_it_had_joined(): void
     {
         $team = Team::forceCreate(['user_id' => $this->other->id, 'name' => 'Their business', 'personal_team' => false]);
         $team->users()->attach($this->person->id, ['role' => 'editor']);
         $this->person->switchTeam($team);
         $this->person->forceFill(['email' => 'claimed@business.test', 'email_verified_at' => null])->save();
 
-        $user = app(ProvisionUserFromInfoDot::class)(['user' => ['id' => 9, 'email' => 'claimed@business.test', 'email_verified' => true, 'name' => 'Real Owner']]);
+        try {
+            app(ProvisionUserFromInfoDot::class)(['user' => ['id' => 9, 'uuid' => 'infodot-uuid-9', 'email' => 'claimed@business.test', 'email_verified' => true, 'name' => 'Real Owner']]);
+            $this->fail('An unproven account must go to the claim flow.');
+        } catch (ClaimRequired $claim) {
+            $this->assertTrue($claim->user->is($this->person));
+        }
 
-        $this->assertSame($this->person->id, $user->id);
-        $this->assertNotNull($user->email_verified_at);
-        $this->assertFalse($user->fresh()->belongsToTeam($team));
-        $this->assertSame($user->personalTeam()->id, $user->fresh()->current_team_id);
+        $fresh = $this->person->fresh();
+        $this->assertNull($fresh->email_verified_at, 'nothing is verified until the emailed code is entered');
+        $this->assertTrue($fresh->belongsToTeam($team), 'the membership is kept');
+        $this->assertSame($team->id, $fresh->current_team_id);
     }
 
     public function test_a_team_owner_reaches_the_sheets_of_the_team(): void

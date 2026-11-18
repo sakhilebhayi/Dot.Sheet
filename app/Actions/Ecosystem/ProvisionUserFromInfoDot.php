@@ -2,6 +2,7 @@
 
 namespace App\Actions\Ecosystem;
 
+use App\Exceptions\ClaimRequired;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -10,18 +11,24 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Turns an InfoDot identity (already proven by the redeem endpoint) into a local user.
+ * Turns an InfoDot identity (already proven by the redeem endpoint) into a local user. This is the FALLBACK receiver's
+ * matching (the /auth/ecosystem handoff); with DOTSSO_ENABLED the shared package does it, by the same rules.
  *
- * Matches by verified email. An existing account whose email was never verified
- * here (pre-registered, or changed to this address without proof) is taken over
- * safely: its password is replaced and its memberships of other teams removed, so
- * whoever claimed the address cannot keep using it or see this person's work. A person InfoDot vouches for but who has no
- * account here gets one, with a random password and a personal team.
+ * Order: the stored InfoDot user id; else the local account with this verified email (linked now); else, when a local
+ * account with that email exists but is unverified, the CLAIM FLOW (ClaimRequired): nothing is replaced, nothing is
+ * detached, the person proves the address with a code first. A person InfoDot vouches for who has no account here gets
+ * one, with a random password and a personal team.
+ *
+ * R-54: the old behaviour took an unverified account over by replacing its password AND detaching every team
+ * membership, so a person who had been added as a collaborator lost their access at the first InfoDot sign-in. Both are
+ * gone: memberships, spreadsheet shares, passwords, two-factor settings and tokens are never touched here.
  */
 class ProvisionUserFromInfoDot
 {
     /**
      * @param  array<string, mixed>  $identity
+     *
+     * @throws ClaimRequired when an unverified or unlinked local account holds the address
      */
     public function __invoke(array $identity): ?User
     {
@@ -31,34 +38,53 @@ class ProvisionUserFromInfoDot
             return null;
         }
 
+        $uuid = trim((string) ($identity['user']['uuid'] ?? '')) ?: null;
+        $name = trim((string) ($identity['user']['name'] ?? '')) ?: Str::before($email, '@');
+
+        if ($uuid !== null && ($linked = User::query()->where('infodot_user_uuid', $uuid)->first())) {
+            return $linked;
+        }
+
         $user = User::query()->whereRaw('lower(email) = ?', [$email])->first();
 
         if ($user) {
-            if ($user->email_verified_at === null) {
-                DB::transaction(function () use ($user) {
-                    $user->forceFill(['password' => Hash::make(Str::random(48)), 'email_verified_at' => now()])->save();
+            if ($user->infodot_user_uuid !== null && ($uuid === null || ! hash_equals($user->infodot_user_uuid, $uuid))) {
+                Log::warning('InfoDot sign-in refused: the local account is linked to a different InfoDot identity.', ['user_id' => $user->id]);
 
-                    // Whoever held the address before may have joined teams so that this person's work
-                    // lands where they can read it. The person InfoDot vouches for starts outside them.
-                    $user->teams()->detach();
-                    $personal = $user->ownedTeams()->where('personal_team', true)->first();
-                    $personal ? $user->switchTeam($personal) : $user->forceFill(['current_team_id' => null])->save();
-                });
-                Log::notice('Unverified local account adopted by InfoDot sign-in; password replaced and team memberships removed.', ['user_id' => $user->id]);
+                return null;
             }
 
-            return $user;
+            if ($user->email_verified_at !== null) {
+                if ($uuid !== null && $user->infodot_user_uuid === null) {
+                    $user->forceFill(['infodot_user_uuid' => $uuid])->save();
+                }
+
+                return $user;
+            }
+
+            if ($uuid === null) {
+                // Without InfoDot's user id there is nothing a claim could link to; refuse rather than guess.
+                Log::notice('InfoDot sign-in refused: unverified local account and no InfoDot user id in the answer.', ['user_id' => $user->id]);
+
+                return null;
+            }
+
+            throw new ClaimRequired($user, ['sub' => $uuid, 'email' => $email, 'name' => Str::limit($name, 255, '')]);
         }
 
         if (! config('ecosystem.infodot.provision', true)) {
             return null;
         }
 
-        return DB::transaction(function () use ($identity, $email) {
-            $name = trim((string) ($identity['user']['name'] ?? '')) ?: Str::before($email, '@');
+        return $this->create($email, $name, $uuid);
+    }
 
+    /** A new, verified account with a random password and its personal team. */
+    public function create(string $email, string $name, ?string $uuid): User
+    {
+        return DB::transaction(function () use ($email, $name, $uuid) {
             $user = new User(['name' => Str::limit($name, 255, ''), 'email' => $email, 'password' => Hash::make(Str::random(48))]);
-            $user->forceFill(['email_verified_at' => now()])->save();
+            $user->forceFill(['email_verified_at' => now(), 'infodot_user_uuid' => $uuid])->save();
 
             $team = Team::forceCreate([
                 'user_id' => $user->id,

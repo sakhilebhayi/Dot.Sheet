@@ -280,6 +280,18 @@
             }
             .ds-terms-row a:hover { color: var(--green); }
 
+
+            /* ── Claim and sign-in error pages (R-54): same parts, 44px targets, no new colours ── */
+            .ds-code { text-align: center; font-size: 1.4rem; font-weight: 600; letter-spacing: 0.3em; min-height: 48px; font-variant-numeric: tabular-nums; }
+            .ds-code[aria-invalid="true"] { border-color: #b91c1c; }
+            .ds-help { margin: 0.4rem 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--slate); overflow-wrap: anywhere; }
+            .ds-fielderror { margin: 0.4rem 0 0; font-size: 0.86rem; color: #b91c1c; }
+            .ds-fielderror:empty { display: none; }
+            .ds-linkbtn { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; font-size: inherit; }
+            .ds-btn-secondary { display: block; width: 100%; padding: 0.82rem 1.2rem; margin-top: 0.5rem; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font-family: var(--font-display); font-size: 0.93rem; font-weight: 700; text-align: center; text-decoration: none; }
+            .ds-btn-secondary:hover { background: var(--paper); }
+            .ds-btn-primary:focus-visible, .ds-btn-secondary:focus-visible, .ds-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
             @keyframes authLiftIn {
                 from { transform: translateY(14px); opacity: 0; }
                 to   { transform: translateY(0);    opacity: 1; }

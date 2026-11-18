@@ -76,7 +76,7 @@ class CompanyEntitlementTest extends TestCase
         Http::swap(new Factory);
         Http::fake([self::REDEEM => Http::response([
             'platform' => 'sheet',
-            'user' => ['id' => 1, 'uuid' => (string) Str::uuid(), 'name' => ucfirst(strstr($email, '@', true)), 'email' => $email, 'email_verified' => true],
+            'user' => ['id' => 1, 'uuid' => 'infodot-'.md5($email), 'name' => ucfirst(strstr($email, '@', true)), 'email' => $email, 'email_verified' => true],
             'teams' => $teams,
             'current_team_id' => 1,
             'current_team_uuid' => $current,

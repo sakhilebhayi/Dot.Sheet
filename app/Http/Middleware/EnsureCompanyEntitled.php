@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * On the signed-in area: stops when InfoDot says the person's CURRENT company no longer holds Dot.Sheet (R-50).
  *
- * Only a clear "not entitled" stops a request, before any controller runs, so no data is read or changed. Every other
+ * Only a clear "not entitled", or InfoDot's switch saying the platform is unavailable (R-61, 503), stops a request, before any controller runs, so no data is read or changed. Every other
  * outcome carries on: the check switched off, no signed-in person, a workspace that is not an InfoDot company
  * (a personal team, or a team never linked), and any failure to get an answer. Switching company, signing out, the
  * InfoDot sign-in receiver, health checks and public pages are outside the routes this sits on.
@@ -48,11 +48,37 @@ class EnsureCompanyEntitled
 
         $answer = $this->entitlement->for((string) $company->infodot_team_uuid);
 
+        // R-61: a platform InfoDot has switched off (maintenance, unavailable) is off for everyone, whatever they hold. Nothing is deleted
+        // or changed; the page says so plainly. Checked before what the company holds, because it is a different question.
+        if (! $answer['available']) {
+            return $this->unavailable($request, $answer['message']);
+        }
+
         if ($answer['state'] !== CompanyEntitlement::REFUSED) {
             return $next($request);
         }
 
         return $this->refuse($request, $answer['status'], $user, $company);
+    }
+
+    /** A 503 with the message InfoDot gave; nothing behind it runs. */
+    private function unavailable(Request $request, ?string $message): Response
+    {
+        $message ??= 'Dot.Sheet is temporarily unavailable.';
+
+        // Livewire discards a returned non-redirect response from persistent middleware and has already run the action, so it is
+        // stopped with an exception, as refuse() does.
+        if ($request->headers->has('X-Livewire')) {
+            abort(503, $message, ['Retry-After' => '60', 'Cache-Control' => 'no-store, private']);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message, 'reason' => 'platform_unavailable'], 503)
+                ->header('Retry-After', '60')->header('Cache-Control', 'no-store, private');
+        }
+
+        return response()->view('errors.platform-unavailable', ['message' => $message], 503)
+            ->header('Retry-After', '60')->header('Cache-Control', 'no-store, private');
     }
 
     /**

@@ -11,10 +11,12 @@ use Throwable;
  * Asks InfoDot whether a company still holds this platform (R-50), and remembers the answer.
  *
  * InfoDot decides; this only reads `GET {infodot}/api/ecosystem/companies/{uuid}/platforms` with this platform's own
- * service secret and looks at this platform's own row. A clear answer is kept for ten minutes per company, a failure
- * for sixty seconds. A failure of any kind (no secret, timeout, refused, unknown company, a body that is not the
- * expected shape, no row for this platform) is "unknown", which the caller must treat as "carry on": an outage or a
- * misconfiguration at InfoDot never locks a company out. Unknown is never reported to anyone as "active".
+ * service secret and looks at this platform's own row. A clear answer is kept for one minute per company, so a switch
+ * made at InfoDot (a platform put in maintenance, R-61) takes effect within about a minute, and is also remembered for
+ * six hours. A failure of any kind (no secret, timeout, refused, unknown company, a body that is not the expected shape,
+ * no row for this platform) is "unknown": the last clear answer under six hours old is used (a platform last told
+ * unavailable stays unavailable); with none, the caller carries on, so an outage or a misconfiguration at InfoDot never
+ * locks a company out. Unknown is never reported to anyone as "active".
  */
 class CompanyEntitlement
 {
@@ -24,7 +26,10 @@ class CompanyEntitlement
 
     public const UNKNOWN = 'unknown';
 
-    private const ANSWER_SECONDS = 600;
+    private const ANSWER_SECONDS = 60;
+
+    /** How long the last clear answer is used when InfoDot gives no clear answer. */
+    private const LAST_KNOWN_SECONDS = 21600;
 
     private const FAILURE_SECONDS = 60;
 
@@ -34,21 +39,40 @@ class CompanyEntitlement
     }
 
     /**
-     * @return array{state: string, status: string|null}
+     * @return array{state: string, status: string|null, available: bool, message: string|null}
      */
     public function for(string $companyUuid): array
     {
         $key = 'infodot:entitlement:'.$this->platform().':'.$companyUuid;
-        $cached = Cache::get($key);
 
-        if (is_array($cached) && isset($cached['state'])) {
-            return ['state' => (string) $cached['state'], 'status' => $cached['status'] ?? null];
+        try {
+            $cached = Cache::get($key);
+        } catch (Throwable) {
+            $cached = null;
+        }
+
+        if (is_array($cached) && is_array($cached['answer'] ?? null)) {
+            return $cached['answer'];
         }
 
         $answer = $this->ask($companyUuid);
 
-        // A failure is logged here, where it is also cached: once per window, not once per request.
-        Cache::put($key, $answer, $answer['state'] === self::UNKNOWN ? self::FAILURE_SECONDS : self::ANSWER_SECONDS);
+        // A failure is logged inside ask(), where it is also cached: once per window, not once per request.
+        try {
+            if ($answer['state'] !== self::UNKNOWN) {
+                Cache::put($key.':last', ['answer' => $answer, 'at' => time()], self::LAST_KNOWN_SECONDS);
+            } else {
+                $last = Cache::get($key.':last');
+
+                if (is_array($last) && is_array($last['answer'] ?? null) && time() - (int) ($last['at'] ?? 0) < self::LAST_KNOWN_SECONDS) {
+                    $answer = $last['answer'];
+                }
+            }
+
+            Cache::put($key, ['answer' => $answer], $answer['state'] === self::UNKNOWN ? self::FAILURE_SECONDS : self::ANSWER_SECONDS);
+        } catch (Throwable) {
+            // No cache, no memory of the answer: the next request asks again.
+        }
 
         return $answer;
     }
@@ -71,7 +95,7 @@ class CompanyEntitlement
     }
 
     /**
-     * @return array{state: string, status: string|null}
+     * @return array{state: string, status: string|null, available: bool, message: string|null}
      */
     private function ask(string $companyUuid): array
     {
@@ -116,6 +140,9 @@ class CompanyEntitlement
             return [
                 'state' => $row['entitled'] ? self::ENTITLED : self::REFUSED,
                 'status' => is_string($row['status'] ?? null) ? $row['status'] : null,
+                // R-61: an InfoDot from before the contract gives no `available`, which is not a switch-off.
+                'available' => ($row['available'] ?? true) !== false,
+                'message' => is_string($row['message'] ?? null) && $row['message'] !== '' ? mb_substr($row['message'], 0, 400) : null,
             ];
         }
 
@@ -123,12 +150,12 @@ class CompanyEntitlement
     }
 
     /**
-     * @return array{state: string, status: string|null}
+     * @return array{state: string, status: string|null, available: bool, message: string|null}
      */
     private function unknown(string $why): array
     {
         Log::warning('InfoDot entitlement check could not be answered; people carry on.', ['platform' => $this->platform(), 'reason' => $why]);
 
-        return ['state' => self::UNKNOWN, 'status' => null];
+        return ['state' => self::UNKNOWN, 'status' => null, 'available' => true, 'message' => null];
     }
 }

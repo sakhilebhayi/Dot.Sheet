@@ -402,18 +402,18 @@ class CompanyEntitlementTest extends TestCase
         $this->assertSame(0, $this->platformCalls());
     }
 
-    public function test_the_answer_is_cached_for_ten_minutes_per_company(): void
+    public function test_the_answer_is_cached_for_one_minute_per_company(): void
     {
         [$user] = $this->memberOfLinkedCompany();
         $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
 
         $this->actingAs($user)->get('/dashboard')->assertOk();
         $this->get('/dashboard')->assertOk();
-        $this->travel(9)->minutes();
+        $this->travel(30)->seconds();
         $this->get('/activity')->assertOk();
         $this->assertSame(1, $this->platformCalls());
 
-        $this->travel(2)->minutes();
+        $this->travel(40)->seconds();
         $this->get('/dashboard')->assertOk();
         $this->assertSame(2, $this->platformCalls());
     }
@@ -522,5 +522,109 @@ class CompanyEntitlementTest extends TestCase
         $this->put('/current-team', ['team_id' => $acme->id])->assertRedirect();
         $this->get('/dashboard')->assertStatus(403);
         $this->assertSame(2, $this->platformCalls());
+    }
+
+    // ---- R-61 availability contract -------------------------------------------------------------------------------
+
+    private function maintenance(string $uuid, bool $entitled = true): array
+    {
+        $body = $this->platforms($uuid, $entitled, 'temporarily_unavailable');
+        $body['platforms'][2] += ['available' => false, 'state' => 'maintenance', 'message' => 'Dot.Sheet is under maintenance. Your data is safe. Please try again later.'];
+
+        return $body;
+    }
+
+    public function test_a_platform_switched_off_at_infodot_is_unavailable_even_to_a_company_that_holds_it(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME))]);
+
+        $this->actingAs($user)->get('/dashboard')->assertStatus(503)->assertSee('under maintenance')->assertSee('kept as they are')
+            ->assertHeader('Retry-After', '60')->assertHeader('Cache-Control', 'no-store, private');
+        $this->getJson('/dashboard')->assertStatus(503)->assertJsonPath('reason', 'platform_unavailable');
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+    }
+
+    public function test_switching_it_back_on_takes_effect_within_a_minute_and_nothing_was_lost(): void
+    {
+        [$user, , $sheet] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME))]);
+        $this->actingAs($user)->get('/dashboard')->assertStatus(503);
+
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+        $this->get('/dashboard')->assertStatus(503); // still inside the one-minute window
+        $this->travel(70)->seconds();
+        $this->get('/dashboard')->assertOk();
+        $this->assertDatabaseHas('spreadsheets', ['id' => $sheet->id]);
+    }
+
+    public function test_an_infodot_from_before_the_contract_is_not_a_switch_off(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+
+        $this->actingAs($user)->get('/dashboard')->assertOk();
+    }
+
+    public function test_an_outage_keeps_the_last_answer_for_six_hours_and_then_carries_on(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME))]);
+        $this->actingAs($user)->get('/dashboard')->assertStatus(503);
+
+        $this->infodotAnswers([self::ACME => Http::response('', 503)]);
+        $this->travel(90)->seconds();
+        $this->get('/dashboard')->assertStatus(503);
+        $this->travel(5)->hours();
+        $this->get('/dashboard')->assertStatus(503);
+
+        $this->travel(2)->hours();
+        $this->get('/dashboard')->assertOk();
+    }
+
+    public function test_a_platform_that_was_available_stays_available_through_an_outage(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+        $this->actingAs($user)->get('/dashboard')->assertOk();
+
+        $this->infodotAnswers([self::ACME => Http::response('', 500)]);
+        $this->travel(2)->minutes();
+        $this->get('/dashboard')->assertOk();
+    }
+
+    public function test_unavailable_is_checked_before_the_company_holds_it(): void
+    {
+        [$user] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME, false))]);
+
+        $this->actingAs($user)->get('/dashboard')->assertStatus(503)->assertSee('under maintenance');
+    }
+
+    public function test_a_livewire_action_is_stopped_for_real_when_the_platform_is_switched_off(): void
+    {
+        [$user, , $sheet] = $this->memberOfLinkedCompany();
+        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
+
+        $html = $this->actingAs($user)->get("/spreadsheets/{$sheet->id}/classic")->assertOk()->getContent();
+        preg_match_all('/wire:snapshot="([^"]*)"/', $html, $all);
+        $snapshot = null;
+        foreach ($all[1] as $encoded) {
+            $candidate = json_decode(html_entity_decode($encoded), true);
+            if (($candidate['memo']['name'] ?? null) === 'named-ranges-panel') {
+                $snapshot = $candidate;
+            }
+        }
+        $this->assertNotNull($snapshot);
+
+        $this->travel(70)->seconds();
+        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME))]);
+
+        $this->withHeaders(['X-Livewire' => 'true'])->postJson(route('default.livewire.update'), ['components' => [[
+            'snapshot' => json_encode($snapshot),
+            'updates' => ['name' => 'Costs', 'rangeInput' => 'A1:B2'],
+            'calls' => [['path' => '', 'method' => 'createRange', 'params' => []]],
+        ]], '_token' => csrf_token()])->assertStatus(503)->assertJsonMissingPath('components');
+        $this->assertSame(0, NamedRange::where('spreadsheet_id', $sheet->id)->count());
     }
 }

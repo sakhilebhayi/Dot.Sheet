@@ -5,6 +5,7 @@ namespace Tests;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\Request;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -12,6 +13,15 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
         $this->withoutVite();
+    }
+
+    protected function tearDown(): void
+    {
+        // A test run in production mode applies the trusted-hosts check, which Symfony keeps in a static:
+        // cleared so it never reaches a later test's request host.
+        Request::setTrustedHosts([]);
+
+        parent::tearDown();
     }
 
     /**

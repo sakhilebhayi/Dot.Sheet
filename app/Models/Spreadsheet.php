@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -38,6 +39,26 @@ class Spreadsheet extends Model
                 'name' => 'Sheet1',
                 'sort_order' => 0,
             ]);
+        });
+    }
+
+    /**
+     * Workbooks this person can reach: their own (a team workbook only while they are still in its team),
+     * ones shared with them, and their teams' workbooks. The three ways are ORed inside one group, so a
+     * condition added after this scope is ANDed with the whole group.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeReachableBy($query, User $user)
+    {
+        $teamIds = $user->allTeams()->pluck('id');
+
+        return $query->where(function ($reach) use ($user, $teamIds) {
+            $reach->where(fn ($own) => $own->where('owner_id', $user->id)
+                ->where(fn ($place) => $place->whereNull('team_id')->orWhereIn('team_id', $teamIds)))
+                ->orWhereHas('sharedUsers', fn ($shared) => $shared->where('user_id', $user->id))
+                ->orWhereIn('team_id', $teamIds);
         });
     }
 

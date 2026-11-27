@@ -42,6 +42,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Largest file read for its values (EA-1)
+    |--------------------------------------------------------------------------
+    |
+    | A larger file is read as values, first sheet only, at about 0.7 KB per cell spanned (measured on
+    | PHP 8.5). The first sheet's used area (first to last used cell) may span at most this many cells,
+    | and an Excel or ODS archive may unpack to at most this many megabytes, both checked before loading.
+    |
+    */
+    'import_first_sheet_max_cells' => (int) env('SHEET_IMPORT_FIRST_SHEET_MAX_CELLS', 100000),
+
+    'import_max_unpacked_mb' => (int) env('SHEET_IMPORT_MAX_UNPACKED_MB', 64),
+
+    /*
+    |--------------------------------------------------------------------------
     | Largest sheet laid out for paper
     |--------------------------------------------------------------------------
     |

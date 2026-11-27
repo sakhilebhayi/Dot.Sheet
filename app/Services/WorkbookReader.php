@@ -53,6 +53,8 @@ class WorkbookReader
      */
     public function size(string $path, string $extension): int
     {
+        ImportGuard::checkArchive($path, $extension);
+
         $total = 0;
         foreach (IOFactory::createReader(self::READERS[$extension])->listWorksheetInfo($path) as $sheet) {
             $total += (int) $sheet['totalRows'] * (int) $sheet['totalColumns'];

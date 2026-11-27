@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // EA-1 (S-09): answer only to APP_URL's host (and its own subdomains), so generated links (password resets,
+        // invitations) cannot be pointed elsewhere by a forged Host header. Laravel skips this check when
+        // APP_ENV=local, which the deploy now replaces with production.
+        $middleware->trustHosts();
         $middleware->alias([
             'operator' => EnsurePlatformOperator::class,
         ]);

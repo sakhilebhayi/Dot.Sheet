@@ -4,6 +4,7 @@ namespace App\Actions\Jetstream;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Services\TeamDeparture;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,8 @@ class RemoveTeamMember implements RemovesTeamMembers
         $this->ensureUserDoesNotOwnTeam($teamMember, $team);
 
         $team->removeUser($teamMember);
+
+        app(TeamDeparture::class)->handOver($team, $teamMember);
 
         TeamMemberRemoved::dispatch($team, $teamMember);
     }

@@ -44,7 +44,7 @@ class SheetSharing
             'place' => [
                 'team_id' => $spreadsheet->team_id,
                 'name' => $spreadsheet->team?->name,
-                'can_move' => $spreadsheet->owner_id === $viewerId,
+                'can_move' => (bool) User::find($viewerId)?->can('changePlace', $spreadsheet),
                 'teams' => $this->teamsFor($viewerId),
             ],
             'template' => (bool) $spreadsheet->is_template,
@@ -136,7 +136,7 @@ class SheetSharing
      */
     public function setPlace(Spreadsheet $spreadsheet, User $user, ?int $teamId): void
     {
-        if ($spreadsheet->owner_id !== $user->id) {
+        if (! $user->can('changePlace', $spreadsheet)) {
             throw new ShareRefused(self::PLACE_OWNER_MESSAGE);
         }
 

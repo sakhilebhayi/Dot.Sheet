@@ -10,6 +10,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Services\ExportTooLargeException;
 use App\Services\IdeaStarts;
+use App\Services\ImportRefused;
 use App\Services\ProtectionRefused;
 use App\Services\SheetPage;
 use App\Services\SheetPrint;
@@ -52,13 +53,7 @@ class SpreadsheetController extends Controller
 
         // Everything this person can reach: their own sheets, sheets shared with them, their teams' sheets.
         // The three ways of reaching a workbook are ORed inside ONE group: any condition added after it is ANDed with the whole group, never with the last OR only.
-        $spreadsheets = Spreadsheet::where(function ($reach) use ($user) {
-            $reach->where('owner_id', $user->id)
-                ->orWhereHas('sharedUsers', function ($query) use ($user) {
-                    $query->where('user_id', $user->id);
-                })
-                ->orWhereIn('team_id', $user->allTeams()->pluck('id'));
-        })
+        $spreadsheets = Spreadsheet::reachableBy($user)
             ->with('owner', 'team', 'sheetTabs:id,spreadsheet_id,name,sort_order')
             ->withCount([
                 'cells',
@@ -181,6 +176,8 @@ class SpreadsheetController extends Controller
 
                     return redirect()->route('spreadsheets.show', $spreadsheet)->with('import_report', true);
                 }
+            } catch (ImportRefused $e) {
+                return back()->with('error', $e->getMessage());
             } catch (\Exception $e) {
                 report($e);
 
@@ -357,6 +354,8 @@ class SpreadsheetController extends Controller
             $result = $tab !== null && in_array($extension, ['xlsx', 'xls', 'ods'], true) && $importer->fits($file->getRealPath(), $extension)
                 ? $importer->intoSheet($file->getRealPath(), $extension, $spreadsheet, $tab)
                 : (new SpreadsheetImportExportService)->importFile($spreadsheet, $file, $tab);
+        } catch (ImportRefused $e) {
+            $result = ['success' => false, 'error' => $e->getMessage()];
         } catch (\Exception $e) {
             report($e);
             $result = ['success' => false, 'error' => SpreadsheetImportExportService::UNREADABLE_MESSAGE];
@@ -397,7 +396,8 @@ class SpreadsheetController extends Controller
         $this->authorize('update', $spreadsheet);
 
         $batch = Bus::findBatch($batchId);
-        if (! $batch) {
+        // EA-1 (S-08): only this workbook's own import batches answer here.
+        if (! $batch || $batch->name !== "import:spreadsheet:{$spreadsheet->id}") {
             return response()->json([
                 'status' => 'missing',
                 'batch_id' => $batchId,

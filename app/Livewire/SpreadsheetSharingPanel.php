@@ -7,6 +7,7 @@ use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\ShareRefused;
 use App\Services\SheetSharing;
+use App\Support\WorkbookAudit;
 use Carbon\Carbon;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
@@ -134,6 +135,7 @@ class SpreadsheetSharingPanel extends Component
             return;
         }
 
+        WorkbookAudit::record($this->spreadsheet, $user, 'Shared with someone', 'email: '.$email.', permission: '.$this->invitePermission);
         $this->flash($shared ? 'Shared with '.$email.'.' : $email.' has no account here yet. Copy their link below and send it to them.', 'success');
         $this->inviteEmail = '';
         $this->refreshData();
@@ -153,6 +155,7 @@ class SpreadsheetSharingPanel extends Component
             return;
         }
 
+        WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Changed what someone can do', 'permission: '.$permission);
         $this->flash('Permission updated.', 'success');
         $this->refreshData();
     }
@@ -167,13 +170,16 @@ class SpreadsheetSharingPanel extends Component
             return;
         }
 
+        WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Took away someone\'s access');
         $this->flash('User access revoked.', 'success');
         $this->refreshData();
     }
 
     public function revokeInvitation($inviteId): void
     {
-        $this->spreadsheet->invitations()->where('id', $inviteId)->delete();
+        if ($this->spreadsheet->invitations()->where('id', $inviteId)->delete() > 0) {
+            WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Cancelled an invitation');
+        }
         $this->flash('Invitation revoked.', 'success');
         $this->refreshData();
     }
@@ -184,6 +190,7 @@ class SpreadsheetSharingPanel extends Component
 
         app(SheetSharing::class)->setLink($this->spreadsheet, (bool) $this->publicEnabled, $this->publicExpiresAt ? Carbon::parse($this->publicExpiresAt) : null);
 
+        WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Changed the link for anyone', 'enabled: '.($this->publicEnabled ? 'yes' : 'no'));
         $this->flash('Public link settings saved.', 'success');
         $this->refreshData();
     }
@@ -192,6 +199,7 @@ class SpreadsheetSharingPanel extends Component
     {
         app(SheetSharing::class)->newLink($this->spreadsheet);
 
+        WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Made a new link');
         $this->flash('Public link regenerated.', 'success');
         $this->refreshData();
     }
@@ -201,6 +209,7 @@ class SpreadsheetSharingPanel extends Component
         $this->spreadsheet->public_enabled = false;
         $this->spreadsheet->save();
 
+        WorkbookAudit::record($this->spreadsheet, Auth::user(), 'Changed the link for anyone', 'enabled: no');
         $this->flash('Public link disabled.', 'success');
         $this->refreshData();
     }

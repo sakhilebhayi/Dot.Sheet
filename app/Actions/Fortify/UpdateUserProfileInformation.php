@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\UpdatesUserProfileInformation;
 
 class UpdateUserProfileInformation implements UpdatesUserProfileInformation
@@ -22,6 +23,13 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'photo' => ['nullable', 'mimes:jpg,jpeg,png', 'max:1024'],
         ])->validateWithBag('updateProfileInformation');
+
+        // EA-1 (S-10): an account linked to InfoDot takes its address from InfoDot; changing it here would split the two.
+        if ($user->infodot_user_uuid !== null && strcasecmp((string) $input['email'], (string) $user->email) !== 0) {
+            throw ValidationException::withMessages([
+                'email' => [__('Your email address comes from your InfoDot account. Change it in InfoDot.')],
+            ])->errorBag('updateProfileInformation');
+        }
 
         if (isset($input['photo'])) {
             $user->updateProfilePhoto($input['photo']);

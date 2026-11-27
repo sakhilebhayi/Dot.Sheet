@@ -20,6 +20,5 @@ Broadcast::channel('spreadsheet.{spreadsheetId}', function ($user, $spreadsheetI
     return [
         'id' => $user->id,
         'name' => $user->name,
-        'email' => $user->email,
     ];
 });

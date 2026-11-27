@@ -22,7 +22,9 @@ class ActivityController extends Controller
         $oversees = IntegrationsController::oversees($user, $team);
 
         $events = AuditEvent::where(function ($query) use ($user, $team, $oversees) {
-            $query->where('owner_id', $user->id);
+            // Their own workbooks' history; a team workbook's only while they are still in that team.
+            $query->where(fn ($own) => $own->where('owner_id', $user->id)
+                ->where(fn ($place) => $place->whereNull('team_id')->orWhereIn('team_id', $user->allTeams()->pluck('id'))));
             if ($oversees) {
                 $query->orWhere('team_id', $team?->id);
             }

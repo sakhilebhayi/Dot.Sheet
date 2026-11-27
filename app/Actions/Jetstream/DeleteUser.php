@@ -4,6 +4,7 @@ namespace App\Actions\Jetstream;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Services\TeamDeparture;
 use Illuminate\Support\Facades\DB;
 use Laravel\Jetstream\Contracts\DeletesTeams;
 use Laravel\Jetstream\Contracts\DeletesUsers;
@@ -21,6 +22,13 @@ class DeleteUser implements DeletesUsers
     public function delete(User $user): void
     {
         DB::transaction(function () use ($user) {
+            // EA-1 (S-02): workbooks made in a company this person belongs to (but does not own) stay with that
+            // company. Their comments and cell history on shared workbooks stay too, without the name (nullOnDelete).
+            foreach ($user->teams as $team) {
+                /** @var Team $team */
+                app(TeamDeparture::class)->handOver($team, $user);
+            }
+
             $this->deleteTeams($user);
             $user->deleteProfilePhoto();
             $user->tokens->each->delete();

@@ -36,13 +36,7 @@ class SearchController extends Controller
         // `!` is the escape character: SQLite has none by default, so every LIKE here names it.
         $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $q).'%';
         $user = $request->user();
-        $teamIds = $user->allTeams()->pluck('id');
-
-        $reachable = fn ($query) => $query->where(function ($inner) use ($user, $teamIds) {
-            $inner->where('owner_id', $user->id)
-                ->orWhereHas('sharedUsers', fn ($shared) => $shared->where('user_id', $user->id))
-                ->orWhereIn('team_id', $teamIds);
-        });
+        $reachable = fn ($query) => $query->reachableBy($user);
 
         $spreadsheets = $reachable(Spreadsheet::query())
             ->whereRaw("name like ? escape '!'", [$like])

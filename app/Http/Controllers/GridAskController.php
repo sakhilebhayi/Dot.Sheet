@@ -45,11 +45,14 @@ class GridAskController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function record(Spreadsheet $spreadsheet): JsonResponse
+    public function record(Request $request, Spreadsheet $spreadsheet): JsonResponse
     {
         $this->authorize('view', $spreadsheet);
 
-        $asked = AiPrompt::where('spreadsheet_id', $spreadsheet->id)->orderByDesc('created_at')->orderByDesc('id')->limit(self::MOST_LISTED)->get();
+        // Everyone who can change the workbook sees what was asked of it; a read-only viewer sees their own questions.
+        $asked = AiPrompt::where('spreadsheet_id', $spreadsheet->id)
+            ->when($request->user()->cannot('update', $spreadsheet), fn ($query) => $query->where('user_id', $request->user()->id))
+            ->orderByDesc('created_at')->orderByDesc('id')->limit(self::MOST_LISTED)->get();
         $names = User::whereIn('id', $asked->pluck('user_id'))->pluck('name', 'id');
 
         return response()->json(['asked' => $asked->map(fn (AiPrompt $prompt) => [

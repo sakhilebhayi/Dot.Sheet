@@ -41,7 +41,7 @@
     <div class="flex items-center gap-1 pr-2 border-r border-gray-200 dark:border-gray-600">
         <label class="flex flex-col items-center cursor-pointer" title="Font color">
             <span class="text-xs text-gray-500 dark:text-gray-400 leading-none">A</span>
-            <input type="color" wire:model="font_color" wire:change="applyFormatting"
+            <input type="color" aria-label="Font colour" wire:model="font_color" wire:change="applyFormatting"
                    value="{{ $font_color }}"
                    class="w-6 h-3 rounded cursor-pointer border-0 p-0" style="height:6px">
         </label>
@@ -49,7 +49,7 @@
             <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm0 2h12v12H4V4z"/>
             </svg>
-            <input type="color" wire:model="bg_color" wire:change="applyFormatting"
+            <input type="color" aria-label="Fill colour" wire:model="bg_color" wire:change="applyFormatting"
                    value="{{ $bg_color }}"
                    class="w-6 h-3 rounded cursor-pointer border-0 p-0" style="height:6px">
         </label>

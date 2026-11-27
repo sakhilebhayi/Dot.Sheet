@@ -192,7 +192,8 @@
     </div>
 
     <div class="work">
-    <main class="sheet" id="sheet" tabindex="0" role="application" aria-roledescription="spreadsheet" aria-label="{{ $spreadsheet->name }}">
+    <main class="sheet" id="sheet" tabindex="0" role="application" aria-roledescription="spreadsheet" aria-label="{{ $spreadsheet->name }}" aria-describedby="sheet-keys">
+        <p class="sr" id="sheet-keys">{{ __('Arrow keys move between cells; each cell is read with its column and row headings. Type or press Enter to edit, Escape to cancel. Ctrl+K opens every command. A sheet can also be downloaded as Excel or CSV to read it in another program.') }}</p>
         <div class="canvas" id="canvas">
             <div class="head" id="head">
                 <div class="head-cols" id="head-cols"></div>

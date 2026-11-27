@@ -100,6 +100,9 @@
 .ticks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; padding-block: 8px; }
 .tick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .tick input { accent-color: var(--thread); }
+/* A tick box on the profile is its own target: 20px with room around it (WCAG 2.5.8), in thread blue (EA-5). */
+.part input[type='checkbox'] { inline-size: 20px; block-size: 20px; margin: 4px 10px 4px 0; accent-color: var(--thread); flex: none; }
+.part label.side { display: flex; align-items: center; min-height: 32px; cursor: pointer; }
 .choices { display: grid; gap: 2px; padding-block: 6px; }
 .choices button { position: relative; display: block; width: 100%; padding: 8px 10px 8px 30px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s; }
 .choices button:hover { background: var(--read); }

@@ -844,7 +844,16 @@ function announce() {
         const text = show(cell).text || 'empty';
         const area = grid.area();
         const many = area.r1 !== area.r2 || area.c1 !== area.c2 ? `, selection to ${cellName(area.r2, area.c2)}` : '';
-        say.textContent = `${cellName(r, c)}, ${text}${cell?.f ? `, formula ${cell.f}` : ''}${many}`;
+        // EA-5 (A-01): what a table reader says too: the column's heading (row 1) and the row's (column A), when
+        // they hold words and the cell is not one of them.
+        const heading = (row, col) => {
+            const label = show(store.get(row, col)).text;
+            return label && !/^[-+]?[\d.,%\s]+$/.test(label) ? label : '';
+        };
+        const colHead = r > 0 ? heading(0, c) : '';
+        const rowHead = c > 0 ? heading(r, 0) : '';
+        const under = [colHead && `column ${colHead}`, rowHead && `row ${rowHead}`].filter(Boolean).join(', ');
+        say.textContent = `${cellName(r, c)}, ${text}${cell?.f ? `, formula ${cell.f}` : ''}${under ? `, ${under}` : ''}${many}`;
     }, 200);
 }
 

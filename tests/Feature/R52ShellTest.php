@@ -44,41 +44,6 @@ class R52ShellTest extends TestCase
 
     // ── Typography ──────────────────────────────────────────────────────────
 
-    public function test_every_layout_declares_roboto_and_serves_it_from_this_origin(): void
-    {
-        $user = User::factory()->withPersonalTeam()->create();
-        $sheet = $this->sheetFor($user, 'Budget');
-
-        $pages = [
-            'dashboard' => $this->actingAs($user)->get(route('dashboard')),
-            'editor' => $this->actingAs($user)->get(route('spreadsheets.show', $sheet)),
-            'classic' => $this->actingAs($user)->get(route('spreadsheets.classic', $sheet)),
-        ];
-        $this->flushSession();
-        $this->app['auth']->forgetGuards();
-        $pages['login'] = $this->get(route('login'));
-        $pages['welcome'] = $this->get('/');
-
-        foreach ($pages as $name => $response) {
-            $html = $response->assertOk()->getContent();
-            $this->assertMatchesRegularExpression('/<html[^>]*class="[^"]*\bdot-roboto\b/', $html, $name.' opts in to Roboto');
-            // Signed-in pages link the one bundle (Roboto + type scale + header); the guest, welcome and error pages link the two small files.
-            $this->assertTrue(
-                str_contains($html, '/dot-ui/css/dot-ui.min.css')
-                || (str_contains($html, '/dot-ui/css/dot-roboto.min.css') && str_contains($html, '/dot-ui/css/dot-type.min.css')),
-                $name.' links Roboto and the type scale from dot-ui'
-            );
-            $this->assertStringNotContainsString('fonts.googleapis.com', $html, $name.' loads no Google font');
-            $this->assertStringNotContainsString('fonts.gstatic.com', $html, $name);
-            foreach (['Fraunces', 'Sora', 'Space Mono', 'Hanken', 'Archivo', 'Big Shoulders', 'Figtree'] as $face) {
-                $this->assertStringNotContainsString($face, $html, $name.' still names '.$face);
-            }
-        }
-
-        $this->assertFileExists(public_path('dot-ui/fonts/roboto/roboto-latin-wght-normal.woff2'));
-        $this->assertFileExists(public_path('dot-ui/fonts/roboto/roboto-latin-ext-wght-normal.woff2'));
-    }
-
     public function test_the_app_stylesheets_name_no_other_text_face_and_map_roboto(): void
     {
         $other = ['Hanken', 'Fraunces', 'Sora', 'Space Mono', 'Figtree', 'Archivo', 'Big Shoulders'];
@@ -118,33 +83,6 @@ class R52ShellTest extends TestCase
     }
 
     // ── The shared header on every page type ────────────────────────────────
-
-    public function test_every_signed_in_page_has_the_shared_header_with_search_switcher_and_account(): void
-    {
-        $user = User::factory()->withPersonalTeam()->create();
-        $sheet = $this->sheetFor($user, 'Budget');
-        $this->actingAs($user);
-
-        foreach ([
-            'dashboard' => route('dashboard'),
-            'create' => route('spreadsheets.create'),
-            'activity' => route('activity'),
-            'profile' => route('profile.show'),
-            'team' => route('teams.show', $user->currentTeam),
-            'editor' => route('spreadsheets.show', $sheet),
-            'classic' => route('spreadsheets.classic', $sheet),
-        ] as $name => $url) {
-            $html = $this->get($url)->assertOk()->getContent();
-            $this->assertSame(1, substr_count($html, '<header class="dh '), $name.': one header');
-            $this->assertStringContainsString('class="dsr-input"', $html, $name.': the search');
-            $this->assertStringContainsString('data-dsw-trigger', $html, $name.': the switcher');
-            $this->assertStringContainsString('data-dh-account', $html, $name.': the account menu');
-            $this->assertStringContainsString('data-dh-menu-button', $html, $name.': the phone menu button');
-            $this->assertStringContainsString('class="dh-drawer', $html, $name.': the phone drawer');
-            $this->assertStringContainsString('data-dh-search-toggle', $html, $name.': the phone search sheet');
-            $this->assertSame(1, substr_count($html, '<h1'), $name.': exactly one h1');
-        }
-    }
 
     public function test_the_primary_items_are_few_and_the_rest_sit_in_a_named_group(): void
     {
@@ -201,19 +139,6 @@ class R52ShellTest extends TestCase
         foreach ([route('dashboard'), route('activity'), route('profile.show')] as $href) {
             $this->assertStringContainsString($href, $menu[0], 'reachable from the editor: '.$href);
         }
-    }
-
-    public function test_the_editor_tools_row_keeps_every_action_and_the_formula_line(): void
-    {
-        $user = User::factory()->withPersonalTeam()->create();
-        $sheet = $this->sheetFor($user, 'Fuel log');
-        $html = $this->actingAs($user)->get(route('spreadsheets.show', $sheet))->assertOk()->getContent();
-
-        foreach (['id="line"', 'id="ref"', 'id="do-comments"', 'id="do-share"', 'id="open-palette"', 'id="do-explain"', 'id="do-more"', 'id="formatbar"', 'id="more-btn"', 'data-more', 'href="'.route('spreadsheets.classic', $sheet).'"'] as $needle) {
-            $this->assertStringContainsString($needle, $html, $needle);
-        }
-        $this->assertStringContainsString('class="fmt-word">Format<', $html, 'the phone treatment: a labelled Format button opens the toolbar sheet');
-        $this->assertStringContainsString('enterkeyhint="done"', $html);
     }
 
     public function test_no_inline_style_or_script_in_the_shared_header(): void
@@ -352,5 +277,78 @@ class R52ShellTest extends TestCase
 
         $this->assertContains(EnsureCompanyEntitled::class, $route->gatherMiddleware(), 'a company that no longer holds Dot.Sheet gets no search either');
         $this->assertNotNull($me);
+    }
+
+    public function test_every_layout_declares_roboto_and_serves_it_from_this_origin(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = $this->sheetFor($user, 'Budget');
+
+        $pages = [
+            'dashboard' => $this->actingAs($user)->get(route('dashboard')),
+            'editor' => $this->actingAs($user)->get(route('spreadsheets.show', $sheet)),
+        ];
+        $this->flushSession();
+        $this->app['auth']->forgetGuards();
+        $pages['login'] = $this->get(route('login'));
+        $pages['welcome'] = $this->get('/');
+
+        foreach ($pages as $name => $response) {
+            $html = $response->assertOk()->getContent();
+            $this->assertMatchesRegularExpression('/<html[^>]*class="[^"]*\bdot-roboto\b/', $html, $name.' opts in to Roboto');
+            // Signed-in pages link the one bundle (Roboto + type scale + header); the guest, welcome and error pages link the two small files.
+            $this->assertTrue(
+                str_contains($html, '/dot-ui/css/dot-ui.min.css')
+                || (str_contains($html, '/dot-ui/css/dot-roboto.min.css') && str_contains($html, '/dot-ui/css/dot-type.min.css')),
+                $name.' links Roboto and the type scale from dot-ui'
+            );
+            $this->assertStringNotContainsString('fonts.googleapis.com', $html, $name.' loads no Google font');
+            $this->assertStringNotContainsString('fonts.gstatic.com', $html, $name);
+            foreach (['Fraunces', 'Sora', 'Space Mono', 'Hanken', 'Archivo', 'Big Shoulders', 'Figtree'] as $face) {
+                $this->assertStringNotContainsString($face, $html, $name.' still names '.$face);
+            }
+        }
+
+        $this->assertFileExists(public_path('dot-ui/fonts/roboto/roboto-latin-wght-normal.woff2'));
+        $this->assertFileExists(public_path('dot-ui/fonts/roboto/roboto-latin-ext-wght-normal.woff2'));
+    }
+
+    public function test_every_signed_in_page_has_the_shared_header_with_search_switcher_and_account(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = $this->sheetFor($user, 'Budget');
+        $this->actingAs($user);
+
+        foreach ([
+            'dashboard' => route('dashboard'),
+            'create' => route('spreadsheets.create'),
+            'activity' => route('activity'),
+            'profile' => route('profile.show'),
+            'team' => route('teams.show', $user->currentTeam),
+            'editor' => route('spreadsheets.show', $sheet),
+        ] as $name => $url) {
+            $html = $this->get($url)->assertOk()->getContent();
+            $this->assertSame(1, substr_count($html, '<header class="dh '), $name.': one header');
+            $this->assertStringContainsString('class="dsr-input"', $html, $name.': the search');
+            $this->assertStringContainsString('data-dsw-trigger', $html, $name.': the switcher');
+            $this->assertStringContainsString('data-dh-account', $html, $name.': the account menu');
+            $this->assertStringContainsString('data-dh-menu-button', $html, $name.': the phone menu button');
+            $this->assertStringContainsString('class="dh-drawer', $html, $name.': the phone drawer');
+            $this->assertStringContainsString('data-dh-search-toggle', $html, $name.': the phone search sheet');
+            $this->assertSame(1, substr_count($html, '<h1'), $name.': exactly one h1');
+        }
+    }
+
+    public function test_the_editor_tools_row_keeps_every_action_and_the_formula_line(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $sheet = $this->sheetFor($user, 'Fuel log');
+        $html = $this->actingAs($user)->get(route('spreadsheets.show', $sheet))->assertOk()->getContent();
+
+        foreach (['id="line"', 'id="ref"', 'id="do-comments"', 'id="do-share"', 'id="open-palette"', 'id="do-explain"', 'id="do-more"', 'id="formatbar"', 'id="more-btn"', 'data-more'] as $needle) {
+            $this->assertStringContainsString($needle, $html, $needle);
+        }
+        $this->assertStringContainsString('class="fmt-word">Format<', $html, 'the phone treatment: a labelled Format button opens the toolbar sheet');
+        $this->assertStringContainsString('enterkeyhint="done"', $html);
     }
 }

@@ -2,9 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\SpreadsheetSharingPanel;
 use App\Models\AiPrompt;
-use App\Models\AuditEvent;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,23 +21,6 @@ class SecurityHardeningTest extends TestCase
     private function workbook(User $owner): Spreadsheet
     {
         return Spreadsheet::create(['uuid' => (string) Str::uuid(), 'owner_id' => $owner->id, 'team_id' => null, 'name' => 'Ledger']);
-    }
-
-    public function test_sharing_changes_made_in_the_classic_panel_reach_activity(): void
-    {
-        $owner = User::factory()->withPersonalTeam()->create();
-        $friend = User::factory()->withPersonalTeam()->create();
-        $sheet = $this->workbook($owner);
-
-        Livewire::actingAs($owner)->test(SpreadsheetSharingPanel::class, ['spreadsheet_id' => $sheet->id])
-            ->set('inviteEmail', $friend->email)->set('invitePermission', 'edit')->set('inviteExpiryDays', 7)->call('inviteByEmail')
-            ->call('updatePermission', $friend->id, 'view')
-            ->call('revokeUser', $friend->id)
-            ->call('regeneratePublicToken');
-
-        $actions = AuditEvent::where('spreadsheet_id', $sheet->id)->pluck('action')->all();
-        $this->assertSame(['Shared with someone', 'Changed what someone can do', 'Took away someone\'s access', 'Made a new link'], $actions);
-        $this->assertTrue(AuditEvent::where('spreadsheet_id', $sheet->id)->whereNotNull('user_id')->count() === 4);
     }
 
     public function test_an_import_status_answers_only_for_the_workbook_s_own_batch(): void
@@ -84,12 +65,6 @@ class SecurityHardeningTest extends TestCase
             ->call('updateProfileInformation')
             ->assertHasNoErrors();
         $this->assertSame('New name', $user->fresh()->name);
-    }
-
-    public function test_the_presence_channel_does_not_hand_out_email_addresses(): void
-    {
-        $this->assertStringNotContainsString("'email' =>", file_get_contents(base_path('routes/channels.php')));
-        $this->assertStringNotContainsString('${cursor.user_name}', file_get_contents(resource_path('views/livewire/show-spreadsheet.blade.php')));
     }
 
     public function test_only_the_application_host_is_trusted(): void

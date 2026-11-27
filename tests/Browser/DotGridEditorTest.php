@@ -2,7 +2,6 @@
 
 namespace Tests\Browser;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\PivotTable;
 use App\Models\SheetTab;
@@ -24,7 +23,6 @@ use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
 use PHPUnit\Framework\Attributes\Group;
-use ReflectionMethod;
 use Tests\DuskTestCase;
 
 /**
@@ -875,23 +873,6 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
-    public function test_the_classic_editor_is_a_palette_choice_and_there_is_a_way_back(): void
-    {
-        [$user, $sheet] = $this->sheet();
-
-        $this->browse(function (Browser $browser) use ($user, $sheet) {
-            $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'classic');
-            $browser->waitForTextIn('#found', 'Open the classic editor');
-
-            $browser->keys('#find', WebDriverKeys::ENTER);
-            $browser->waitForLocation("/spreadsheets/{$sheet->id}/classic");
-            $browser->assertSee('New editor');
-
-            $browser->clickLink('New editor')->waitForLocation("/spreadsheets/{$sheet->id}")->waitFor('#sheet');
-        });
-    }
-
     /** With production's settings the palette says plainly that inserting and deleting rows is not switched on. */
     public function test_inserting_rows_says_it_is_not_switched_on_with_production_settings(): void
     {
@@ -1231,59 +1212,6 @@ class DotGridEditorTest extends DuskTestCase
             const cell = [...document.querySelectorAll('.c:not([hidden])')].find(c => c.style.transform === at);
             return cell ? cell.style.backgroundColor : null;
         JS, [$row, $col]);
-    }
-
-    public function test_the_browser_and_the_classic_editor_agree_on_every_kind_of_rule(): void
-    {
-        [$user, $sheet, $tab] = $this->sheet();
-        $colour = '#F7E0DA';
-        $drawn = 'rgb(247, 224, 218)';
-
-        // Value in the cell, operator, what the rule compares with.
-        $cases = [
-            ['5', '>', '3'], ['5', '>', '5'], ['5', '>=', '5'], ['5', '<', '5.5'], ['5', '<=', '4'],
-            ['5.0', '==', '5'], ['5', '==', '5'], ['5', '!=', '5.0'], ['abc', '==', 'ABC'], ['abc', '!=', 'abd'],
-            ['Late fee', 'contains', 'LATE'], ['Late fee', 'contains', 'early'], ['abc', '>', '1'], ['5', '>', 'abc'],
-            ['1e3', '>', '999'], ['0x10', '>', '1'], ['.5', '<', '1'], ['-3', '<', '0'], ['+4', '>=', '4'], ['=2+3', '>', '4'],
-            ['=2+3', '==', '5'], ['=1/0', '==', '#DIV/0!'], ['x', 'contains', ''], ['007', '==', '7'],
-        ];
-
-        // Three short columns, so every case is on screen in any window.
-        $place = fn (int $case) => [$case % 8, 1 + intdiv($case, 8)];
-
-        $edits = [];
-        $rules = [];
-        foreach ($cases as $i => [$value, $operator, $expected]) {
-            [$row, $col] = $place($i);
-            $edits[] = ['row' => $row, 'col' => $col, 'value' => $value];
-            $rules[] = ['id' => "r{$i}", 'target' => 'cell', 'row' => $row, 'col' => $col, 'operator' => $operator, 'value' => $expected, 'color' => $colour];
-        }
-        Cell::where('sheet_tab_id', $tab->id)->delete();
-        app(CellWriter::class)->write($sheet->id, $tab->id, [['row' => 0, 'col' => 0, 'value' => 'Sales'], ...$edits], $user->id);
-        $tab->forceFill(['layout' => ['conditional_formatting_rules' => $rules, 'frozen_cols' => 0]])->save();
-
-        // What the classic editor decides for each cell is the answer.
-        $classic = new ShowSpreadsheet;
-        $classic->conditionalFormattingRules = $rules;
-        $decide = new ReflectionMethod(ShowSpreadsheet::class, 'applyConditionalFormattingRules');
-        $expected = [];
-        foreach ($cases as $i => $case) {
-            [$row, $col] = $place($i);
-            $cell = Cell::where('sheet_tab_id', $tab->id)->where('row_index', $row)->where('col_index', $col)->firstOrFail();
-            $expected[$i] = ($decide->invoke($classic, $row, $col, $cell->computed_value ?? $cell->raw_value ?? '', [])['bg_color'] ?? null) !== null;
-        }
-        $this->assertContains(true, $expected);
-        $this->assertContains(false, $expected);
-
-        $this->browse(function (Browser $browser) use ($user, $sheet, $cases, $expected, $drawn, $place) {
-            $this->open($browser, $user, $sheet);
-            $browser->waitUsing(10, 25, fn () => $this->fillAt($browser, ...$place(count($cases) - 1)) !== null);
-
-            foreach ($cases as $i => [$value, $operator, $against]) {
-                $this->assertSame($expected[$i], $this->fillAt($browser, ...$place($i)) === $drawn, "{$value} {$operator} {$against}");
-            }
-            $this->assertNoConsoleErrors($browser);
-        });
     }
 
     public function test_a_rule_is_set_from_a_sentence_and_follows_the_figures(): void
@@ -2792,20 +2720,6 @@ class DotGridEditorTest extends DuskTestCase
             $browser->waitForTextIn('#note', 'Played Stored: 1 cell, 1 refused by rules on them.');
             $this->assertSame('ok', $this->cell($browser, 5, 0));
             $this->assertSame('', $this->cell($browser, 6, 0));
-        });
-    }
-
-    public function test_scripts_say_they_are_off(): void
-    {
-        [$user, $sheet] = $this->sheet();
-
-        $this->browse(function (Browser $browser) use ($user, $sheet) {
-            $this->open($browser, $user, $sheet);
-            $browser->click('#open-palette')->waitFor('#find')->keys('#find', 'scripts');
-            $browser->waitForTextIn('#found', 'Not switched on')->assertDontSeeIn('#found', 'In the classic editor');
-            $browser->keys('#find', WebDriverKeys::ENTER);
-            $browser->waitForTextIn('#note', 'Scripts are turned off on this server.');
-            $this->assertNoConsoleErrors($browser);
         });
     }
 
@@ -4329,6 +4243,26 @@ class DotGridEditorTest extends DuskTestCase
             $browser->driver->executeScript('window.fetch = window.realFetch');
             $this->beat($browser);
             $browser->waitForTextIn('#note', 'Connected again.');
+        });
+    }
+
+    /** EA-6: workflow rules moved here from the retired classic editor. */
+    public function test_a_workflow_rule_is_set_from_the_palette_and_deleted_after_asking(): void
+    {
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Workflow rules');
+            $browser->waitFor('#workflows:not([hidden])')->waitForTextIn('#workflows-list', 'No rules on this workbook yet');
+
+            $browser->type('#workflows-name', 'Low stock')->press('#workflows-form button[type="submit"]');
+            $browser->waitForTextIn('#workflows-list', 'Low stock')->assertSeeIn('#workflows-list', 'When column B is under 10');
+            $this->assertSame('Low stock', $sheet->fresh()->settings['ai_workflows'][0]['name']);
+
+            $this->pressIn($browser, '#workflows-list', 'Delete');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Delete the rule Low stock')->click('#confirm-yes');
+            $browser->waitForTextIn('#workflows-list', 'No rules on this workbook yet');
         });
     }
 }

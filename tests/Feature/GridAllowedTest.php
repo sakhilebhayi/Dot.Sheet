@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -12,7 +11,6 @@ use App\Services\SheetStructureService;
 use App\Services\StructureVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridAllowedTest extends TestCase
@@ -69,16 +67,6 @@ class GridAllowedTest extends TestCase
         $this->type(4, 1, 'words')->assertJsonPath('refused', []);
         $this->type(1, 3, 'words')->assertJsonPath('refused', []);
         $this->type(2, 2, '5')->assertJsonPath('refused', []);
-    }
-
-    public function test_the_classic_editor_keeps_to_a_range_rule_too(): void
-    {
-        $this->ask(['add' => ['row' => 1, 'col' => 1, 'row2' => 3, 'col2' => 1, 'type' => 'number']]);
-
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id])
-            ->set('editingCell', '2_1')->call('saveCell', 'words');
-
-        $this->assertNull(Cell::where('sheet_tab_id', $this->tab->id)->where('row_index', 2)->first());
     }
 
     public function test_a_rule_from_the_classic_editor_still_covers_its_one_cell(): void

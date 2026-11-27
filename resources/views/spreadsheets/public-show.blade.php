@@ -19,7 +19,7 @@
                             <th class="sticky top-0 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">#</th>
                             @for($c = $startCol; $c <= $endCol; $c++)
                                 <th class="sticky top-0 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 min-w-24">
-                                    {{ \App\Livewire\ShowSpreadsheet::colIndexToLetter($c) }}
+                                    {{ \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1) }}
                                 </th>
                             @endfor
                         </tr>

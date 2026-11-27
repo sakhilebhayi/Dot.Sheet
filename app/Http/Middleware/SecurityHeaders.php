@@ -19,13 +19,11 @@ use Symfony\Component\HttpFoundation\Response;
  * requirement: Livewire's bundled Alpine evaluates its expressions with the Function constructor. style-src keeps
  * 'unsafe-inline' because the views use style attributes.
  *
- * The classic editor alone stays report-only: it uses on*= handlers throughout. SECURITY_CSP_REPORT_ONLY=true is the
- * kill-switch back to report-only everywhere without a deploy.
+ * Enforced on every page (the classic editor, the one page that was report-only, was retired in EA-6).
+ * SECURITY_CSP_REPORT_ONLY=true is the kill-switch back to report-only everywhere without a deploy.
  */
 class SecurityHeaders
 {
-    private const REPORT_ONLY_ROUTES = ['spreadsheets.classic'];
-
     public function handle(Request $request, Closure $next): Response
     {
         // Registered before the views render, so every tag that needs it carries the value the header announces.
@@ -33,7 +31,7 @@ class SecurityHeaders
 
         $response = $next($request);
 
-        $reportOnly = config('security.csp_report_only', false) || $request->routeIs(...self::REPORT_ONLY_ROUTES);
+        $reportOnly = (bool) config('security.csp_report_only', false);
 
         $headers = [
             'X-Content-Type-Options' => 'nosniff',
@@ -70,7 +68,7 @@ class SecurityHeaders
         return implode('; ', [
             "default-src 'self'",
             "script-src 'self' 'nonce-{$nonce}' 'unsafe-eval'{$dev}",
-            // The report-only page is the classic editor, which is why it reports rather than blocks.
+            // Only in the report-only kill-switch mode are inline handlers reported rather than blocked.
             $reportOnly ? "script-src-attr 'unsafe-inline'" : "script-src-attr 'none'",
             "style-src 'self' 'unsafe-inline'{$dev}",
             "font-src 'self' data:",

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Validation\GridRules;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
@@ -106,7 +107,6 @@ class GridController extends Controller
                 'canComment' => Auth::user()->can('comment', $spreadsheet),
                 'canShare' => Auth::user()->can('manageSharing', $spreadsheet),
                 'canKeep' => app(SheetProtections::class)->isKeeper(Auth::user(), $spreadsheet),
-                'scripts' => (bool) config('sheet.scripts_enabled'),
                 'told' => session('success'),
                 'pulseEvery' => (int) config('sheet.pulse_seconds') * 1000,
                 'importReport' => $spreadsheet->settings['import_report'] ?? null,
@@ -119,7 +119,6 @@ class GridController extends Controller
                 'functions' => FunctionCatalogue::all(),
                 'links' => [
                     'dashboard' => route('dashboard'),
-                    'classic' => route('spreadsheets.classic', $spreadsheet),
                     'csv' => route('spreadsheets.export.csv', $spreadsheet),
                     'excel' => route('spreadsheets.export.excel', $spreadsheet),
                     'tsv' => route('spreadsheets.export.tsv', $spreadsheet),
@@ -234,19 +233,7 @@ class GridController extends Controller
     {
         $this->authorizeTab('update', $spreadsheet, $sheetTab);
 
-        $input = $request->validate([
-            'version' => 'required|integer',
-            'from_tab' => 'required|integer',
-            'r1' => 'required|integer|min:0',
-            'r2' => 'required|integer|gte:r1',
-            'c1' => 'required|integer|min:0',
-            'c2' => 'required|integer|gte:c1',
-            'row' => 'required|integer|min:0',
-            'col' => 'required|integer|min:0',
-            'rows' => 'required|integer|min:1',
-            'cols' => 'required|integer|min:1',
-            'cut' => 'sometimes|boolean',
-        ]);
+        $input = $request->validate(GridRules::paste());
 
         $source = SheetTab::whereKey($input['from_tab'])->where('spreadsheet_id', $spreadsheet->id)->first();
         abort_if($source === null, 404);
@@ -393,18 +380,7 @@ class GridController extends Controller
     {
         $this->authorizeTab('update', $spreadsheet, $sheetTab);
 
-        $input = $request->validate([
-            'version' => 'required|integer',
-            'q' => 'required|string|max:255',
-            'with' => 'present|nullable|string|max:255',
-            'case' => 'sometimes|boolean',
-            'whole' => 'sometimes|boolean',
-            'all' => 'sometimes|boolean',
-            'only' => 'sometimes|array',
-            'only.tab' => 'required_with:only|integer',
-            'only.r' => 'required_with:only|integer|min:0',
-            'only.c' => 'required_with:only|integer|min:0',
-        ]);
+        $input = $request->validate(GridRules::replace());
 
         $tabs = $this->searchedTabs($spreadsheet, $sheetTab, $request->boolean('all'));
         $only = isset($input['only']) ? ['tab' => (int) $input['only']['tab'], 'r' => (int) $input['only']['r'], 'c' => (int) $input['only']['c']] : null;
@@ -1161,26 +1137,7 @@ class GridController extends Controller
     {
         $this->authorizeTab('update', $spreadsheet, $sheetTab);
 
-        $input = $request->validate([
-            'version' => 'required|integer',
-            'r1' => 'required|integer|min:0',
-            'r2' => 'required|integer|gte:r1',
-            'c1' => 'required|integer|min:0',
-            'c2' => 'required|integer|gte:c1',
-            'bold' => 'sometimes|boolean',
-            'italic' => 'sometimes|boolean',
-            'underline' => 'sometimes|boolean',
-            'strike' => 'sometimes|boolean',
-            'number_format' => 'sometimes|in:'.implode(',', CellFormat::NUMBER_FORMATS),
-            'currency' => 'sometimes|in:'.implode(',', CellFormat::CURRENCIES),
-            'date_style' => 'sometimes|in:'.implode(',', CellFormat::DATE_STYLES),
-            'decimals' => 'sometimes|nullable|integer|min:0|max:'.CellFormat::MAX_DECIMALS,
-            'align' => 'sometimes|nullable|in:left,center,right',
-            'font_color' => ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'bg_color' => ['sometimes', 'nullable', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            'font_size' => 'sometimes|nullable|integer|min:6|max:96',
-            'clear' => 'sometimes|accepted',
-        ]);
+        $input = $request->validate(GridRules::format());
 
         $count = ($input['r2'] - $input['r1'] + 1) * ($input['c2'] - $input['c1'] + 1);
         if ($count > self::MAX_FORMATTED) {

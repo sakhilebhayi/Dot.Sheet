@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -14,7 +13,6 @@ use App\Services\StructureVersion;
 use App\Services\WorkbookSheets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class WorkbookSheetsTest extends TestCase
@@ -130,14 +128,6 @@ class WorkbookSheetsTest extends TestCase
         $this->ask('rename', $this->stock, ['name' => 'Goods'])->assertOk();
 
         $this->assertSame('=Stock!A1', Cell::where('sheet_tab_id', $theirs->id)->value('formula'));
-    }
-
-    public function test_the_classic_editor_rewrites_on_rename_too(): void
-    {
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id])->call('renameTab', $this->stock->id, 'Goods');
-
-        $this->assertSame('Goods', $this->stock->fresh()->name);
-        $this->assertSame('=Goods!A1+2', $this->formula(0));
     }
 
     public function test_names_a_formula_could_not_tell_apart_are_refused(): void

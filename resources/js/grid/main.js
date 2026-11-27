@@ -6,6 +6,7 @@ import { cellName, columnIndex, columnName, decimalsShown, FILL_COLOURS, listAt,
 import { Grid } from './grid';
 import { Macros } from './macros';
 import { Names } from './names';
+import { Workflows } from './workflows';
 import { Protection } from './protection';
 import { Approval } from './approval';
 import { Assistant } from './assistant';
@@ -315,6 +316,16 @@ const names = new Names({
     refused,
     ask,
 });
+const workflows = new Workflows({
+    server,
+    canEdit: boot.canEdit,
+    back: () => sheet.focus({ preventScroll: true }),
+    resized: panelMoved,
+    opening: () => closeOtherPanels(workflows),
+    note,
+    refused,
+    ask,
+});
 const copies = new Copies({
     server,
     canEdit: boot.canEdit,
@@ -360,7 +371,7 @@ function showMarks(marks) {
 
 /** One panel at a time, so the sheet gives up its room once. */
 function closeOtherPanels(keep) {
-    for (const panel of [notes, sharing, copies, names, protectionPanel, approval, assistant, explain, sheetCheck, askPanel, importReport, charts, pivots, macros]) {
+    for (const panel of [notes, sharing, copies, names, workflows, protectionPanel, approval, assistant, explain, sheetCheck, askPanel, importReport, charts, pivots, macros]) {
         if (panel && panel !== keep && !panel.closed) panel.toggle(false);
     }
 }
@@ -3019,11 +3030,6 @@ importPicker.addEventListener('change', () => {
 
 const GO_TO = /^\$?([a-z]{1,3})\$?(\d{1,7})$/i;
 
-// Not here yet: looking for one of these finds the way to it.
-const IN_CLASSIC = [
-    ...(boot.scripts ? ['Scripts'] : []),
-];
-
 function choices(query) {
     const q = query.trim().toLowerCase();
     const list = [];
@@ -3115,6 +3121,7 @@ function choices(query) {
         { label: 'Protected cells', hint: 'What only the owner and admins can change', run: () => protectionPanel.toggle(true) },
         { label: 'Duplicate this workbook', hint: 'A private copy of your own', run: duplicateWorkbook },
         { label: 'Named ranges', hint: 'Names for cells, to use in formulas', run: () => names.toggle(true) },
+        { label: 'Workflow rules', hint: 'Watch a column; be told or mark the cell', run: () => workflows.toggle(true) },
         { label: 'Function assistant', hint: 'Find a function and fill it in', run: () => assistant.toggle(true) },
         { label: 'Ask about this sheet', hint: 'Questions and instructions, with AI', run: () => askPanel.toggle(true) },
         { label: 'Check this table', hint: 'Repeats, gaps, spellings, numbers held as text', run: () => sheetCheck.toggle(true) },
@@ -3130,7 +3137,6 @@ function choices(query) {
         { label: 'Download this sheet as Excel', hint: 'Values only', href: `${boot.links.excel}?sheet_tab_id=${tab}` },
         { label: 'Download this sheet as PDF', href: `${boot.links.pdf}?sheet_tab_id=${tab}` },
         { label: 'Print this sheet', href: `${boot.links.print}?sheet_tab_id=${tab}` },
-        { label: 'Open the classic editor', href: boot.links.classic },
         { label: 'All spreadsheets', href: boot.links.dashboard },
     ];
     list.push(...commands.filter((c) => c.label.toLowerCase().includes(q)));
@@ -3138,11 +3144,9 @@ function choices(query) {
         if (boot.canEdit && !boot.structure && ['insert rows', 'insert columns', 'delete rows', 'delete columns'].some((name) => name.includes(q))) {
             list.push({ label: 'Insert or delete rows and columns', hint: 'Not switched on yet', run: () => note('Inserting and deleting rows and columns is not available yet.') });
         }
-        if (!boot.scripts && 'scripts'.includes(q)) {
-            list.push({ label: 'Scripts', hint: 'Not switched on', run: () => note('Scripts are turned off on this server. Macros record edits and play them back.') });
+        if ('scripts'.includes(q)) {
+            list.push({ label: 'Scripts', hint: 'Use a macro', run: () => note('Dot.Sheet has no scripts. Macros record edits and play them back.') });
         }
-        const elsewhere = IN_CLASSIC.filter((label) => label.toLowerCase().includes(q));
-        list.push(...elsewhere.map((label) => ({ label, hint: 'In the classic editor', href: boot.links.classic })));
     }
 
     if (boot.canEdit) {

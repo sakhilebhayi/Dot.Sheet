@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\User;
@@ -143,13 +142,5 @@ class PublicShareTest extends TestCase
         $this->post(route('spreadsheets.import', $spreadsheet))->assertRedirect(route('login'));
         $this->put(route('spreadsheets.update', $spreadsheet), ['name' => 'x'])->assertRedirect(route('login'));
         $this->delete(route('spreadsheets.destroy', $spreadsheet))->assertRedirect(route('login'));
-    }
-
-    public function test_a_guest_cannot_open_the_editor_component_even_with_a_share_link(): void
-    {
-        $spreadsheet = $this->sharedSheet();
-
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $spreadsheet->id])
-            ->assertForbidden();
     }
 }

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
@@ -11,7 +10,6 @@ use App\Services\SheetStructureService;
 use App\Services\StructureVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridFilterTest extends TestCase
@@ -105,29 +103,6 @@ class GridFilterTest extends TestCase
 
         $this->filter([])->assertOk();
         $this->assertSame([7], $this->hidden());
-    }
-
-    public function test_the_classic_editor_keeps_rows_hidden_by_hand_too(): void
-    {
-        $this->tab->forceFill(['layout' => ['hidden_rows' => [7]]])->save();
-        $editor = Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id]);
-
-        $editor->call('addFilterRule', ['column' => 'A', 'type' => 'contains', 'value' => 'Pear']);
-        $this->assertSame([2, 3, 7], $this->hidden());
-        $this->assertCount(3, $editor->get('hiddenRows'));
-
-        $editor->call('clearFilterRules');
-        $this->assertSame([7], $this->hidden());
-    }
-
-    public function test_a_filter_set_in_the_classic_editor_is_cleared_here(): void
-    {
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id])
-            ->call('addFilterRule', ['column' => 'A', 'type' => 'contains', 'value' => 'Pear']);
-
-        $this->filter([])->assertOk();
-
-        $this->assertSame([], $this->hidden());
     }
 
     public function test_changing_a_value_hides_nothing_until_it_is_applied_again(): void

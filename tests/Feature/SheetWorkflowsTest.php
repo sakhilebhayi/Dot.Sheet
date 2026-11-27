@@ -2,12 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
-use App\Models\WorkflowExecutionLog;
 use App\Notifications\WorkflowRuleTriggered;
 use App\Services\SheetWorkflows;
 use App\Services\StructureVersion;
@@ -15,7 +13,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -64,19 +61,6 @@ class SheetWorkflowsTest extends TestCase
 
         Notification::assertSentTo($this->owner, WorkflowRuleTriggered::class, fn ($n) => $n->cellReference === 'B4' && (string) $n->actualValue === '4' && $n->ruleName === 'Low stock');
         $this->assertDatabaseHas('workflow_execution_logs', ['spreadsheet_id' => $this->sheet->id, 'cell_reference' => 'B4', 'status' => 'notified', 'triggered_by_user_id' => $this->owner->id]);
-    }
-
-    public function test_a_value_typed_in_the_classic_editor_still_sets_off_a_rule(): void
-    {
-        Notification::fake();
-        $this->rule();
-
-        Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id])
-            ->set('editingCell', '3_1')
-            ->call('saveCell', '4');
-
-        Notification::assertSentTo($this->owner, WorkflowRuleTriggered::class);
-        $this->assertSame(1, WorkflowExecutionLog::count());
     }
 
     public function test_a_rule_stays_quiet_for_other_values_other_columns_and_when_switched_off(): void

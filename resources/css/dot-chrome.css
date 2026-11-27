@@ -155,7 +155,7 @@ input::placeholder { color: var(--soft); opacity: 1; }
 /* EA-5 (A-04): the ruled fields (one line under the text, no box) show keyboard focus by more than a change of
    line colour: the line thickens to 3px in thread blue (8:1 on the sheet) and the field takes the thread wash. */
 :is(.rulebar input, .rulebar select, .findbar input, .reply input, .notes-form textarea, #approval-note,
-    .share-body input, .share-body select, .dock-form input, .chart-form input, .chart-form select,
+    .share-body input, .share-body select, .dock-form input, .dock-form select, .chart-form input, .chart-form select,
     .pivot-form input, .pivot-form select, #find, #line, .make .title, .form input, .form select, .dot-field):focus-visible {
     border-bottom-color: var(--thread);
     box-shadow: 0 1.5px 0 var(--thread);

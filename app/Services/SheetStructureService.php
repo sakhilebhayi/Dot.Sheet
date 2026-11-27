@@ -32,7 +32,7 @@ class SheetStructureService
 {
     public const REF_ERROR = '#REF!';
 
-    /** The editor's grid: ShowSpreadsheet::$totalRows and $totalCols. */
+    /** The editor's grid: how many rows and columns a sheet has. */
     public const GRID_ROWS = 1000000;
 
     public const GRID_COLS = 100;

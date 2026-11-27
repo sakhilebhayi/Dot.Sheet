@@ -16,6 +16,7 @@ use App\Http\Controllers\GridMacroController;
 use App\Http\Controllers\GridNameController;
 use App\Http\Controllers\GridPivotController;
 use App\Http\Controllers\GridProtectionController;
+use App\Http\Controllers\GridRuleController;
 use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
@@ -97,7 +98,7 @@ Route::middleware([
     Route::post('spreadsheets/from-team-template', [GridDuplicateController::class, 'fromTemplate'])->middleware('throttle:20,1')->name('spreadsheets.from-team-template');
     Route::resource('spreadsheets', SpreadsheetController::class)->except('show')
         ->middlewareFor(['store', 'destroy'], 'throttle:120,1')->middlewareFor('update', ['throttle:120,1', RefuseSealedWorkbook::class]);
-    // A sheet's address opens the new editor. The classic one stays beside it until the new one has its features.
+    // A sheet's address opens the grid editor. The classic editor was retired in EA-6; its address redirects.
     Route::get('spreadsheets/{spreadsheet}', [GridController::class, 'show'])->name('spreadsheets.show');
     Route::get('spreadsheets/{spreadsheet}/asked', [GridAskController::class, 'record'])->name('grid.asked');
     Route::post('spreadsheets/{spreadsheet}/asked/{prompt}/applied', [GridAskController::class, 'applied'])->middleware('throttle:120,1')->name('grid.asked.applied');
@@ -122,6 +123,12 @@ Route::middleware([
         Route::get('/', [GridMacroController::class, 'index'])->name('index');
         Route::post('/', [GridMacroController::class, 'store'])->name('store');
         Route::delete('{macro}', [GridMacroController::class, 'destroy'])->name('destroy');
+    });
+    // EA-6: workflow rules, moved from the retired classic editor.
+    Route::prefix('spreadsheets/{spreadsheet}/workflows')->name('grid.workflows.')->middleware('throttle:120,1')->group(function () {
+        Route::get('/', [GridRuleController::class, 'index'])->name('index');
+        Route::post('/', [GridRuleController::class, 'store'])->middleware(RefuseSealedWorkbook::class)->name('store');
+        Route::delete('{rule}', [GridRuleController::class, 'destroy'])->middleware(RefuseSealedWorkbook::class)->name('destroy');
     });
     Route::prefix('spreadsheets/{spreadsheet}/sharing')->name('grid.sharing.')->middleware('throttle:120,1')->group(function () {
         Route::get('/', [GridShareController::class, 'index'])->name('index');

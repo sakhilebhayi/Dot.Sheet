@@ -2,13 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -35,30 +33,6 @@ class PerSheetLayoutTest extends TestCase
         $this->spreadsheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'team_id' => $this->user->currentTeam->id, 'name' => 'Budget']);
         $this->first = $this->spreadsheet->defaultSheetTab();
         $this->second = SheetTab::create(['spreadsheet_id' => $this->spreadsheet->id, 'name' => 'Second', 'sort_order' => 1]);
-    }
-
-    public function test_a_change_on_one_sheet_stays_on_that_sheet(): void
-    {
-        $editor = Livewire::actingAs($this->user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->spreadsheet->id]);
-
-        $editor->set('selectedRow', 3)->call('toggleHideRowSelected')
-            ->call('resizeColumnSelected', ['col' => 1, 'width' => 150])
-            ->assertSet('hiddenRows', [3]);
-
-        $editor->call('switchTab', $this->second->id)
-            ->assertSet('hiddenRows', [])
-            ->assertSet('colWidths', [])
-            ->set('selectedRow', 0)->call('addValidationRuleSelected', ['type' => 'number', 'min' => 1, 'max' => 9]);
-
-        $editor->call('switchTab', $this->first->id)
-            ->assertSet('hiddenRows', [3])
-            ->assertSet('colWidths', [1 => 150])
-            ->assertSet('validationRules', []);
-
-        $this->assertSame([3], $this->first->fresh()->layout['hidden_rows']);
-        $this->assertArrayNotHasKey('hidden_rows', $this->second->fresh()->layout);
-        $this->assertCount(1, $this->second->fresh()->layout['validation_rules']);
-        $this->assertSame([], array_intersect_key($this->spreadsheet->fresh()->settings ?? [], array_flip(SheetTab::LAYOUT_KEYS)));
     }
 
     public function test_the_update_route_sets_the_named_sheet_or_the_first(): void

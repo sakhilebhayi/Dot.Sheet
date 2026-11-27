@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
-use App\Livewire\SpreadsheetToolbar;
 use App\Models\Cell;
 use App\Models\SheetProtection;
 use App\Models\SheetTab;
@@ -19,7 +17,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -390,29 +387,6 @@ class GridProtectionTest extends TestCase
 
         $this->get("/spreadsheets/{$this->sheet->id}")->assertOk()->assertViewHas('boot', fn (array $boot) => $boot['canKeep'] === false);
         $this->actingAs($this->admin)->get("/spreadsheets/{$this->sheet->id}")->assertViewHas('boot', fn (array $boot) => $boot['canKeep'] === true);
-    }
-
-    public function test_the_classic_editor_sends_an_editor_to_the_new_one_once_there_is_protection(): void
-    {
-        $this->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk();
-
-        $this->protectBlock();
-
-        $this->get("/spreadsheets/{$this->sheet->id}/classic")->assertRedirect(route('spreadsheets.show', $this->sheet));
-        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk();
-        $this->actingAs($this->reader)->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk();
-    }
-
-    public function test_a_classic_editor_left_open_stops_working_for_an_editor_once_there_is_protection(): void
-    {
-        $page = Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id]);
-        $toolbar = Livewire::test(SpreadsheetToolbar::class, ['spreadsheet_id' => $this->sheet->id]);
-
-        $this->protectBlock();
-
-        $page->call('saveCell', 'x')->assertForbidden();
-        $toolbar->call('$refresh')->assertForbidden();
-        $this->assertSame('Item', $this->raw(0, 0));
     }
 
     public function test_the_classic_settings_path_cannot_change_a_protected_workbook(): void

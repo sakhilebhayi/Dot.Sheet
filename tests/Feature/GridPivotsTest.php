@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\PivotTableBuilder;
 use App\Models\Cell;
 use App\Models\PivotTable;
 use App\Models\SheetTab;
@@ -17,7 +16,6 @@ use App\Services\StructureVersion;
 use App\Services\WorkbookSheets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -400,30 +398,6 @@ class GridPivotsTest extends TestCase
 
         $this->getJson($this->url())->assertForbidden();
         $this->getJson($this->url("pivots/{$pivot->id}"))->assertForbidden();
-    }
-
-    public function test_the_classic_builder_shows_a_true_average_and_a_blank_for_nothing(): void
-    {
-        $this->sales();
-
-        $panel = Livewire::test(PivotTableBuilder::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id])
-            ->set('title', 'Average')->set('source_range', 'A1:C4')->set('row_field', 'A')->set('column_field', 'B')->set('value_field', 'C')->set('aggregation', 'average')
-            ->call('savePivot');
-
-        $result = $panel->get('result');
-        $this->assertEqualsWithDelta(140 / 3, $result['grandTotal'], 0.0001);
-        $this->assertNull($result['matrix']['West']['Q2']);
-        $panel->assertSee('46.67')->assertDontSee('140.00');
-    }
-
-    public function test_the_classic_builder_refuses_a_column_outside_the_table(): void
-    {
-        Livewire::test(PivotTableBuilder::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id])
-            ->set('title', 'x')->set('source_range', 'A1:C4')->set('row_field', 'F')->set('value_field', 'C')->set('aggregation', 'sum')
-            ->call('savePivot')
-            ->assertHasErrors('source_range');
-
-        $this->assertSame(0, PivotTable::count());
     }
 
     /** Region, Item, Status, Amount. */

@@ -416,3 +416,11 @@ button.where:hover { translate: 0 -1px; }
     .findbar input:not([type]) { width: 100%; }
     .findbar label:not(.tick) { flex: 1 1 100%; }
 }
+
+/* Workflow rules (EA-6): the rule reads as a sentence, like the colour rules above the sheet. */
+#workflows .workflows-sentence { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 0; color: var(--soft); }
+#workflows .workflows-sentence input, #workflows .workflows-sentence select { min-width: 0; padding: 6px 0; border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0; background: none; color: var(--ink); font: inherit; outline: none; }
+#workflows-column { width: 4ch; text-transform: uppercase; }
+#workflows-value { width: 8ch; }
+#workflows .tick { grid-column: 1 / -1; color: var(--soft); }
+#workflows .button { grid-column: 2; justify-self: end; }

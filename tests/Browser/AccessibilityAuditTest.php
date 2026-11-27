@@ -55,7 +55,7 @@ class AccessibilityAuditTest extends DuskTestCase
             $found = [...$found, ...$this->audit($browser, 'login')];
 
             $browser->loginAs($user);
-            foreach (['/dashboard', '/spreadsheets/create', '/integrations', '/activity', '/user/profile', '/teams/'.$user->currentTeam->id, "/spreadsheets/{$sheet->id}/classic"] as $path) {
+            foreach (['/dashboard', '/spreadsheets/create', '/integrations', '/activity', '/user/profile', '/teams/'.$user->currentTeam->id] as $path) {
                 $browser->visit($path)->pause(500);
                 $found = [...$found, ...$this->audit($browser, $path)];
             }

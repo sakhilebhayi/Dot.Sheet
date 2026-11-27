@@ -2,16 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\User;
-use App\Services\CellWriter;
 use App\Services\SheetStructureService;
 use App\Services\StructureVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridRulesTest extends TestCase
@@ -90,16 +87,6 @@ class GridRulesTest extends TestCase
         $this->ask(['remove' => 'not-a-rule'])->assertOk()->assertJsonPath('undo', null);
 
         $this->assertCount(1, $this->stored());
-    }
-
-    public function test_the_classic_editor_draws_a_rule_set_here(): void
-    {
-        app(CellWriter::class)->write($this->sheet->id, $this->tab->id, [['row' => 0, 'col' => 1, 'value' => '-5']], $this->owner->id);
-        $this->ask(['add' => $this->rule()])->assertOk();
-
-        $editor = Livewire::test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->sheet->id]);
-
-        $this->assertSame($this->stored(), $editor->get('conditionalFormattingRules'));
     }
 
     public function test_only_sensible_rules_are_taken(): void

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\NamedRangesPanel;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
@@ -14,7 +13,6 @@ use App\Services\Formula\Recalculator;
 use App\Services\SheetNames;
 use App\Services\WorkbookSheets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -208,18 +206,5 @@ class GridNamesTest extends TestCase
         $this->actingAs(User::factory()->withPersonalTeam()->create());
 
         $this->getJson($this->url())->assertForbidden();
-    }
-
-    public function test_the_classic_panel_keeps_the_same_rules(): void
-    {
-        $panel = Livewire::test(NamedRangesPanel::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id]);
-
-        $panel->set('name', 'VLOOKUP')->set('rangeInput', 'A1')->call('createRange')->assertSet('error', fn ($error) => str_contains($error, 'function name'));
-        $panel->set('name', 'Fine')->set('rangeInput', 'A0')->call('createRange')->assertSet('error', 'Range must look like A1 or A1:B10.');
-        $panel->set('name', 'Fine')->set('rangeInput', 'A1')->call('createRange')->assertSet('error', '')->assertSet('name', '');
-        $this->assertSame(1, NamedRange::count());
-
-        $panel->call('deleteRange', NamedRange::firstOrFail()->id)->assertSet('ranges', []);
-        $this->assertSame(0, NamedRange::count());
     }
 }

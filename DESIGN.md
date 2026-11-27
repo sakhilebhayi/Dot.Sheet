@@ -430,7 +430,7 @@ pass on, and the public link shows the first sheet only. Making a new link asks 
 be brought back. Nobody can change their own access here, because one slip would lock them out.
 
 **Sizes.** Drag the edge of a column letter or row number to resize, or double-click it to fit the column
-to what it holds. Sizes are shared with the classic editor, so a sheet reads the same in both.
+to what it holds.
 
 **Long text** runs on into the empty cells beside it and stops at the first cell that holds anything.
 Figures never do: a number that does not fit is cut, because half a run of digits is a wrong number.
@@ -505,7 +505,7 @@ action is the button, and the record sits below once there is one.
 
 ## The header (R-52)
 
-Every signed-in page, the editor and the classic editor included, wears the shared Dot UI header (dot-ui 0.6.0), mapped onto this
+Every signed-in page, the editor included, wears the shared Dot UI header (dot-ui 0.6.0), mapped onto this
 palette in `resources/css/dot-ui-map.css` (unlayered: dot-ui's CSS is). One Blade partial prints it: `<x-sheet-header>`.
 
 - **Bar:** the mark (cut from the master logo, `resources/images/dot-sheet-mark.png`, built by Vite so the deploy's build mirror carries it), the primary pages (Spreadsheets, Team, Activity; a
@@ -518,7 +518,7 @@ palette in `resources/css/dot-ui-map.css` (unlayered: dot-ui's CSS is). One Blad
   its own; the actions never leave the screen.
 - **A phone is view first.** Editing a spreadsheet on a phone is limited by nature and this does not pretend otherwise: the formula line
   is a 44px, 16px field; `Format` opens the format toolbar as a sheet from the bottom edge; `Comments` and `Share` stay in reach;
-  `More` opens a sheet with the command palette, Explain and the classic editor. The spreadsheet's name moves into the tools row
+  `More` opens a sheet with the command palette and Explain. The spreadsheet's name moves into the tools row
   under 600px (the bar has room for five 44px controls and no more); the h1 stays for screen readers.
 - **The sheet tabs** at the foot scroll sideways when they are many and fade the edge that has more behind it.
 - **The dashboard's list** shows every column from 721px (under 1100px the print of the sheet in view sits under the list instead of
@@ -533,20 +533,13 @@ editor**. In the editor Ctrl or Cmd K opens the editor's own command palette (`r
 replace, freeze, sort, sheets, charts, and so on), so the editor's pill shows no `Ctrl K` hint and does not bind it; the palette is also the
 `Commands` button in the tools row.
 
-## The classic editor
+## The classic editor (retired)
 
-A sheet's address opens the new editor. The classic editor stays beside it at `/classic` until the new
-one has its features, and looking for one of those in the palette finds the way there. It follows the
-same rules from the same tokens. One bar holds the name, the cell and its contents, and Save; everything occasional is in
-the Tools menu. Formatting sits in one row, with the rest behind More tools. Panels fold in a column on
-the right, each opened when wanted, and stay open while the sheet redraws.
+The Livewire "classic" editor was retired in EA-6 (2026-11-28). Its address, `/spreadsheets/{id}/classic`, now opens
+the grid. Workflow rules, the one thing only it could change, have their own panel in the grid ("Workflow rules" in
+the palette). User scripts went with it; macros record edits and play them back.
 
-Its panels are written in Tailwind utilities, so `resources/css/tailwind-dot-palette.css` maps that
-palette onto these tokens rather than editing every class: neutrals are paper and ink, pale blues are
-selection, a button of any hue is ink, and red is errors and negatives. There is no dark theme, so the
-views' `dark:` classes do nothing. New work uses tokens, not more utilities.
-
-Figures read the same in both editors and on share links: `App\Support\FigureText` matches
+Figures read the same in the editor and on share links: `App\Support\FigureText` matches
 `resources/js/grid/format.js`. Change one and change the other.
 
 ## Do's and Don'ts

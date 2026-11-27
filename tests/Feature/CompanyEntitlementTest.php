@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureCompanyEntitled;
-use App\Models\NamedRange;
 use App\Models\Spreadsheet;
 use App\Models\Team;
 use App\Models\User;
@@ -342,15 +341,6 @@ class CompanyEntitlementTest extends TestCase
         ];
     }
 
-    public function test_a_livewire_panel_stops_too(): void
-    {
-        [$user, , $sheet] = $this->memberOfLinkedCompany();
-        $this->assertContains(EnsureCompanyEntitled::class, Livewire::getPersistentMiddleware());
-        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, false, 'suspended'))]);
-
-        $this->actingAs($user)->get("/spreadsheets/{$sheet->id}/classic")->assertStatus(403);
-    }
-
     #[DataProvider('failures')]
     public function test_any_failure_to_get_an_answer_lets_the_person_carry_on(\Closure $answer): void
     {
@@ -454,46 +444,6 @@ class CompanyEntitlementTest extends TestCase
         $this->post('/logout')->assertRedirect();
 
         $this->assertSame(0, $this->platformCalls());
-    }
-
-    public function test_a_livewire_action_that_worked_is_stopped_for_real_when_access_ends(): void
-    {
-        [$user, , $sheet] = $this->memberOfLinkedCompany();
-        $tab = $sheet->sheetTabs()->firstOrFail();
-        $answers = [self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))];
-        $this->infodotAnswers($answers);
-
-        // The classic editor renders the named-ranges panel; take its snapshot from the page, as the browser would.
-        $html = $this->actingAs($user)->get("/spreadsheets/{$sheet->id}/classic")->assertOk()->getContent();
-        $snapshots = [];
-        preg_match_all('/wire:snapshot="([^"]*)"/', $html, $all);
-        foreach ($all[1] as $encoded) {
-            $snapshot = json_decode(html_entity_decode($encoded), true);
-            if (($snapshot['memo']['name'] ?? null) === 'named-ranges-panel') {
-                $snapshots[] = $snapshot;
-            }
-        }
-        $this->assertNotEmpty($snapshots, 'the panel is on the page');
-        $snapshot = $snapshots[0];
-
-        $call = fn (string $name) => $this->withHeaders(['X-Livewire' => 'true'])->postJson(route('default.livewire.update'), ['components' => [[
-            'snapshot' => json_encode($snapshot),
-            'updates' => ['name' => $name, 'rangeInput' => 'A1:B2'],
-            'calls' => [['path' => '', 'method' => 'createRange', 'params' => []]],
-        ]], '_token' => csrf_token()]);
-
-        // While the company holds the platform the action runs and writes.
-        $call('Takings')->assertOk();
-        $this->assertSame(['Takings'], NamedRange::where('spreadsheet_id', $sheet->id)->pluck('name')->all());
-
-        // The cached answer expires and InfoDot now says no.
-        $this->travel(11)->minutes();
-        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, false, 'suspended'))]);
-
-        $call('Costs')->assertStatus(403)->assertJsonMissingPath('components');
-        $this->assertStringNotContainsString('components', (string) $call('Costs')->getContent());
-        $this->assertSame(['Takings'], NamedRange::where('spreadsheet_id', $sheet->id)->pluck('name')->all(), 'the action did not run');
-        $this->assertSame($tab->id, $snapshot['data']['sheet_tab_id']);
     }
 
     public function test_the_person_can_switch_to_another_company_that_is_entitled(): void
@@ -601,30 +551,8 @@ class CompanyEntitlementTest extends TestCase
         $this->actingAs($user)->get('/dashboard')->assertStatus(503)->assertSee('under maintenance');
     }
 
-    public function test_a_livewire_action_is_stopped_for_real_when_the_platform_is_switched_off(): void
+    public function test_livewire_requests_still_carry_the_entitlement_check(): void
     {
-        [$user, , $sheet] = $this->memberOfLinkedCompany();
-        $this->infodotAnswers([self::ACME => Http::response($this->platforms(self::ACME, true, 'active'))]);
-
-        $html = $this->actingAs($user)->get("/spreadsheets/{$sheet->id}/classic")->assertOk()->getContent();
-        preg_match_all('/wire:snapshot="([^"]*)"/', $html, $all);
-        $snapshot = null;
-        foreach ($all[1] as $encoded) {
-            $candidate = json_decode(html_entity_decode($encoded), true);
-            if (($candidate['memo']['name'] ?? null) === 'named-ranges-panel') {
-                $snapshot = $candidate;
-            }
-        }
-        $this->assertNotNull($snapshot);
-
-        $this->travel(70)->seconds();
-        $this->infodotAnswers([self::ACME => Http::response($this->maintenance(self::ACME))]);
-
-        $this->withHeaders(['X-Livewire' => 'true'])->postJson(route('default.livewire.update'), ['components' => [[
-            'snapshot' => json_encode($snapshot),
-            'updates' => ['name' => 'Costs', 'rangeInput' => 'A1:B2'],
-            'calls' => [['path' => '', 'method' => 'createRange', 'params' => []]],
-        ]], '_token' => csrf_token()])->assertStatus(503)->assertJsonMissingPath('components');
-        $this->assertSame(0, NamedRange::where('spreadsheet_id', $sheet->id)->count());
+        $this->assertContains(EnsureCompanyEntitled::class, Livewire::getPersistentMiddleware());
     }
 }

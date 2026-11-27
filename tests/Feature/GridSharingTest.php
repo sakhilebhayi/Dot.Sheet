@@ -2,13 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\SpreadsheetSharingPanel;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridSharingTest extends TestCase
@@ -259,24 +257,5 @@ class GridSharingTest extends TestCase
         $this->followingRedirects()->get(route('spreadsheets.invitations.accept', $invite->token))->assertOk()
             ->assertDontSee('id="sharing"', false)
             ->assertViewHas('boot', fn (array $boot) => $boot['canShare'] === false && str_contains((string) $boot['told'], 'Invitation accepted'));
-    }
-
-    public function test_the_classic_panel_uses_the_same_rules(): void
-    {
-        $this->sheet->sharedUsers()->attach($this->person->id, ['permission' => 'view']);
-        $admin = $this->admin();
-
-        $panel = Livewire::actingAs($admin)->test(SpreadsheetSharingPanel::class, ['spreadsheet_id' => $this->sheet->id]);
-        $panel->call('updatePermission', $admin->id, 'view')->assertSet('statusType', 'error');
-        $panel->call('revokeUser', $admin->id)->assertSet('statusType', 'error');
-        $this->assertSame('admin', $this->permissionOf($admin));
-
-        $panel->call('updatePermission', $this->person->id, 'edit')->assertSet('statusType', 'success');
-        $this->assertSame('edit', $this->permissionOf($this->person));
-
-        $panel->set('inviteEmail', 'new@example.test')->set('invitePermission', 'view')->set('inviteExpiryDays', 7)->call('inviteByEmail')
-            ->assertSet('statusMessage', 'new@example.test has no account here yet. Copy their link below and send it to them.');
-
-        $panel->set('publicExpiresAt', 'whenever')->call('savePublicLinkSettings')->assertHasErrors('publicExpiresAt');
     }
 }

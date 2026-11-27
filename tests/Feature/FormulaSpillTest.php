@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\User;
@@ -13,7 +12,7 @@ use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
+use Tests\Support\GridDriver;
 use Tests\TestCase;
 
 /**
@@ -38,7 +37,7 @@ class FormulaSpillTest extends TestCase
         $this->user = User::factory()->withPersonalTeam()->create();
         $this->spreadsheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->user->id, 'team_id' => $this->user->currentTeam->id, 'name' => 'Budget']);
         $this->tab = $this->spreadsheet->defaultSheetTab();
-        $this->editor = Livewire::actingAs($this->user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->spreadsheet->id]);
+        $this->editor = new GridDriver($this, $this->user, $this->spreadsheet);
 
         foreach (['A1' => '3', 'A2' => '1', 'A3' => '2'] as $reference => $value) {
             $this->type($reference, $value);
@@ -74,8 +73,8 @@ class FormulaSpillTest extends TestCase
         $this->type('E1', '=SEQUENCE(2,2)');
         $this->assertSame(['1', '2', '3', '4'], [$this->shown('E1'), $this->shown('F1'), $this->shown('E2'), $this->shown('F2')]);
 
-        // On screen too, without a reload.
-        $this->assertSame('3', $this->editor->get('cellData')[2][2]['computed_value']);
+        // And what the grid's page reads for that cell.
+        $this->assertSame('3', $this->shown('C3'));
     }
 
     public function test_it_follows_its_inputs_and_changes_size(): void

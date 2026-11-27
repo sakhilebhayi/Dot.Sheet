@@ -15,5 +15,8 @@ return [
     ],
 
     // This platform's scheduled jobs that send email or notifications (matched against the command or name).
-    'essential' => [],
+    'essential' => [
+        // Mentions and approvals are emailed through Dot.Notify from the integrations outbox (Dot.Sheet audit E-01, 2026-11-27).
+        'integrations:deliver',
+    ],
 ];

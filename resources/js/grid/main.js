@@ -272,6 +272,7 @@ const protectionPanel = new Protection({
     changed: showProtection,
     note,
     refused,
+    ask,
 });
 const approval = new Approval({
     server,

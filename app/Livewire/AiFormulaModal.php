@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GatesClassicAi;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\AiPrompt;
@@ -15,6 +16,7 @@ use Livewire\Component;
 class AiFormulaModal extends Component
 {
     use AuthorizesRequests;
+    use GatesClassicAi;
     use GuardsSheetState;
     use RefusesProtectedWorkbook;
 
@@ -75,14 +77,17 @@ class AiFormulaModal extends Component
             'description' => 'required|string|min:5|max:500',
         ]);
 
-        $this->loading = true;
         $this->error = null;
+        if ($this->aiIsOff()) {
+            return;
+        }
+
+        $this->loading = true;
 
         try {
-            // Build context
+            // The cell being written; the model is not handed made-up neighbours (EA-3, F-02).
             $context = [
                 'cell' => $this->cell_reference,
-                'available_cells' => ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'],
             ];
 
             // Generate formula using AI
@@ -103,7 +108,8 @@ class AiFormulaModal extends Component
 
             $this->success = true;
         } catch (\Exception $e) {
-            $this->error = 'Error: '.$e->getMessage();
+            report($e);
+            $this->error = 'The formula could not be written just now. Try again in a moment.';
         } finally {
             $this->loading = false;
         }

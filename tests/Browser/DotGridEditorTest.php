@@ -23,6 +23,7 @@ use Facebook\WebDriver\WebDriverBy;
 use Facebook\WebDriver\WebDriverKeys;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Laravel\Dusk\Browser;
+use PHPUnit\Framework\Attributes\Group;
 use ReflectionMethod;
 use Tests\DuskTestCase;
 
@@ -891,6 +892,24 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
+    /** With production's settings the palette says plainly that inserting and deleting rows is not switched on. */
+    public function test_inserting_rows_says_it_is_not_switched_on_with_production_settings(): void
+    {
+        if (config('sheet.structure_ops_enabled')) {
+            $this->markTestSkipped('Runs in the pass with production settings.');
+        }
+
+        [$user, $sheet] = $this->sheet();
+
+        $this->browse(function (Browser $browser) use ($user, $sheet) {
+            $this->open($browser, $user, $sheet);
+            $this->runCommand($browser, 'Insert or delete rows');
+            $browser->waitForTextIn('#note', 'not available yet');
+        });
+    }
+
+    /** Runs in CI's second pass, with SHEET_STRUCTURE_OPS_ENABLED=true: production keeps the flag off (EA-3, F-05). */
+    #[Group('structure-ops')]
     public function test_rows_go_in_and_come_out_and_undo_takes_both_back(): void
     {
         [$user, $sheet, $tab] = $this->sheet();
@@ -1890,6 +1909,7 @@ class DotGridEditorTest extends DuskTestCase
             $this->assertSame('edit', $sheet->sharedUsers()->whereKey($friend->id)->first()->pivot->permission);
 
             $this->pressIn($browser, '#share-people', 'Remove');
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Take away Thandi')->click('#confirm-yes');
             $browser->waitForTextIn('#note', 'Removed Thandi');
             // The refused address above logs an error by itself, so the console is not checked here.
             $browser->assertDontSeeIn('#share-people', 'Thandi');
@@ -3146,6 +3166,7 @@ class DotGridEditorTest extends DuskTestCase
             $this->runCommand($browser, 'Protected cells');
             $browser->waitForTextIn('#protection-list', 'The whole sheet');
             $browser->driver->executeScript("[...document.querySelectorAll('#protection-list button')].find(b => b.textContent === 'Remove').click()");
+            $browser->waitFor('#confirm[open]')->assertSeeIn('#confirm-text', 'Lift the protection')->click('#confirm-yes');
             $browser->waitForTextIn('#note', 'no longer protected')->waitUntilMissing('#tabs .locked');
 
             $this->open($browser, $editor, $sheet);

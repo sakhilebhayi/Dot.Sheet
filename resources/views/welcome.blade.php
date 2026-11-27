@@ -187,11 +187,11 @@
                     </p>
 
                     <h1 class="font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.05] sm:leading-none tracking-tight text-[var(--paper)] mb-6">
-                        Row by row.<br>Together, in real time.
+                        Row by row.<br>Together.
                     </h1>
 
                     <p class="text-lg text-[rgba(250,247,236,0.82)] leading-relaxed max-w-xl mb-10">
-                        Dot.Sheet is a real grid of rows and columns — formulas, comments, charts, and version history — built to hold more than one editor in the same sheet without waiting for a full reload.
+                        Dot.Sheet is a real grid of rows and columns — formulas, comments, charts, and version history — where several people can work in one workbook and see each other's changes within seconds, without reloading.
                     </p>
 
                     @guest
@@ -215,7 +215,7 @@
                     <span class="text-[var(--gold-soft)]">·</span>
                     <span>Client + server formulas</span>
                     <span class="text-[var(--gold-soft)]">·</span>
-                    <span>Realtime presence</span>
+                    <span>Shared workbooks</span>
                     <span class="text-[var(--gold-soft)]">·</span>
                     <span>Version history</span>
                 </div>
@@ -236,11 +236,11 @@
                     @php
                         $features = [
                             ['tag' => 'Grid', 'title' => 'A grid that loads what you see', 'body' => 'Cells are stored sparsely — only the ones with something in them — and the viewport loads with prefetch instead of pulling the whole sheet at once.'],
-                            ['tag' => 'Formulas', 'title' => 'Formulas run twice, on purpose', 'body' => 'A client-side parser evaluates as you type; the same formula is re-checked by a server-side PHP evaluator, so every collaborator sees the same result.'],
-                            ['tag' => 'Realtime', 'title' => 'See who\'s editing, live', 'body' => 'Cell edits and cursor moves broadcast over a presence channel, gated by the same permission check as every other action on the sheet.'],
+                            ['tag' => 'Formulas', 'title' => 'One answer for everyone', 'body' => 'Formulas are worked out on the server by a full spreadsheet engine, and only the cells that depend on a change are recalculated, so everyone in the sheet sees the same result.'],
+                            ['tag' => 'Together', 'title' => 'See who else is in the sheet', 'body' => 'People with the workbook open are shown, and their changes arrive within a few seconds, without a reload. If two people change the same cell, the second is told instead of overwriting.'],
                             ['tag' => 'History', 'title' => 'Comments and version history', 'body' => 'Threaded, cell-anchored comments with @mention notifications, plus full-grid snapshots you can roll back to.'],
                             ['tag' => 'Import / export', 'title' => 'CSV and XLSX, both ways', 'body' => 'Large imports and pastes are chunked into queued jobs, so one big file doesn\'t lock up the grid for everyone else in it.'],
-                            ['tag' => 'AI', 'title' => 'AI panels, your provider', 'body' => 'Formula generation, natural-language queries, data cleaning, OCR, and sentiment analysis — running on whichever provider you configure, not one fixed model.'],
+                            ['tag' => 'Help', 'title' => 'Help with formulas and data', 'body' => 'Broken formulas are explained and a fix is offered, and data checks find gaps, stray spaces, mixed spellings and figures far from the rest. Writing formulas from plain words and asking questions about a sheet need AI, which a business switches on.'],
                         ];
                     @endphp
                     @foreach ($features as $i => $f)
@@ -272,11 +272,11 @@
                         @php
                             $capabilities = [
                                 ['title' => 'Four sharing tiers', 'body' => 'View, comment, edit, and admin permissions, enforced by one policy class that every controller and Livewire panel checks.'],
-                                ['title' => 'Owner first, team optional', 'body' => 'A spreadsheet belongs to its owner. Attaching it to a team is optional, and never the only way in.'],
+                                ['title' => 'Yours, or your company\'s', 'body' => 'A workbook belongs to you, or to your company if you put it there. A company\'s workbooks stay with the company when people join or leave.'],
                                 ['title' => 'Public read-only links', 'body' => 'Publish a bounded window of a sheet for anyone with the link — no account required to view it.'],
                                 ['title' => 'Charts from a range', 'body' => 'Pick a cell range and a chart type, and Dot.Sheet builds and saves the chart definition against your data.'],
                                 ['title' => 'Automation rules', 'body' => 'Workflow rules can watch a column and act when it crosses a threshold, with every run kept in an audit log.'],
-                                ['title' => 'One sign-in, one ecosystem', 'body' => 'A one-time token handoff from the Dot ecosystem hub signs you in here without a separate password.'],
+                                ['title' => 'One sign-in, one ecosystem', 'body' => 'You sign in with your InfoDot account. Dot.Sheet keeps no password of its own for you.'],
                             ];
                         @endphp
                         @foreach ($capabilities as $c)

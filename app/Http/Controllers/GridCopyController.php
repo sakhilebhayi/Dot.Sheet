@@ -40,6 +40,9 @@ class GridCopyController extends Controller
 
         $input = $request->validate(['label' => 'present|nullable|string|max:120'], ['label.max' => 'Use a shorter name: 120 characters at most.']);
         $label = trim((string) $input['label']);
+        if (! SheetVersions::canCopyAtAll($sheetTab->id)) {
+            return response()->json(['message' => SheetVersions::TOO_LARGE_MESSAGE], 422);
+        }
 
         $busy = false;
         WriteLock::guard(function () use ($spreadsheet, $sheetTab, $label) {

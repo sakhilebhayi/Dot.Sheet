@@ -33,10 +33,24 @@ class SheetVersions
     /** Largest sheet copied automatically. */
     public const AUTO_MAX_CELLS = 20000;
 
+    /**
+     * Largest sheet copied at all, by a person or before a restore (EA-4, P-04): a copy is held in memory whole,
+     * and the host allows 128 MB a request.
+     */
+    public const MAX_CELLS = 60000;
+
+    public const TOO_LARGE_MESSAGE = 'This sheet has more than 60,000 cells, too many to copy safely in one go. Download it as Excel to keep a copy.';
+
     private const CHUNK = 500;
 
     /** The columns a snapshot holds for each cell. */
     private const CELL_COLUMNS = ['row_index', 'col_index', 'raw_value', 'computed_value', 'formula', 'formatting'];
+
+    /** Whether a sheet can be copied at all (see MAX_CELLS). */
+    public static function canCopyAtAll(int $sheetTabId): bool
+    {
+        return Cell::where('sheet_tab_id', $sheetTabId)->count() <= self::MAX_CELLS;
+    }
 
     /** Whether a sheet is small enough to copy within one request. */
     public static function canCopyWhole(int $sheetTabId): bool

@@ -131,8 +131,10 @@ class ScriptsGateTest extends TestCase
         $this->assertStringContainsString('if (scriptsEnabled) {', $js);
         // The worker is created lazily, inside the enabled branch's helper, never at load time.
         $this->assertStringNotContainsString('const scriptSandboxWorker =', $js);
-        $this->assertStringContainsString('export default FormulaParser', file_get_contents(resource_path('js/formula-parser.js')));
-        $this->assertStringContainsString("import FormulaParser from './formula-parser';", $js);
+        // EA-4: the shared bundle carries no chart library, tour or dead formula parser.
+        $this->assertStringNotContainsString('chart.js', $js);
+        $this->assertStringNotContainsString('shepherd', $js);
+        $this->assertFileDoesNotExist(resource_path('js/formula-parser.js'));
     }
 
     public function test_the_script_list_cannot_be_set_from_the_browser(): void

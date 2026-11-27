@@ -37,6 +37,8 @@ class VersionHistoryModal extends Component
 
     public $snapshotLabel = '';
 
+    public string $notice = '';
+
     protected $listeners = [
         'open-version-history' => 'openModal',
     ];
@@ -91,6 +93,12 @@ class VersionHistoryModal extends Component
         $this->authorize('update', $spreadsheet);
 
         $label = trim($this->snapshotLabel) !== '' ? Str::limit(trim($this->snapshotLabel), 120, '') : 'Manual Snapshot';
+        if (! SheetVersions::canCopyAtAll((int) $this->sheet_tab_id)) {
+            $this->notice = SheetVersions::TOO_LARGE_MESSAGE;
+
+            return;
+        }
+        $this->notice = '';
         app(SheetVersions::class)->snapshot((int) $this->spreadsheet_id, (int) $this->sheet_tab_id, Auth::id(), SheetVersions::MANUAL, $label);
 
         $this->snapshotLabel = '';
@@ -110,6 +118,12 @@ class VersionHistoryModal extends Component
         if ($version === null || ! SheetTab::whereKey($this->sheet_tab_id)->exists()) {
             $this->open = false;
             $this->dispatch('structure-stale');
+
+            return;
+        }
+
+        if (! SheetVersions::canCopyAtAll((int) $this->sheet_tab_id)) {
+            $this->notice = SheetVersions::TOO_LARGE_MESSAGE;
 
             return;
         }

@@ -100,6 +100,9 @@
             <section class="ledger" aria-label="All spreadsheets">
                 <div class="ledger-tools">
                     <x-dot.filter-search id="filter" name="filter" placeholder="Filter this list" label="Filter the list by name" />
+                @if (($unlisted ?? 0) > 0)
+                    <p class="hint">{{ __('Showing the :shown most recently changed workbooks. :more more are not listed here: search at the top finds them.', ['shown' => $spreadsheets->count(), 'more' => number_format($unlisted)]) }}</p>
+                @endif
                 </div>
                 <table>
                     <thead>

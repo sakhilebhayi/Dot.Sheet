@@ -1126,6 +1126,10 @@ class GridController extends Controller
         $copy = SpreadsheetVersion::whereKey($input['copy'])
             ->where('spreadsheet_id', $spreadsheet->id)->where('sheet_tab_id', $sheetTab->id)->first();
         abort_if($copy === null, 404);
+        // Restoring first keeps a copy of the sheet as it is: refused, not run out of memory, when that is too large.
+        if (! SheetVersions::canCopyAtAll($sheetTab->id)) {
+            return response()->json(['message' => SheetVersions::TOO_LARGE_MESSAGE], 422);
+        }
 
         try {
             app(SheetProtections::class)->refuseAny($spreadsheet, $sheetTab->id, Auth::user());

@@ -94,7 +94,11 @@ class SheetSharing
         // changed to this address and has not proven it, accepts an invitation sent to the address.
         $existingUser = User::whereRaw('lower(email) = ?', [$email])->whereNotNull('email_verified_at')->first();
         if ($existingUser) {
+            $already = $spreadsheet->sharedUsers()->where('users.id', $existingUser->id)->exists();
             $spreadsheet->sharedUsers()->syncWithoutDetaching([$existingUser->id => ['permission' => $permission]]);
+            if (! $already) {
+                app(AccountNotices::class)->shared($spreadsheet, $by, $existingUser, $permission);
+            }
 
             return true;
         }
@@ -113,7 +117,9 @@ class SheetSharing
     public function setPermission(Spreadsheet $spreadsheet, int $userId, string $permission, int $byId): void
     {
         $this->refuseOwnAccess($userId, $byId);
-        $spreadsheet->sharedUsers()->updateExistingPivot($userId, ['permission' => $permission]);
+        if ($spreadsheet->sharedUsers()->updateExistingPivot($userId, ['permission' => $permission]) > 0) {
+            app(AccountNotices::class)->accessChanged($spreadsheet, User::find($byId), $userId, $permission);
+        }
     }
 
     /**
@@ -122,7 +128,9 @@ class SheetSharing
     public function remove(Spreadsheet $spreadsheet, int $userId, int $byId): void
     {
         $this->refuseOwnAccess($userId, $byId);
-        $spreadsheet->sharedUsers()->detach($userId);
+        if ($spreadsheet->sharedUsers()->detach($userId) > 0) {
+            app(AccountNotices::class)->accessChanged($spreadsheet, User::find($byId), $userId, null);
+        }
     }
 
     /**

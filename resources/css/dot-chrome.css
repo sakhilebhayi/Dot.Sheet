@@ -135,3 +135,19 @@ input::placeholder { color: var(--soft); opacity: 1; }
     *, *::before { animation: none !important; transition: none !important; }
     .threads path.draw { stroke-dashoffset: 0; }
 }
+
+/* Notification centre (EA-2): one notice per row inside the shared header bell panel. The row is the button,
+   so the whole line opens the notice; text on the panel ink, the time quieter and in tabular numerals. */
+.dh-panel__item:has(.notice-open) { padding: 0; }
+.dh-panel__item form { display: contents; }
+.notice-open {
+    display: grid; gap: 2px; width: 100%; min-height: var(--dot-hit, 44px);
+    padding: 10px 12px; border: 0; background: transparent; color: var(--dhp-ink);
+    font: inherit; text-align: left; cursor: pointer;
+}
+.notice-open:hover { background: var(--dhp-hover); }
+.notice-open:focus-visible { outline: 2px solid var(--dh-focus, #2438C9); outline-offset: -2px; }
+.notice-open__text { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.dh-panel__item[data-unread] .notice-open__text { font-weight: 600; }
+.notice-open__when { font-size: 12px; color: var(--dhp-ink-2); font-variant-numeric: tabular-nums; }
+.notice-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

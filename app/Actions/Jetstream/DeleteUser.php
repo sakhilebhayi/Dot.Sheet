@@ -4,6 +4,7 @@ namespace App\Actions\Jetstream;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Services\AccountNotices;
 use App\Services\TeamDeparture;
 use Illuminate\Support\Facades\DB;
 use Laravel\Jetstream\Contracts\DeletesTeams;
@@ -33,6 +34,9 @@ class DeleteUser implements DeletesUsers
             $user->deleteProfilePhoto();
             $user->tokens->each->delete();
             $user->delete();
+
+            // EA-2 (E-07): a confirmation to the address the account had; queued after the deletion commits.
+            app(AccountNotices::class)->accountDeleted((string) $user->email, (string) $user->name);
         });
     }
 

@@ -34,7 +34,8 @@ class InviteTeamMember implements InvitesTeamMembers
             'role' => $role,
         ]);
 
-        Mail::to($email)->send(new TeamInvitation($invitation));
+        // Queued (EA-2, E-05): a mail server that is down cannot leave an invitation row behind without its email.
+        Mail::to($email)->queue((new TeamInvitation($invitation))->afterCommit());
     }
 
     /**

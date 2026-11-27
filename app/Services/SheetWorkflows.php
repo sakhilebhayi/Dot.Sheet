@@ -26,6 +26,13 @@ class SheetWorkflows
     private const QUIET_SECONDS = 300;
 
     /**
+     * While one change's cells are checked, the notices it raises, one per rule (EA-2, E-08): null outside a batch.
+     *
+     * @var array<string, array{rule: array<string, mixed>, first: string, value: mixed, channels: list<string>, count: int, logs: list<int>}>|null
+     */
+    private ?array $batch = null;
+
+    /**
      * @param  list<array{row: int, col: int}>  $written
      */
     public function cellsWritten(Spreadsheet $spreadsheet, int $sheetTabId, array $written, ?int $userId): void
@@ -39,10 +46,23 @@ class SheetWorkflows
             ->whereIn('col_index', array_unique(array_column($written, 'col')))
             ->get()->keyBy(fn (Cell $cell) => $cell->row_index.':'.$cell->col_index);
 
-        foreach ($written as ['row' => $row, 'col' => $col]) {
-            $cell = $cells[$row.':'.$col] ?? null;
-            if ($cell !== null) {
-                $this->cellChanged($spreadsheet, $sheetTabId, $row, $col, $cell->computed_value ?? $cell->raw_value, $userId);
+        $this->batch = [];
+        try {
+            foreach ($written as ['row' => $row, 'col' => $col]) {
+                $cell = $cells[$row.':'.$col] ?? null;
+                if ($cell !== null) {
+                    $this->cellChanged($spreadsheet, $sheetTabId, $row, $col, $cell->computed_value ?? $cell->raw_value, $userId);
+                }
+            }
+        } finally {
+            /** @var array<string, array{rule: array<string, mixed>, first: string, value: mixed, channels: list<string>, count: int, logs: list<int>}> $batch */
+            $batch = $this->batch ?? [];
+            $this->batch = null;
+        }
+
+        foreach ($batch as $notice) {
+            if (! $this->send($spreadsheet, $notice['rule'], $notice['first'], $notice['value'], $notice['channels'], $notice['count'] - 1)) {
+                WorkflowExecutionLog::whereIn('id', $notice['logs'])->update(['status' => 'failed']);
             }
         }
     }
@@ -80,7 +100,7 @@ class SheetWorkflows
                 $marked = true;
             }
 
-            WorkflowExecutionLog::create([
+            $log = WorkflowExecutionLog::create([
                 'spreadsheet_id' => $spreadsheet->id,
                 'triggered_by_user_id' => $userId,
                 'rule_id' => $ruleId,
@@ -99,6 +119,10 @@ class SheetWorkflows
                     default => 'triggered',
                 },
             ]);
+
+            if ($this->batch !== null && isset($this->batch[$ruleId])) {
+                $this->batch[$ruleId]['logs'][] = $log->id;
+            }
         }
 
         return $marked;
@@ -149,6 +173,26 @@ class SheetWorkflows
      */
     private function notifyOwner(Spreadsheet $spreadsheet, array $rule, string $reference, mixed $value, array $channels): bool
     {
+        if ($this->batch !== null) {
+            $key = (string) ($rule['id'] ?? md5((string) json_encode($rule)));
+            if (isset($this->batch[$key])) {
+                $this->batch[$key]['count']++;
+            } else {
+                $this->batch[$key] = ['rule' => $rule, 'first' => $reference, 'value' => $value, 'channels' => $channels, 'count' => 1, 'logs' => []];
+            }
+
+            return true;
+        }
+
+        return $this->send($spreadsheet, $rule, $reference, $value, $channels, 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $rule
+     * @param  list<string>  $channels
+     */
+    private function send(Spreadsheet $spreadsheet, array $rule, string $reference, mixed $value, array $channels, int $more): bool
+    {
         $owner = $spreadsheet->owner;
         if (! $owner instanceof User) {
             return true;
@@ -162,6 +206,7 @@ class SheetWorkflows
                 cellReference: $reference,
                 actualValue: $value,
                 channels: $channels,
+                more: $more,
             ));
         } catch (Throwable $failed) {
             report($failed);

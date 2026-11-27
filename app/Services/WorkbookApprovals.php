@@ -71,6 +71,8 @@ class WorkbookApprovals
         if ($approve) {
             $this->keepWhatWasApproved($spreadsheet, $user);
         }
+
+        app(AccountNotices::class)->approvalDecided($spreadsheet, $user, $latest->requested_by, $approve, $this->clean($note));
     }
 
     /**

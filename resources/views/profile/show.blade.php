@@ -17,6 +17,8 @@
             @endif
         @endif
 
+        @livewire(\App\Livewire\Profile\EmailPreferencesForm::class)
+
         @livewire('profile.logout-other-browser-sessions-form')
 
         @if (Laravel\Jetstream\Jetstream::hasAccountDeletionFeatures())

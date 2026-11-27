@@ -2,9 +2,12 @@
 
 namespace App\Services\Integrations;
 
+use App\Http\Controllers\NoticeController;
 use App\Models\IntegrationDelivery;
+use App\Notifications\ActivityNotice;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 /**
@@ -68,12 +71,40 @@ final class Outbox
                 self::RETRY => ['status' => 'pending', 'next_attempt_at' => Carbon::now()->addMinutes(self::BACKOFF[$attempts - 1])],
                 default => ['status' => 'given_up', 'next_attempt_at' => null],
             } + ['attempts' => $attempts, 'last_status' => $status, 'last_error' => $reason === null ? null : mb_substr($reason, 0, 300)])->save();
+            if ($outcome === self::GIVE_UP && $d->integration === 'notify') {
+                $this->fallBackToMail($d);
+            }
+
             $out[match ($outcome) {
                 self::SENT => 'sent', self::RETRY => 'retrying', default => 'given_up'
             }]++;
         }
 
         return $out;
+    }
+
+    /**
+     * Notify could not take a notice (EA-2, E-06): the person still hears about it, from this app's own mail,
+     * with the same minimum Notify would have sent (the title, the workbook and a link). Never throws.
+     */
+    private function fallBackToMail(IntegrationDelivery $d): void
+    {
+        try {
+            $payload = (array) $d->payload;
+            $email = (string) ($payload['recipient']['email'] ?? '');
+            $data = (array) ($payload['data'] ?? []);
+            if ($email === '') {
+                return;
+            }
+
+            Notification::route('mail', $email)->notify(new ActivityNotice(
+                'notify_fallback', 'collaboration', (string) ($data['title'] ?? 'Something changed in a workbook'),
+                (string) ($data['title'] ?? 'Something changed').' in "'.(string) ($data['workbook_name'] ?? 'a workbook').'".',
+                NoticeController::safeUrl($data['url'] ?? null), 'Open the workbook', mailOnly: true,
+            ));
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /** Puts a row that was not sent back in the queue, to go at the next run. */

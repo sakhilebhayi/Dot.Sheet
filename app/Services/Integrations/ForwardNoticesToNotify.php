@@ -33,6 +33,11 @@ final class ForwardNoticesToNotify
             return;
         }
 
+        // Notify sends email: a person who turned collaboration email off is not forwarded (EA-2, E-10).
+        if (! $event->notifiable->wantsEmailAbout('collaboration')) {
+            return;
+        }
+
         try {
             $this->forward($event->notification, $event->notifiable, (string) $event->notification->id);
         } catch (Throwable $e) {

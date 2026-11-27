@@ -215,3 +215,22 @@ Severity per the brief. Owner = needs the owner's access, credentials, DNS, mone
 8. **Decisions**: (a) retire the classic editor in EA-6, or keep and fix it; (b) on account deletion, team workbooks move to the team owner (recommended) or to a chosen admin; (c) how SSO users erase their account: confirmation through InfoDot (recommended) or an operator command.
 
 **Not started.** No remediation begins until the owner approves this plan.
+
+## 6. Remediation status (2026-11-28)
+
+The owner approved the plan on 2026-11-27 and asked for each phase to be deployed as it merged. Each line below was
+merged on green CI, deployed through `deploy.yml`, and checked from outside the host afterwards.
+
+| Phase | PR | Live | What it closed |
+| --- | --- | --- | --- |
+| E-01 | #441 | 6b287d5 | Notify delivery kept running in essential-only cron (another session) |
+| EA-1 Security | #443 | c6a9426 | S-01..S-10 (S-10 in part), O-01 (APP_ENV forced to production), F-03, F-04; pre-flight before maintenance mode |
+| EA-2 Email and notifications | #444 | 2615d4f | E-02..E-11, E-13; mail pre-flight passed on the host |
+| EA-3 Functional and honesty | #445, #447 | 1132dbe | F-01, F-02, F-05, F-07, F-08, U-03, U-04 |
+| EA-4 Performance | #446 | 563401d | P-01..P-04, P-07..P-09 |
+| EA-5 Accessibility | #448 | e316ca6 | A-01 (headings read; full grid semantics open), A-02..A-06; axe gate in CI |
+| EA-6 Code quality | #449 | deploying | Classic editor retired (owner decision), Q-01, Q-04, Q-05 (rule sets), Q-07; workflow rules moved into the grid |
+
+Still open: EA-7 (operations), EA-8 (measurement on the host), EA-9 (independent re-audit and final scorecard), the
+landing page's visual redesign (U-02, needs the owner's design approval), E-12, E-14, PHPStan level 6, and the
+owner-only items in section 5. Scores are not re-stated here: they are re-measured in EA-9.

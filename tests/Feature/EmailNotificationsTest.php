@@ -81,12 +81,13 @@ class EmailNotificationsTest extends TestCase
     public function test_mentions_take_wildcards_literally_reach_each_person_once_and_are_capped(): void
     {
         Notification::fake();
-        $owner = User::factory()->withPersonalTeam()->create(['name' => 'Owner']);
+        // Fixed addresses: a random one starting with "jo" or "ann" would be mentioned too.
+        $owner = User::factory()->withPersonalTeam()->create(['name' => 'Owner', 'email' => 'owner@acme.test']);
         $sheet = $this->workbook($owner, $owner->currentTeam->id);
         $john = User::factory()->create(['name' => 'John Smith', 'email' => 'john@acme.test']);
         $owner->currentTeam->users()->attach($john, ['role' => 'editor']);
         foreach (range(1, 25) as $i) {
-            $owner->currentTeam->users()->attach(User::factory()->create(['name' => 'Ann '.$i]), ['role' => 'editor']);
+            $owner->currentTeam->users()->attach(User::factory()->create(['name' => 'Ann '.$i, 'email' => 'member'.$i.'@acme.test']), ['role' => 'editor']);
         }
 
         app(SheetComments::class)->notifyMentions($sheet, $this->comment($sheet, $owner, 'hi @__ and @%%'), $owner);

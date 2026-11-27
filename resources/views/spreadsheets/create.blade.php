@@ -2,20 +2,20 @@
     <form class="make" action="{{ route('spreadsheets.store') }}" method="POST" enctype="multipart/form-data">
         @csrf
         <label class="sr" for="name">Name</label>
-        <input class="title" type="text" id="name" name="name" value="{{ old('name') }}" required maxlength="255" autofocus autocomplete="off" placeholder="Give it a name">
-        @error('name')<p class="error">{{ $message }}</p>@enderror
+        <input class="title" type="text" id="name" name="name" @error('name') aria-invalid="true" aria-describedby="error-name" @enderror value="{{ old('name') }}" required maxlength="255" autofocus autocomplete="off" placeholder="Give it a name">
+        @error('name')<p class="error" id="error-name">{{ $message }}</p>@enderror
 
         <div class="rows form">
             <div>
                 <label for="team_id">Belongs to</label>
                 <div>
-                    <select id="team_id" name="team_id">
+                    <select id="team_id" name="team_id" @error('team_id') aria-invalid="true" aria-describedby="error-team-id" @enderror>
                         <option value="">You</option>
                         @foreach (auth()->user()->allTeams() as $team)
                             <option value="{{ $team->id }}" @selected(old('team_id') == $team->id)>{{ $team->name }}</option>
                         @endforeach
                     </select>
-                    @error('team_id')<p class="error">{{ $message }}</p>@enderror
+                    @error('team_id')<p class="error" id="error-team-id">{{ $message }}</p>@enderror
                 </div>
             </div>
         </div>
@@ -30,10 +30,10 @@
             <p>Say what it is for, such as a weekly fuel log for six trucks.</p>
             <div class="start-line">
                 <label class="sr" for="idea">What the spreadsheet is for</label>
-                <input id="idea" name="idea" maxlength="500" value="{{ old('idea') }}" autocomplete="off">
+                <input id="idea" name="idea" @error('idea') aria-invalid="true" aria-describedby="error-idea" @enderror maxlength="500" value="{{ old('idea') }}" autocomplete="off">
                 <button class="button" type="submit" formaction="{{ route('spreadsheets.from-idea') }}" formnovalidate>Find a start</button>
             </div>
-            @error('idea')<p class="error">{{ $message }}</p>@enderror
+            @error('idea')<p class="error" id="error-idea">{{ $message }}</p>@enderror
             @if ($ideaSaid)
                 <p class="start-said">{{ $ideaSaid }}</p>
                 @if ($closest === [])
@@ -57,10 +57,10 @@
             <p>An Excel, ODS, CSV or TSV file up to 10 MB. Every sheet comes across, and you will be told about anything that could not.</p>
             <div class="start-line">
                 <label class="sr" for="file">The file to start from</label>
-                <input id="file" type="file" name="file" accept=".csv,.tsv,.xlsx,.xls,.ods">
+                <input id="file" type="file" name="file" @error('file') aria-invalid="true" aria-describedby="error-file" @enderror accept=".csv,.tsv,.xlsx,.xls,.ods">
                 <button class="button" type="submit" formaction="{{ route('spreadsheets.from-file') }}" formnovalidate>Import it</button>
             </div>
-            @error('file')<p class="error">{{ $message }}</p>@enderror
+            @error('file')<p class="error" id="error-file">{{ $message }}</p>@enderror
         </section>
 
         @if ($ours->isNotEmpty())

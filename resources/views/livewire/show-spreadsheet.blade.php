@@ -64,7 +64,7 @@
                 </div>
 
                 <!-- Column Headers -->
-                <div class="flex-1 overflow-x-auto" id="colHeaderScroll">
+                <div class="flex-1 overflow-x-auto" id="colHeaderScroll" aria-hidden="true">
                     <div class="flex">
                         @for ($col = $scrollColOffset; $col < min($scrollColOffset + $viewportCols, $totalCols); $col++)
                             @continue(in_array($col, $hiddenCols, true))
@@ -88,7 +88,7 @@
             <!-- Grid Container with Virtual Scrolling -->
             <div class="flex-1 flex overflow-hidden">
                 <!-- Row Headers -->
-                <div class="w-12 flex-shrink-0 overflow-y-auto grid-gutter" id="rowHeaderScroll">
+                <div class="w-12 flex-shrink-0 overflow-y-auto grid-gutter" id="rowHeaderScroll" aria-hidden="true">
                     @php
                         $visibleEndRow = min($scrollRowOffset + $viewportRows, $totalRows);
                         $topSpacerRows = $scrollRowOffset;

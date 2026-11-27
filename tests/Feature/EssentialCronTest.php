@@ -38,6 +38,19 @@ class EssentialCronTest extends TestCase
         $this->assertNotEmpty(EssentialCron::needles());
     }
 
+    public function test_notify_delivery_keeps_running_while_its_pruning_stays_paused(): void
+    {
+        config(['dot_cron.essential_only' => true]);
+        $schedule = app(Schedule::class);
+        EssentialCron::apply($schedule);
+
+        $byName = collect($schedule->events())->keyBy(fn ($event) => $event->description);
+
+        $this->assertTrue($byName->has('integrations-deliver'));
+        $this->assertTrue($byName['integrations-deliver']->filtersPass($this->app), 'Notify delivery must keep running.');
+        $this->assertFalse($byName['integrations-prune']->filtersPass($this->app), 'Outbox pruning is not a sender and stays paused.');
+    }
+
     public function test_the_status_command_reports_the_switch(): void
     {
         config(['dot_cron.essential_only' => false]);

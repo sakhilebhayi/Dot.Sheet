@@ -44,6 +44,9 @@ class SpreadsheetController extends Controller
 
     private const TEAM_TEMPLATES_LISTED = 30;
 
+    /** EA-4 (P-02): the most workbooks the list loads with their cell counts; the header search finds the rest. */
+    public const DASHBOARD_LISTED = 200;
+
     /**
      * Display a listing of spreadsheets
      */
@@ -53,7 +56,10 @@ class SpreadsheetController extends Controller
 
         // Everything this person can reach: their own sheets, sheets shared with them, their teams' sheets.
         // The three ways of reaching a workbook are ORed inside ONE group: any condition added after it is ANDed with the whole group, never with the last OR only.
+        $total = Spreadsheet::reachableBy($user)->count();
         $spreadsheets = Spreadsheet::reachableBy($user)
+            ->orderByDesc('updated_at')->orderByDesc('id')
+            ->limit(self::DASHBOARD_LISTED)
             ->with('owner', 'team', 'sheetTabs:id,spreadsheet_id,name,sort_order')
             ->withCount([
                 'cells',
@@ -74,6 +80,7 @@ class SpreadsheetController extends Controller
 
         return view('dashboard', [
             'spreadsheets' => $spreadsheets,
+            'unlisted' => max(0, $total - $spreadsheets->count()),
             'firstPrint' => $first ? app(SheetPrint::class)->of($first) : null,
         ]);
     }

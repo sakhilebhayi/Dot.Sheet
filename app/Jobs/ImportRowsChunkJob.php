@@ -13,9 +13,12 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class ImportRowsChunkJob implements ShouldQueue
 {
+    private const WRITE_BATCH = 500;
+
     use Batchable;
     use Dispatchable;
     use InteractsWithQueue;
@@ -82,6 +85,9 @@ class ImportRowsChunkJob implements ShouldQueue
         // Formulas this chunk writes, and those that read its cells, are worked out on the next read.
         app(Recalculator::class)->markStale($this->spreadsheetId, (int) $this->sheetTabId);
 
+        // EA-4 (P-03): written in batches of 500 rows of cells, one statement each, not one or two per cell. A
+        // cell an import fills is a cell of its own, so it no longer holds another formula's spilled answer.
+        $batch = [];
         foreach ($this->rows as $offset => $row) {
             if (empty(array_filter((array) $row, fn ($v) => $v !== null && $v !== ''))) {
                 continue;
@@ -94,16 +100,30 @@ class ImportRowsChunkJob implements ShouldQueue
                     continue;
                 }
 
-                Cell::updateOrCreate(
-                    [
-                        'spreadsheet_id' => $this->spreadsheetId,
-                        'sheet_tab_id' => $this->sheetTabId,
-                        'row_index' => $rowNumber,
-                        'col_index' => $colIndex,
-                    ],
-                    $attributes
-                );
+                $batch[] = [
+                    'spreadsheet_id' => $this->spreadsheetId,
+                    'sheet_tab_id' => $this->sheetTabId,
+                    'row_index' => $rowNumber,
+                    'col_index' => (int) $colIndex,
+                    ...$attributes,
+                    'spill_row' => null,
+                    'spill_col' => null,
+                ];
+                if (count($batch) >= self::WRITE_BATCH) {
+                    $this->upsert($batch);
+                    $batch = [];
+                }
             }
+        }
+
+        $this->upsert($batch);
+    }
+
+    /** @param  list<array<string, mixed>>  $cells */
+    private function upsert(array $cells): void
+    {
+        if ($cells !== []) {
+            DB::table('cells')->upsert($cells, ['spreadsheet_id', 'sheet_tab_id', 'row_index', 'col_index'], ['raw_value', 'computed_value', 'formula', 'updated_at', 'spill_row', 'spill_col']);
         }
     }
 }

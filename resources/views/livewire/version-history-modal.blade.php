@@ -17,6 +17,9 @@
                             Create snapshot
                         </button>
                     </div>
+                    @if ($notice !== '')
+                        <p role="status" class="mt-2 text-sm text-red-700 dark:text-red-300">{{ $notice }}</p>
+                    @endif
                 </div>
                 @endif
 

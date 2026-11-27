@@ -1,13 +1,7 @@
 import './bootstrap';
-import FormulaParser from './formula-parser';
-import Chart from 'chart.js/auto';
-import Shepherd from 'shepherd.js';
-import 'shepherd.js/dist/css/shepherd.css';
 
-// Globals
-window.FormulaParser = FormulaParser;
-window.Chart = Chart;
-window.Shepherd = Shepherd;
+// EA-4 (P-08): Chart.js and the guided tour live in classic.js, loaded by the classic editor only. The old
+// client formula parser was never used (formulas are worked out on the server) and is gone.
 
 // User scripts are off unless the server says they are on (config sheet.scripts_enabled,
 // SHEET_SCRIPTS_ENABLED). The layout prints the meta tag below only then. While it is

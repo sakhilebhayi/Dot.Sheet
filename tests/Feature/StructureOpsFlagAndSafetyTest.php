@@ -316,9 +316,10 @@ class StructureOpsFlagAndSafetyTest extends TestCase
             ['row_index' => 2, 'col_index' => 0, 'value' => 'three'],
         ], $this->user->id, $version);
 
-        $seen = 0;
-        DB::listen(function (QueryExecuted $query) use (&$seen) {
-            if (str_starts_with($query->sql, 'insert into "cells"') && ++$seen === 3) {
+        // The chunk writes its cells in one statement and then their history (EA-4): a failure at the history
+        // must take the cells back with it.
+        DB::listen(function (QueryExecuted $query) {
+            if (str_starts_with($query->sql, 'insert into "cell_history"')) {
                 throw new \RuntimeException('boom');
             }
         });
@@ -328,7 +329,7 @@ class StructureOpsFlagAndSafetyTest extends TestCase
         } catch (\Throwable) {
         }
 
-        $this->assertSame(0, Cell::count(), 'the two cells before the failure were rolled back with it');
+        $this->assertSame(0, Cell::count(), 'the cells written before the failure were rolled back with it');
     }
 
     public function test_a_small_paste_and_script_actions_are_all_or_nothing_against_a_stale_grid(): void

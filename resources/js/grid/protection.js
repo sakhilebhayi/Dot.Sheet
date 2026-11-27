@@ -110,7 +110,13 @@ export class Protection {
         row.append(who);
         const deeds = make('div', 'deeds');
         if (!protection.whole) deeds.append(deed('Go to', () => this.editor.goTo(protection)));
-        if (this.editor.canKeep) deeds.append(deed('Remove', () => this.remove(protection)));
+        if (this.editor.canKeep) {
+            deeds.append(deed('Remove', () => this.editor.ask(
+                protection.whole ? 'Lift the protection on this sheet? Anyone who can edit can then change every cell.' : `Lift the protection on ${protection.reference}? Anyone who can edit can then change it.`,
+                'Lift protection',
+                () => this.remove(protection),
+            )));
+        }
         row.append(deeds);
         return row;
     }

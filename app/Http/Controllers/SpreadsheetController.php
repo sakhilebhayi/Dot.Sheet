@@ -263,7 +263,8 @@ class SpreadsheetController extends Controller
     {
         $this->authorize('update', $spreadsheet);
 
-        return view('spreadsheets.edit', ['spreadsheet' => $spreadsheet]);
+        // There is no separate edit page: a workbook is edited in the grid (EA-3, F-07: this used to answer 500).
+        return redirect()->route('spreadsheets.show', $spreadsheet);
     }
 
     /**

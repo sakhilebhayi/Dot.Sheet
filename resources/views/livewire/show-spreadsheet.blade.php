@@ -28,11 +28,14 @@
             <a href="/spreadsheets/{{ $spreadsheet->id }}/export/excel?sheet_tab_id={{ $activeSheetTabId }}">Download as Excel</a>
             <h2>Sheet</h2>
             <button type="button" title="Version History" onclick="Livewire.dispatch('open-version-history')" popovertarget="editorTools" popovertargetaction="hide">Version history</button>
-            @if ($canEdit)
+            @php $aiLive = app(\App\Services\AiService::class)->isLive(); @endphp
+            @if ($canEdit && $aiLive)
                 <button type="button" onclick="document.dispatchEvent(new CustomEvent('open-formula-modal'))" popovertarget="editorTools" popovertargetaction="hide">Write a formula with AI</button>
             @endif
-            <button type="button" onclick="document.getElementById('analysisPanel').classList.toggle('hidden')" popovertarget="editorTools" popovertargetaction="hide">Analyse this sheet with AI</button>
-            <button type="button" onclick="document.getElementById('nlqModal').classList.remove('hidden')" popovertarget="editorTools" popovertargetaction="hide">Ask AI a question</button>
+            <button type="button" onclick="document.getElementById('analysisPanel').classList.toggle('hidden')" popovertarget="editorTools" popovertargetaction="hide">{{ $aiLive ? 'Analyse this sheet with AI' : 'Figures, checks and rules' }}</button>
+            @if ($aiLive)
+                <button type="button" onclick="document.getElementById('nlqModal').classList.remove('hidden')" popovertarget="editorTools" popovertargetaction="hide">Ask AI a question</button>
+            @endif
             <h2>Help</h2>
             <button type="button" onclick="toggleShortcutsModal(true)" popovertarget="editorTools" popovertargetaction="hide">Keyboard shortcuts</button>
             <button type="button" onclick="toggleHelpModal(true)" popovertarget="editorTools" popovertargetaction="hide">Help</button>
@@ -957,14 +960,18 @@
     }
 </script>
 
-<!-- AI Formula Modal -->
+@php $classicAiLive = app(\App\Services\AiService::class)->isLive(); @endphp
+<!-- AI Formula Modal: only where AI is really on (EA-3, F-02) -->
+@if ($classicAiLive)
 @livewire('ai-formula-modal', ['spreadsheet_id' => $spreadsheet->id])
+@endif
 
 <!-- Version history Modal -->
 @livewire('version-history-modal', ['spreadsheet_id' => $spreadsheet->id, 'sheet_tab_id' => $activeSheetTabId], key('version-history-modal-'.$activeSheetTabId))
 
 <!-- AI Natural Language Query Modal -->
-<div id="nlqModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="this.classList.add('hidden')">
+@if ($classicAiLive)
+<div id="nlqModal" wire:ignore x-data class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" @click.self="$el.classList.add('hidden')" @keydown.escape.window="$el.classList.add('hidden')">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full h-5/6 max-w-2xl" @click.stop>
         <div class="flex flex-col h-full">
             <div class="flex-1 overflow-hidden">
@@ -973,6 +980,7 @@
         </div>
     </div>
 </div>
+@endif
 
 <!-- Keyboard Shortcuts Modal -->
 <div id="shortcutsModal" wire:ignore class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center" onclick="if(event.target===this) toggleShortcutsModal(false)">

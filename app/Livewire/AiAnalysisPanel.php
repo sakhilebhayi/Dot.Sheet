@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GatesClassicAi;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Cell;
@@ -18,6 +19,7 @@ use Livewire\WithFileUploads;
 class AiAnalysisPanel extends Component
 {
     use AuthorizesRequests;
+    use GatesClassicAi;
     use GuardsSheetState;
     use RefusesProtectedWorkbook;
     use WithFileUploads;
@@ -163,6 +165,15 @@ class AiAnalysisPanel extends Component
 
             $stats = $this->calculateRangeStatistics($rangeValues);
 
+            // With AI off, the figures and cleaning checks worked out here are still real; nothing pretends to be a model.
+            if (! app(AiService::class)->isLive()) {
+                $this->generateCleaningSuggestions($stats);
+                $this->success_message = 'Figures and cleaning checks only: '.lcfirst(self::AI_OFF_MESSAGE);
+                $this->active_tab = 'insights';
+
+                return;
+            }
+
             // Use AI to generate insights
             $insights_result = $this->ai_service->analyzeData(
                 [
@@ -203,7 +214,8 @@ class AiAnalysisPanel extends Component
             $this->active_tab = 'insights';
 
         } catch (\Exception $e) {
-            $this->error = 'Analysis failed: '.$e->getMessage();
+            report($e);
+            $this->error = 'The analysis could not finish just now. Try again in a moment.';
         } finally {
             $this->loading = false;
         }
@@ -421,6 +433,10 @@ class AiAnalysisPanel extends Component
             return;
         }
 
+        if ($this->aiIsOff()) {
+            return;
+        }
+
         $values = array_map(static fn ($v) => (string) $v, $this->getRangeValues($this->selected_range));
         $result = $this->ai_service->analyzeSentiment($values);
 
@@ -444,6 +460,10 @@ class AiAnalysisPanel extends Component
         $this->validate([
             'ocrImage' => 'required|image|max:5120',
         ]);
+
+        if ($this->aiIsOff()) {
+            return;
+        }
 
         $result = $this->ai_service->extractTextFromImage($this->ocrImage->getRealPath());
         if (! $result['success']) {

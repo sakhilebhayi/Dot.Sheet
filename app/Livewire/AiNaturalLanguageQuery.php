@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\GatesClassicAi;
 use App\Livewire\Concerns\GuardsSheetState;
 use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Spreadsheet;
@@ -13,6 +14,7 @@ use Livewire\Component;
 
 class AiNaturalLanguageQuery extends Component
 {
+    use GatesClassicAi;
     use GuardsSheetState;
     use RefusesProtectedWorkbook;
 
@@ -113,6 +115,10 @@ class AiNaturalLanguageQuery extends Component
 
             // Get spreadsheet context
             $context = $this->getSpreadsheetContext($spreadsheet);
+
+            if ($this->aiIsOff()) {
+                return;
+            }
 
             // Process query with AI
             $result = $this->ai_service->processNaturalLanguageQuery(

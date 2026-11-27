@@ -228,9 +228,9 @@ class ViewerRoleTest extends TestCase
     {
         $this->actingAs($this->members[$role]);
 
-        // (the edit page itself has no view in this app yet: an allowed person gets past the 403 and meets a 500)
+        // There is no separate edit page: an allowed person is sent to the grid, anyone else is refused.
         $edit = $this->get(route('spreadsheets.edit', $this->sheet));
-        $allowed ? $this->assertNotSame(403, $edit->getStatusCode()) : $edit->assertForbidden();
+        $allowed ? $edit->assertRedirect(route('spreadsheets.show', $this->sheet)) : $edit->assertForbidden();
 
         $response = $this->put(route('spreadsheets.update', $this->sheet), ['name' => 'Renamed by '.$role, 'settings' => ['col_widths' => [0 => 90]]]);
 

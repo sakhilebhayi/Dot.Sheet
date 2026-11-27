@@ -37,12 +37,6 @@ parameters:
 			path: app/Http/Controllers/SpreadsheetController.php
 
 		-
-			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/SpreadsheetController.php
-
-		-
 			message: '#^Variable \$rule in empty\(\) always exists and is not falsy\.$#'
 			identifier: empty.variable
 			count: 1

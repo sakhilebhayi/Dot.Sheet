@@ -195,7 +195,11 @@ export class Sharing {
 
         const row = this.person(person.name, person.email, false, can);
         const deeds = make('div', 'deeds');
-        deeds.append(deed('Remove', () => this.change(() => this.editor.server.removeShareAccess(person.id))));
+        deeds.append(deed('Remove', () => this.editor.ask(
+            `Take away ${person.name}'s access? They can no longer open this workbook unless it is shared again.`,
+            'Take away access',
+            () => this.change(() => this.editor.server.removeShareAccess(person.id)),
+        )));
         row.append(deeds);
         return row;
     }

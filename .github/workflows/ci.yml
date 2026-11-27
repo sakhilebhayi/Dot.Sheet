@@ -162,7 +162,7 @@ jobs:
           php artisan key:generate
           touch database/dusk.sqlite
           sed -i "s|^APP_URL=.*|APP_URL=http://127.0.0.1:8000|" .env
-          sed -i "s|^SHEET_STRUCTURE_OPS_ENABLED=.*|SHEET_STRUCTURE_OPS_ENABLED=true|" .env
+          # Production's settings: inserting and deleting rows and columns stays off here as it is live (EA-3, F-05).
           sed -i "s|^DB_CONNECTION=.*|DB_CONNECTION=sqlite\nDB_DATABASE=${GITHUB_WORKSPACE}/database/dusk.sqlite|" .env
           php artisan migrate --force
 
@@ -172,8 +172,18 @@ jobs:
       - name: Serve the app
         run: PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --port=8000 --no-reload > storage/logs/serve.log 2>&1 &
 
-      - name: Browser tests
-        run: php artisan dusk
+      - name: Browser tests (production settings)
+        run: php artisan dusk --exclude-group=structure-ops
+
+      # The journeys of a feature production does not have yet, with its flag on. `artisan serve` keeps the
+      # environment it started with, so the server is restarted after the change.
+      - name: Browser tests (inserting and deleting rows switched on)
+        run: |
+          pkill -f "artisan serve" || true
+          sed -i "s|^SHEET_STRUCTURE_OPS_ENABLED=.*|SHEET_STRUCTURE_OPS_ENABLED=true|" .env
+          PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --port=8000 --no-reload >> storage/logs/serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8000/up && break; sleep 1; done
+          php artisan dusk --group=structure-ops
 
       - name: Keep screenshots, console output and logs of a failed run
         if: failure()

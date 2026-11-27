@@ -15,5 +15,9 @@ return [
     ],
 
     // This platform's scheduled jobs that send email or notifications (matched against the command or name).
-    'essential' => [],
+    // `integrations-deliver` is the only sender of Notify outbox rows: mention and approval notices for teams linked
+    // to InfoDot go through it. Matched by schedule name so the nightly `integrations-prune` stays paused.
+    'essential' => [
+        'integrations-deliver',
+    ],
 ];

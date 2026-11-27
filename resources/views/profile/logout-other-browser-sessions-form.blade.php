@@ -68,18 +68,28 @@
             </x-slot>
 
             <x-slot name="content">
-                {{ __('Enter your password to sign out of every other browser.') }}
-
-                <div  x-data="{}" x-on:confirming-logout-other-browser-sessions.window="setTimeout(() => $refs.password.focus(), 250)">
-                    <x-input type="password"
-                                autocomplete="current-password"
-                                placeholder="{{ __('Password') }}"
-                                x-ref="password"
-                                wire:model="password"
-                                wire:keydown.enter="logoutOtherBrowserSessions" />
-
+                @if ($central ?? false)
+                    @if ($recent ?? false)
+                        {{ __('Sign out of every other browser signed in here? Your InfoDot sessions are managed in InfoDot.') }}
+                    @else
+                        {{ __('You sign in through InfoDot, so there is no password to enter here. For your safety, sign in again through InfoDot, then come back within :minutes minutes.', ['minutes' => \App\Support\CentralReconfirm::WINDOW_MINUTES]) }}
+                    @endif
                     <x-input-error for="password" />
-                </div>
+                @else
+                    {{ __('Enter your password to sign out of every other browser.') }}
+
+                    <div  x-data="{}" x-on:confirming-logout-other-browser-sessions.window="setTimeout(() => $refs.password.focus(), 250)">
+                        <x-input type="password"
+                                    autocomplete="current-password"
+                                    aria-label="{{ __('Password') }}"
+                                    placeholder="{{ __('Password') }}"
+                                    x-ref="password"
+                                    wire:model="password"
+                                    wire:keydown.enter="logoutOtherBrowserSessions" />
+
+                        <x-input-error for="password" />
+                    </div>
+                @endif
             </x-slot>
 
             <x-slot name="footer">
@@ -87,11 +97,18 @@
                     {{ __('Cancel') }}
                 </x-secondary-button>
 
-                <x-button 
-                            wire:click="logoutOtherBrowserSessions"
-                            wire:loading.attr="disabled">
-                    {{ __('Sign out other browsers') }}
-                </x-button>
+                @if (($central ?? false) && ! ($recent ?? false))
+                    <form method="POST" action="{{ route('profile.reconfirm') }}" class="inline">
+                        @csrf
+                        <x-button type="submit">{{ __('Sign in again through InfoDot') }}</x-button>
+                    </form>
+                @else
+                    <x-button
+                                wire:click="logoutOtherBrowserSessions"
+                                wire:loading.attr="disabled">
+                        {{ __('Sign out other browsers') }}
+                    </x-button>
+                @endif
             </x-slot>
         </x-dialog-modal>
     </x-slot>

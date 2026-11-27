@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Actions\Ecosystem\SyncTeamsFromInfoDot;
+use App\Models\Spreadsheet;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Laravel\Jetstream\Jetstream;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -180,6 +182,20 @@ class InfoDotTeamSyncTest extends TestCase
 
         $this->assertFalse($bob->fresh()->belongsToTeam($team));
         $this->assertNotSame($team->id, $bob->fresh()->current_team_id);
+    }
+
+    public function test_workbooks_a_person_made_in_a_company_stay_with_the_company_when_infodot_drops_them(): void
+    {
+        $this->signIn('ann@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'owner')], self::ACME);
+        $this->signIn('bob@acme.test', [$this->company(self::ACME, 'Acme Ltd', 'editor')], self::ACME);
+        $team = Team::where('infodot_team_uuid', self::ACME)->firstOrFail();
+        $bob = User::where('email', 'bob@acme.test')->firstOrFail();
+        $workbook = Spreadsheet::create(['uuid' => (string) Str::uuid(), 'owner_id' => $bob->id, 'team_id' => $team->id, 'name' => 'Acme budget']);
+
+        $this->signIn('bob@acme.test', [], null);
+
+        $this->assertSame($team->user_id, $workbook->fresh()->owner_id);
+        $this->assertTrue($bob->fresh()->cannot('view', $workbook->fresh()));
     }
 
     public function test_a_person_in_two_companies_gets_both_and_the_active_one_is_current(): void

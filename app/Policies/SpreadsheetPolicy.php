@@ -93,7 +93,21 @@ class SpreadsheetPolicy
      */
     protected function isOwner(User $user, Spreadsheet $spreadsheet): bool
     {
-        return $user->id === $spreadsheet->owner_id;
+        if ($user->id !== $spreadsheet->owner_id) {
+            return false;
+        }
+
+        // A team's workbook belongs to the team: its creator holds owner rights only while still in that team.
+        // Leaving hands it to the team owner (TeamDeparture); this keeps a missed handover from leaving a door open.
+        return $spreadsheet->team_id === null || $this->isTeamMember($user, $spreadsheet);
+    }
+
+    /**
+     * Whether the user may move the workbook into a team or out of one (the owner only, by the rule above).
+     */
+    public function changePlace(User $user, Spreadsheet $spreadsheet): bool
+    {
+        return $this->isOwner($user, $spreadsheet);
     }
 
     /**

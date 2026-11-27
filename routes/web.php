@@ -21,6 +21,7 @@ use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\ReadyController;
+use App\Http\Controllers\ReconfirmThroughInfoDotController;
 use App\Http\Controllers\SchedulerProbeController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SpreadsheetController;
@@ -68,6 +69,10 @@ Route::get('/cookies', function () {
 })->name('cookies');
 
 Route::get('shared/s/{token}', [SpreadsheetController::class, 'publicShow'])->name('spreadsheets.public');
+
+// EA-1 (F-03): people who sign in through InfoDot confirm account deletion with a fresh InfoDot sign-in.
+Route::post('/user/profile/sign-in-again', ReconfirmThroughInfoDotController::class)
+    ->middleware(['auth', 'throttle:6,1'])->name('profile.reconfirm');
 
 Route::middleware([
     'auth:sanctum',

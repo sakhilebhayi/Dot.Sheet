@@ -10,6 +10,7 @@ use App\Models\Spreadsheet;
 use App\Models\SpreadsheetVersion;
 use App\Services\SheetVersions;
 use App\Services\WriteLock;
+use App\Support\WorkbookAudit;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -127,6 +128,7 @@ class VersionHistoryModal extends Component
             return;
         }
 
+        WorkbookAudit::record($spreadsheet, Auth::user(), 'Restored an earlier copy');
         $this->dispatch('external-cell-updated');
         $this->loadVersions();
         $this->open = false;

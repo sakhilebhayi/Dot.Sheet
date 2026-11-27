@@ -9,8 +9,11 @@ use App\Actions\Jetstream\DeleteUser;
 use App\Actions\Jetstream\InviteTeamMember;
 use App\Actions\Jetstream\RemoveTeamMember;
 use App\Actions\Jetstream\UpdateTeamName;
+use App\Livewire\Profile\DeleteUserForm;
+use App\Livewire\Profile\LogoutOtherBrowserSessionsForm;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Jetstream\Jetstream;
+use Livewire\Livewire;
 
 class JetstreamServiceProvider extends ServiceProvider
 {
@@ -36,6 +39,11 @@ class JetstreamServiceProvider extends ServiceProvider
         Jetstream::removeTeamMembersUsing(RemoveTeamMember::class);
         Jetstream::deleteTeamsUsing(DeleteTeam::class);
         Jetstream::deleteUsersUsing(DeleteUser::class);
+
+        // People who sign in through InfoDot have no password here: these two forms accept a recent
+        // InfoDot sign-in instead (App\Support\CentralReconfirm). Registered after Jetstream's own.
+        Livewire::component('profile.delete-user-form', DeleteUserForm::class);
+        Livewire::component('profile.logout-other-browser-sessions-form', LogoutOtherBrowserSessionsForm::class);
     }
 
     /**

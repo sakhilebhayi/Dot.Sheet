@@ -17,6 +17,8 @@ use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\Ods;
+use PhpOffice\PhpSpreadsheet\Reader\Xls;
 use PhpOffice\PhpSpreadsheet\Spreadsheet as Workbook;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -322,6 +324,8 @@ class SpreadsheetImportExportService
             try {
                 $rows = $this->readFirstSheet($file);
                 $valuesAreText = true;
+            } catch (ImportRefused $e) {
+                return ['success' => false, 'error' => $e->getMessage()];
             } catch (\Exception $e) {
                 report($e);
 
@@ -355,7 +359,17 @@ class SpreadsheetImportExportService
     {
         // Named outright: left to guess, the library reads a broken workbook as CSV and its junk lands on the sheet.
         $reader = IOFactory::createReaderForFile($file->getRealPath(), [IOFactory::READER_XLSX, IOFactory::READER_XLS, IOFactory::READER_ODS]);
+        $extension = array_search($reader::class, [
+            'xlsx' => \PhpOffice\PhpSpreadsheet\Reader\Xlsx::class,
+            'xls' => Xls::class,
+            'ods' => Ods::class,
+        ], true);
+        // EA-1 (S-03): sized before it is loaded, and only the first sheet is loaded.
+        $first = is_string($extension) ? ImportGuard::firstSheet($file->getRealPath(), $extension) : ['name' => ''];
         $reader->setReadDataOnly(true);
+        if ($first['name'] !== '') {
+            $reader->setLoadSheetsOnly([$first['name']]);
+        }
         $workbook = $reader->load($file->getRealPath());
 
         try {
@@ -465,6 +479,8 @@ class SpreadsheetImportExportService
     {
         try {
             return $this->insertRows($spreadsheet, $this->readFirstSheet($file), $sheetTab);
+        } catch (ImportRefused $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
         } catch (\Exception $e) {
             report($e);
 

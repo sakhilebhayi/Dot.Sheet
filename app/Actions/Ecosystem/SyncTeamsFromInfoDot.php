@@ -4,6 +4,7 @@ namespace App\Actions\Ecosystem;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Services\TeamDeparture;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -191,6 +192,7 @@ class SyncTeamsFromInfoDot
             }
 
             $team->users()->detach($user->id);
+            app(TeamDeparture::class)->handOver($team, $user);
 
             if ($user->current_team_id === $team->id) {
                 $user->forceFill(['current_team_id' => null])->save();

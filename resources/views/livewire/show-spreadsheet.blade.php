@@ -425,10 +425,13 @@
             marker.className = 'absolute';
             marker.style.left = `${x}px`;
             marker.style.top = `${y}px`;
-            marker.innerHTML = `
-                <div class="w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm"><\/div>
-                <div class="absolute -top-4 left-0 text-xs px-1 py-0.5 bg-orange-500 text-white rounded">${cursor.user_name}<\/div>
-            `;
+            // Built from elements: a name is text a person chose, never markup (EA-1).
+            const box = document.createElement('div');
+            box.className = 'w-24 h-7 border-2 border-orange-500 bg-orange-500/10 rounded-sm';
+            const label = document.createElement('div');
+            label.className = 'absolute -top-4 left-0 text-xs px-1 py-0.5 bg-orange-500 text-white rounded';
+            label.textContent = String(cursor.user_name ?? '');
+            marker.append(box, label);
 
             layer.appendChild(marker);
         });

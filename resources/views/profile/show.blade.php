@@ -4,12 +4,17 @@
             @livewire('profile.update-profile-information-form')
         @endif
 
-        @if (Laravel\Fortify\Features::enabled(Laravel\Fortify\Features::updatePasswords()))
-            @livewire('profile.update-password-form')
-        @endif
+        @if (\App\Support\CentralReconfirm::signedInThroughInfoDot())
+            {{-- No password here: a random one, never shown. Password and two-step sign-in live in InfoDot. --}}
+            <p class="hint">{{ __('You sign in through InfoDot, so your password and two-step sign-in are managed in your InfoDot account.') }}</p>
+        @else
+            @if (Laravel\Fortify\Features::enabled(Laravel\Fortify\Features::updatePasswords()))
+                @livewire('profile.update-password-form')
+            @endif
 
-        @if (Laravel\Fortify\Features::canManageTwoFactorAuthentication())
-            @livewire('profile.two-factor-authentication-form')
+            @if (Laravel\Fortify\Features::canManageTwoFactorAuthentication())
+                @livewire('profile.two-factor-authentication-form')
+            @endif
         @endif
 
         @livewire('profile.logout-other-browser-sessions-form')

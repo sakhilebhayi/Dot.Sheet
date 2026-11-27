@@ -954,7 +954,7 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
-    #[\PHPUnit\Framework\Attributes\Group('structure-ops')]
+    #[Group('structure-ops')]
     public function test_columns_go_in_beside_the_selection(): void
     {
         [$user, $sheet, $tab] = $this->sheet();

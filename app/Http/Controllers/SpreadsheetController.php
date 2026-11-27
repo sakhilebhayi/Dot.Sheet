@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ImportRowsChunkJob;
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
+use App\Models\SheetProtection;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
 use App\Models\SpreadsheetInvitation;
@@ -18,6 +18,7 @@ use App\Services\SheetProtections;
 use App\Services\SheetVersions;
 use App\Services\SpreadsheetImportExportService;
 use App\Services\TemplateCatalogue;
+use App\Services\WorkbookApprovals;
 use App\Services\WorkbookBuilder;
 use App\Services\WorkbookImporter;
 use App\Services\WorkbookWriter;
@@ -256,11 +257,8 @@ class SpreadsheetController extends Controller
     {
         $this->authorize('view', $spreadsheet);
 
-        if (ShowSpreadsheet::protectedFor($spreadsheet)) {
-            return redirect()->route('spreadsheets.show', $spreadsheet);
-        }
-
-        return view('spreadsheets.show', ['spreadsheet' => $spreadsheet]);
+        // The classic editor was retired (EA-6): old links open the grid.
+        return redirect()->route('spreadsheets.show', $spreadsheet);
     }
 
     /**
@@ -299,7 +297,7 @@ class SpreadsheetController extends Controller
                 }
             }
             if ($layout !== []) {
-                abort_if(ShowSpreadsheet::protectedFor($spreadsheet), 403, 'This workbook has protected cells. Open it in the new editor.');
+                abort_if($this->layoutIsGuarded($spreadsheet), 403, 'This workbook has protected cells or is approved. Change its layout in the editor.');
                 $tabId = $validated['sheet_tab_id'] ?? $spreadsheet->defaultSheetTab()?->id;
                 if ($tabId !== null) {
                     SheetTab::updateLayout((int) $tabId, fn (array $stored) => array_replace($stored, $layout));
@@ -637,5 +635,23 @@ class SpreadsheetController extends Controller
             'startCol' => $startCol,
             'endCol' => $endCol,
         ]);
+    }
+
+    /**
+     * Whether this form may not change the layout for the signed-in person: an approved (sealed) workbook, or one with
+     * protected cells for someone who is not a keeper. The grid enforces the same rules cell by cell.
+     */
+    private function layoutIsGuarded(Spreadsheet $spreadsheet): bool
+    {
+        $user = Auth::user();
+        if ($user === null || ! $user->can('update', $spreadsheet)) {
+            return false;
+        }
+        if (app(WorkbookApprovals::class)->isSealed($spreadsheet->id)) {
+            return true;
+        }
+
+        return SheetProtection::where('spreadsheet_id', $spreadsheet->id)->exists()
+            && ! app(SheetProtections::class)->isKeeper($user, $spreadsheet);
     }
 }

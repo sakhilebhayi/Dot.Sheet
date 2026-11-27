@@ -63,24 +63,6 @@ class SignedInLayoutAssetsTest extends TestCase
         $this->assertStringNotContainsString('fonts.googleapis.com', $html);
     }
 
-    public function test_the_spreadsheet_editor_loads_the_built_assets_and_no_cdn_tailwind_or_alpine(): void
-    {
-        $user = User::factory()->withPersonalTeam()->create();
-        $spreadsheet = Spreadsheet::create([
-            'uuid' => (string) str()->uuid(),
-            'owner_id' => $user->id,
-            'team_id' => $user->currentTeam->id,
-            'name' => 'Workbook',
-        ]);
-
-        $html = $this->withHotFile(fn () => $this->actingAs($user)
-            ->get(route('spreadsheets.classic', $spreadsheet))
-            ->assertOk()
-            ->getContent());
-
-        $this->assertBuiltAssetsOnly($html);
-    }
-
     public function test_the_public_share_page_loads_the_built_stylesheet_and_no_script(): void
     {
         $owner = User::factory()->withPersonalTeam()->create();

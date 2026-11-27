@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
@@ -10,8 +9,7 @@ use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\SheetStructureService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Features\SupportTesting\Testable;
-use Livewire\Livewire;
+use Tests\Support\GridDriver;
 use Tests\TestCase;
 
 /**
@@ -59,9 +57,9 @@ class InsertDeleteRowColumnTest extends TestCase
         ]);
     }
 
-    private function editor(): Testable
+    private function editor(): GridDriver
     {
-        return Livewire::actingAs($this->user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->spreadsheet->id]);
+        return new GridDriver($this, $this->user, $this->spreadsheet);
     }
 
     /**

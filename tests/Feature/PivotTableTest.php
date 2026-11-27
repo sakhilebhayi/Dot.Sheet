@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\PivotTableBuilder;
 use App\Models\Cell;
 use App\Models\PivotTable;
 use App\Models\SheetTab;
@@ -10,7 +9,6 @@ use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\PivotTableService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class PivotTableTest extends TestCase
@@ -193,53 +191,5 @@ class PivotTableTest extends TestCase
 
         $this->assertEmpty($result['rowLabels']);
         $this->assertNull($result['grandTotal'], 'nothing there is empty, not nought');
-    }
-
-    public function test_owner_can_create_and_open_a_pivot_table_via_the_panel(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-        $this->seedSourceData($spreadsheet, $tab);
-
-        $component = Livewire::actingAs($user)->test(PivotTableBuilder::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])
-            ->set('title', 'Amount by Region')
-            ->set('source_range', 'A1:C7')
-            ->set('row_field', 'A')
-            ->set('value_field', 'C')
-            ->set('aggregation', 'sum')
-            ->call('savePivot');
-
-        $this->assertSame(1, PivotTable::where('spreadsheet_id', $spreadsheet->id)->count());
-        $component->assertSet('openPivotId', fn ($id) => $id !== null);
-        $result = $component->get('result');
-        $this->assertSame(81.0, $result['grandTotal']);
-    }
-
-    public function test_owner_can_delete_a_pivot_table(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-
-        $pivot = PivotTable::create([
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-            'title' => 'Doomed',
-            'source_range' => 'A1:C7',
-            'row_field' => 'A',
-            'value_field' => 'C',
-            'aggregation' => 'sum',
-        ]);
-
-        Livewire::actingAs($user)->test(PivotTableBuilder::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])->call('deletePivot', $pivot->id);
-
-        $this->assertSame(0, PivotTable::where('spreadsheet_id', $spreadsheet->id)->count());
     }
 }

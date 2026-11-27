@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
@@ -14,8 +13,8 @@ use App\Services\SheetStructureService;
 use App\Services\SpreadsheetImportExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\GridDriver;
 use Tests\TestCase;
 
 /**
@@ -43,7 +42,7 @@ class FormulaEngineTest extends TestCase
 
     private function editor()
     {
-        return Livewire::actingAs($this->user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $this->spreadsheet->id]);
+        return new GridDriver($this, $this->user, $this->spreadsheet);
     }
 
     /** Type into a cell given as "B3". */
@@ -150,8 +149,6 @@ class FormulaEngineTest extends TestCase
         $this->type($editor, 'A1', '5');
 
         $this->assertSame(['50', '55', '110'], [$this->answer('B1'), $this->answer('C1'), $this->answer('D1')]);
-        // What is on screen moved too, without a reload.
-        $this->assertSame('110', $editor->get('cellData')[0][3]['computed_value']);
     }
 
     public function test_only_the_formulas_that_read_a_cell_are_worked_out(): void
@@ -176,6 +173,23 @@ class FormulaEngineTest extends TestCase
 
         $this->assertSame('4', $this->answer('C1'));
         $this->assertSame('6', $this->answer('C2'));
+    }
+
+    public function test_putting_a_value_back_reaches_the_formulas_that_read_it_and_a_zero_answer_is_kept(): void
+    {
+        $editor = $this->editor();
+        $this->type($editor, 'A1', '1');
+        $this->type($editor, 'B1', '=A1*3');
+        $this->type($editor, 'A1', '2');
+        $this->assertSame('6', $this->answer('B1'));
+
+        // What the grid's undo sends: the old value, as an edit.
+        $this->type($editor, 'A1', '1');
+        $this->assertSame('3', $this->answer('B1'));
+
+        $this->type($editor, 'C1', '=1-1');
+        $this->assertSame('0', $this->answer('C1'));
+        $this->assertSame('=1-1', $this->cell('C1')->formula);
     }
 
     public function test_text_inside_quotes_is_not_a_reference(): void
@@ -280,30 +294,6 @@ class FormulaEngineTest extends TestCase
         $this->type($editor, 'A2', '4');
 
         $this->assertSame('7', $this->answer('C1'));
-    }
-
-    public function test_undo_and_clear_reach_the_formulas_that_read_the_cell(): void
-    {
-        $editor = $this->editor();
-        $this->type($editor, 'A1', '1');
-        $this->type($editor, 'B1', '=A1*3');
-        $this->type($editor, 'A1', '2');
-        $this->assertSame('6', $this->answer('B1'));
-
-        $editor->call('undoAction');
-        $this->assertSame('3', $this->answer('B1'));
-
-        $editor->call('redoAction');
-        $this->assertSame('6', $this->answer('B1'));
-    }
-
-    public function test_a_zero_result_shows_and_a_formula_opens_for_editing(): void
-    {
-        $editor = $this->editor();
-        $this->type($editor, 'A1', '=1-1');
-
-        $this->assertMatchesRegularExpression('/>\s*0\s*<\/div>/', $editor->html());
-        $editor->call('startEditing', 0, 0)->assertSet('editingValue', '=1-1');
     }
 
     public function test_imported_and_pasted_formulas_are_worked_out_when_the_sheet_is_opened(): void

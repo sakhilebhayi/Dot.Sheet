@@ -2,12 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ScriptsEditor;
 use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\SheetMacros;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -129,39 +127,6 @@ class GridMacrosTest extends TestCase
         $this->assertCount(SheetMacros::MAX_MACROS, app(SheetMacros::class)->of($this->sheet->fresh()));
     }
 
-    public function test_two_people_saving_at_once_keep_both(): void
-    {
-        $classic = Livewire::test(ScriptsEditor::class, ['spreadsheet_id' => $this->sheet->id]);
-
-        // Another person saves after this panel loaded its list.
-        app(SheetMacros::class)->add($this->sheet->id, 'Theirs', $this->edits());
-
-        $classic->set('macroName', 'Mine')->call('saveRecordedMacro', ['actions' => $this->edits()])->assertSet('status', 'Macro saved.');
-
-        $this->assertEqualsCanonicalizing(['Mine', 'Theirs'], array_column(app(SheetMacros::class)->of($this->sheet->fresh()), 'name'));
-    }
-
-    public function test_deleting_in_the_classic_panel_leaves_a_macro_saved_since_it_loaded(): void
-    {
-        app(SheetMacros::class)->add($this->sheet->id, 'Going', $this->edits());
-        $classic = Livewire::test(ScriptsEditor::class, ['spreadsheet_id' => $this->sheet->id]);
-        $going = app(SheetMacros::class)->of($this->sheet->fresh())[0]['id'];
-
-        app(SheetMacros::class)->add($this->sheet->id, 'Theirs', $this->edits());
-        $classic->call('deleteMacro', $going);
-
-        $this->assertSame(['Theirs'], array_column(app(SheetMacros::class)->of($this->sheet->fresh()), 'name'));
-    }
-
-    public function test_the_classic_panel_stores_only_real_edits_too(): void
-    {
-        Livewire::test(ScriptsEditor::class, ['spreadsheet_id' => $this->sheet->id])
-            ->call('saveRecordedMacro', ['actions' => [['type' => 'evil']]])
-            ->assertSet('status', 'Nothing was recorded.');
-
-        $this->assertSame([], app(SheetMacros::class)->of($this->sheet->fresh()));
-    }
-
     public function test_saving_a_macro_leaves_the_rest_of_the_settings_alone(): void
     {
         $this->sheet->update(['settings' => ['scripts' => [['id' => 'kept']], 'other' => 1]]);
@@ -204,13 +169,5 @@ class GridMacrosTest extends TestCase
         foreach (['new Worker', 'eval(', 'new Function', 'runSpreadsheetScriptSandbox', 'run-script-in-sandbox'] as $door) {
             $this->assertStringNotContainsString($door, $sources);
         }
-    }
-
-    public function test_the_page_says_whether_scripts_are_on(): void
-    {
-        $this->get("/spreadsheets/{$this->sheet->id}")->assertOk()->assertViewHas('boot', fn (array $boot) => $boot['scripts'] === false);
-
-        config(['sheet.scripts_enabled' => true]);
-        $this->get("/spreadsheets/{$this->sheet->id}")->assertOk()->assertViewHas('boot', fn (array $boot) => $boot['scripts'] === true);
     }
 }

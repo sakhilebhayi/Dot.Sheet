@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\Concerns\RefusesProtectedWorkbook;
 use App\Models\Cell;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -232,16 +231,6 @@ class GridApprovalTest extends TestCase
         }
     }
 
-    public function test_the_classic_editor_stays_shut_on_an_approved_workbook_for_a_keeper_too(): void
-    {
-        $this->approved();
-
-        $this->assertTrue($this->shutOutOfClassic($this->owner));
-
-        $this->step($this->admin, 'reopen')->assertOk();
-        $this->assertFalse($this->shutOutOfClassic($this->owner));
-    }
-
     public function test_whoever_asked_can_take_it_back_but_another_editor_cannot(): void
     {
         $other = User::factory()->withPersonalTeam()->create();
@@ -372,15 +361,5 @@ class GridApprovalTest extends TestCase
 
         $this->sheet->update(['is_template' => true]);
         $this->actingAs($this->editor)->post('/spreadsheets/from-team-template', ['source' => $this->sheet->id])->assertNotFound();
-    }
-
-    private function shutOutOfClassic(User $user): bool
-    {
-        $this->actingAs($user);
-
-        return (new class
-        {
-            use RefusesProtectedWorkbook;
-        })::protectedFor($this->sheet);
     }
 }

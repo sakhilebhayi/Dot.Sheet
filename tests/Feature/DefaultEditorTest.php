@@ -24,28 +24,6 @@ class DefaultEditorTest extends TestCase
         $this->sheet = Spreadsheet::create(['uuid' => (string) str()->uuid(), 'owner_id' => $this->owner->id, 'team_id' => $this->owner->currentTeam->id, 'name' => 'Default']);
     }
 
-    public function test_a_sheets_address_opens_the_new_editor_with_the_classic_one_a_link_away(): void
-    {
-        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}")->assertOk()
-            ->assertSee('id="boot"', false)
-            ->assertSee("/spreadsheets/{$this->sheet->id}/classic", false);
-    }
-
-    public function test_the_classic_editor_stays_at_its_own_address_and_links_back(): void
-    {
-        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk()
-            ->assertSeeLivewire('show-spreadsheet')
-            ->assertSee('New editor');
-    }
-
-    public function test_the_classic_editor_sends_sorting_to_the_new_one(): void
-    {
-        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/classic")->assertOk()
-            ->assertSee('Sort in the new editor')
-            ->assertSee(route('spreadsheets.show', $this->sheet), false)
-            ->assertDontSee('Sort column');
-    }
-
     public function test_a_new_sheet_opens_in_the_new_editor(): void
     {
         $this->actingAs($this->owner)->post('/spreadsheets', ['name' => 'Fresh'])
@@ -64,7 +42,17 @@ class DefaultEditorTest extends TestCase
             ->assertDontSee('Preview the new editor');
     }
 
-    public function test_neither_editor_opens_for_a_stranger(): void
+    public function test_a_mention_email_opens_where_comments_are(): void
+    {
+        $mail = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this', 42))->toMail($this->owner);
+        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?tab=42&cell=C2", $mail->actionUrl);
+
+        // One already waiting in a queue when this shipped has no sheet to name.
+        $older = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this'))->toMail($this->owner);
+        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?cell=C2", $older->actionUrl);
+    }
+
+    public function test_neither_the_editor_nor_the_old_classic_address_opens_for_a_stranger(): void
     {
         foreach (['', '/classic'] as $editor) {
             $this->actingAs(User::factory()->withPersonalTeam()->create())->get("/spreadsheets/{$this->sheet->id}{$editor}")->assertForbidden();
@@ -78,13 +66,8 @@ class DefaultEditorTest extends TestCase
         }
     }
 
-    public function test_a_mention_email_opens_where_comments_are(): void
+    public function test_the_retired_classic_address_opens_the_grid(): void
     {
-        $mail = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this', 42))->toMail($this->owner);
-        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?tab=42&cell=C2", $mail->actionUrl);
-
-        // One already waiting in a queue when this shipped has no sheet to name.
-        $older = (new MentionedInComment('Sam', $this->sheet->id, $this->sheet->name, 2, 3, 'Look at this'))->toMail($this->owner);
-        $this->assertStringEndsWith("/spreadsheets/{$this->sheet->id}?cell=C2", $older->actionUrl);
+        $this->actingAs($this->owner)->get("/spreadsheets/{$this->sheet->id}/classic")->assertRedirect(route('spreadsheets.show', $this->sheet));
     }
 }

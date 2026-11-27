@@ -28,20 +28,4 @@ class LivewireViewRootsTest extends TestCase
             );
         }
     }
-
-    public function test_script_toggled_elements_in_the_editor_are_ignored_by_livewire_morphing(): void
-    {
-        $view = file_get_contents(resource_path('views/livewire/show-spreadsheet.blade.php'));
-
-        foreach ([
-            'spreadsheetContextMenu', 'analysisPanel', 'nlqModal', 'shortcutsModal', 'helpModal',
-            'bulkPasteProgress', 'importProgress', 'activeUsers', 'remoteCursorsLayer',
-        ] as $id) {
-            $this->assertMatchesRegularExpression(
-                '/<(div|aside) id="'.$id.'" wire:ignore /',
-                $view,
-                "#{$id} is shown or hidden by a script, so it needs wire:ignore.",
-            );
-        }
-    }
 }

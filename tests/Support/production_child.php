@@ -11,18 +11,18 @@
  *   php production_child.php settings <n> <ssId>         n settings writes; exits 1 if the version ever went backwards
  */
 
-use App\Livewire\ShowSpreadsheet;
 use App\Models\Cell;
 use App\Models\Spreadsheet;
 use App\Models\User;
+use App\Services\CellWriter;
 use App\Services\SheetStructureService;
 use App\Services\StructureVersion;
+use App\Services\WriteLock;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Livewire\Livewire;
 
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 
@@ -75,21 +75,39 @@ if ($mode === 'settings') {
 }
 
 if ($mode === 'insert-rows' || $mode === 'edit-rows') {
-    // Two real editors (Livewire components) in two processes. One inserts rows at the top, the other
-    // writes one cell per step at rows 10,000 apart. Refusals and busy answers are fine; errors are not.
+    // Two editors in two processes, through the grid's own write path (the write lock and the structure version, as
+    // GridController uses them; the classic Livewire editor this drove was retired in EA-6). One inserts rows at the
+    // top, the other writes one cell per step at rows 10,000 apart from the version it last saw. Refusals and busy
+    // answers are fine; errors are not.
     [$n, $sheetId] = [(int) $argv[2], (int) $argv[3]];
     $user = User::first();
+    $tabId = (int) DB::table('sheet_tabs')->where('spreadsheet_id', $sheetId)->orderBy('sort_order')->value('id');
     config(['sheet.structure_ops_enabled' => true]);
-    $editor = Livewire::actingAs($user)->test(ShowSpreadsheet::class, ['spreadsheet_id' => $sheetId]);
     $accepted = [];
     $refused = 0;
     for ($i = 0; $i < $n; $i++) {
         if ($mode === 'insert-rows') {
-            $editor->set('selectedRow', 0)->call('insertRowSelected');
+            // An insert is retried until it lands, as a person would press again: every one must commit.
+            do {
+                $done = false;
+                try {
+                    WriteLock::guard(function () use ($sheetId, $tabId, &$done) {
+                        app(SheetStructureService::class)->insertRow($sheetId, $tabId, 0, StructureVersion::current($sheetId));
+                        $done = true;
+                    }, fn () => null);
+                } catch (Throwable) {
+                    // stale or busy: try again
+                }
+            } while (! $done);
         } else {
-            $editor->set('editingCell', ($i * 10000).'_1')->call('saveCell', "B{$i}");
-            // Only a write the editor accepted (empty notice) counts as accepted.
-            if ($editor->get('structureNotice') === '') {
+            $seen = StructureVersion::current($sheetId);
+            usleep(random_int(0, 3000));
+            $written = false;
+            WriteLock::guard(function () use ($sheetId, $tabId, $seen, $i, $user, &$written) {
+                $written = StructureVersion::writeIfCurrent($sheetId, $seen, fn () => app(CellWriter::class)->write($sheetId, $tabId, [['row' => $i * 10000, 'col' => 1, 'value' => "B{$i}"]], $user->id));
+            }, fn () => null);
+            // Only a write accepted at the version it was made against counts as accepted.
+            if ($written) {
                 $accepted[] = $i;
             } else {
                 $refused++;

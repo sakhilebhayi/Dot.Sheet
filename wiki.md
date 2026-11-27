@@ -4,12 +4,27 @@ version: 0.5.0
 status: draft
 owners: [Sheet Platform Lead]
 platform-id: dot-sheet
-last-review: 2026-08-07
+last-review: 2026-11-28
 ---
 
 # Dot.Sheet
 
 Purpose: this is Dot.Sheet's own knowledge home — owned and maintained by the Dot.Sheet team. It describes what this platform actually is, as implemented, and how it connects to the wider Dot Ecosystem. Dot.Brain never edits this file; it only reads what we choose to publish.
+
+> **Corrections, 2026-11-28 (enterprise audit EA-6).** Sections 1–7 below were written in August 2026 and are kept as
+> history; where they disagree with this box, this box and the code are right. Current facts:
+> - **Database:** SQLite in production and CI (not PostgreSQL). Sessions, cache and queue use the database driver.
+> - **Realtime:** there is no broadcast server (`BROADCAST_CONNECTION=null`). The editor checks for others' changes
+>   every few seconds and shows who has the workbook open; it is not live editing.
+> - **Formulas:** worked out on the server by PhpSpreadsheet 5 with a stored dependency graph (`app/Services/Formula`).
+>   There is no client-side formula parser; `maatwebsite/excel` is gone (import and export use PhpSpreadsheet directly).
+> - **Workbooks:** many sheet tabs per workbook; named ranges, pivot tables, charts, protections and approvals all exist.
+> - **Editors:** the default editor is the browser-drawn grid (`resources/js/grid`); the Livewire "classic" editor remains
+>   at `/spreadsheets/{id}/classic`.
+> - **Sign-in:** through InfoDot (OIDC, `dot-sso-client`); local sign-in is closed in production.
+> - **AI:** off unless a provider and key are configured; the assistant says so when it is off.
+> - Up-to-date sources: `README.md`, `DESIGN.md`, `docs/programme/ENTERPRISE_AUDIT.md`, `docs/deployment-cpanel.md`.
+>   The old phase reports, task list and quickstart are in `docs/archive/`.
 
 > **Related:** [Dot.Brain's ingested view of this platform](https://github.com/sakhilebhayi/Dot.Brain/blob/main/platforms/dot-sheet.md)
 

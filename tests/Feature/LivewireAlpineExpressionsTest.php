@@ -37,17 +37,4 @@ class LivewireAlpineExpressionsTest extends TestCase
 
         $this->assertSame([], $offences, "Use \$wire.property in Alpine expressions:\n".implode("\n", $offences));
     }
-
-    public function test_the_ai_panels_read_livewire_state_through_wire(): void
-    {
-        $analysis = file_get_contents(resource_path('views/livewire/ai-analysis-panel.blade.php'));
-        $this->assertSame(6, substr_count($analysis, "\$wire.active_tab === '"));
-        $this->assertStringContainsString(':disabled="$wire.loading"', $analysis);
-
-        $this->assertStringContainsString("'opacity-50 cursor-not-allowed': \$wire.loading", file_get_contents(resource_path('views/livewire/ai-formula-modal.blade.php')));
-
-        $query = file_get_contents(resource_path('views/livewire/ai-natural-language-query.blade.php'));
-        $this->assertStringContainsString('@keydown.enter.meta="$wire.submitQuery()"', $query);
-        $this->assertStringContainsString('@keydown.enter.ctrl="$wire.submitQuery()"', $query);
-    }
 }

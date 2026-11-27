@@ -49,6 +49,7 @@ export class Server {
         this.shares = `/spreadsheets/${spreadsheetId}/sharing`;
         this.imports = `/spreadsheets/${spreadsheetId}/import`;
         this.macrosAt = `/spreadsheets/${spreadsheetId}/macros`;
+        this.workflowsAt = `/spreadsheets/${spreadsheetId}/workflows`;
         this.approvalAt = `/spreadsheets/${spreadsheetId}/approval`;
         this.filedAt = `/spreadsheets/${spreadsheetId}/filed`;
         this.queue = Promise.resolve();
@@ -239,6 +240,18 @@ export class Server {
 
     sharing() {
         return json(this.shares);
+    }
+
+    workflows() {
+        return json(this.workflowsAt);
+    }
+
+    addWorkflow(rule) {
+        return json(this.workflowsAt, { method: 'POST', body: JSON.stringify(rule) });
+    }
+
+    removeWorkflow(id) {
+        return json(`${this.workflowsAt}/${encodeURIComponent(id)}`, { method: 'DELETE' });
     }
 
     shareWith(email, permission, days) {

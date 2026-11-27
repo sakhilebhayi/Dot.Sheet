@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\ChartBuilder;
 use App\Models\Cell;
 use App\Models\ChartConfig;
 use App\Models\SheetTab;
@@ -17,7 +16,6 @@ use App\Services\StructureVersion;
 use App\Services\WorkbookSheets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridChartsTest extends TestCase
@@ -389,23 +387,6 @@ class GridChartsTest extends TestCase
 
         $this->getJson($this->url())->assertForbidden();
         $this->getJson($this->url("charts/{$chart->id}"))->assertForbidden();
-    }
-
-    public function test_the_classic_builder_keeps_labels_and_shows_gaps(): void
-    {
-        $this->table([['Jan', '1'], ['Feb', ''], ['Mar', '3']]);
-
-        Livewire::test(ChartBuilder::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id])
-            ->set('title', 'Sales')->set('type', 'line')->set('data_range', 'B1:B3')->set('labels_range', 'A1:A3')
-            ->call('saveChart')
-            ->assertDispatched('render-chart', function (string $event, array $params) {
-                $data = $params[0]['data'];
-
-                // Numbers come through the browser payload as plain JSON: 1.0 arrives as 1.
-                return $data['labels'] === ['Jan', 'Feb', 'Mar'] && $data['datasets'][0]['data'] == [1, null, 3];
-            });
-
-        $this->assertSame('A1:A3', ChartConfig::firstOrFail()->labels_range);
     }
 
     public function test_the_new_kinds_of_chart_are_taken(): void

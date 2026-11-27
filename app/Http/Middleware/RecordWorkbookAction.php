@@ -27,6 +27,8 @@ class RecordWorkbookAction
         'grid.sharing.link.new' => ['Made a new link', []],
         'grid.sharing.place' => ['Moved it', ['team_id']],
         'grid.sharing.template' => ['Changed whether it is a team template', ['on']],
+        'grid.workflows.store' => ['Added a workflow rule', ['name', 'column']],
+        'grid.workflows.destroy' => ['Deleted a workflow rule', []],
         'grid.protections.store' => ['Protected cells', ['range']],
         'grid.protections.destroy' => ['Lifted a protection', []],
         'grid.approval.ask' => ['Asked for approval', []],

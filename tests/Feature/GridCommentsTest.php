@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\CellCommentsPanel;
 use App\Models\Comment;
 use App\Models\SheetTab;
 use App\Models\Spreadsheet;
@@ -18,7 +17,6 @@ use Illuminate\Contracts\Notifications\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class GridCommentsTest extends TestCase
@@ -452,31 +450,6 @@ class GridCommentsTest extends TestCase
         $this->ask('cells', ['edits' => [['row' => 9, 'col' => 9, 'value' => 'x']], 'comments' => [['id' => $theirs->id, 'tab' => $this->tab->id, 'row' => 0, 'col' => 0]]])->assertOk();
 
         $this->assertSame([$otherTab->id, 3], [$theirs->fresh()->sheet_tab_id, $theirs->fresh()->row_index]);
-    }
-
-    public function test_the_classic_panel_does_not_show_a_comment_with_no_cell(): void
-    {
-        $detached = $this->comment(1, 0, 'Its row went');
-        $detached->update(['detached' => true]);
-        $placed = $this->comment(1, 0, 'On the row now here');
-
-        Livewire::test(CellCommentsPanel::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id])
-            ->call('onCellSelected', 1, 0)
-            ->assertSee($placed->content)
-            ->assertDontSee($detached->content);
-    }
-
-    public function test_a_mention_from_the_classic_panel_goes_through_the_same_path(): void
-    {
-        Notification::fake();
-        $friend = User::factory()->withPersonalTeam()->create(['name' => 'Thandi']);
-        $this->sheet->sharedUsers()->attach($friend->id, ['permission' => 'comment']);
-
-        Livewire::test(CellCommentsPanel::class, ['spreadsheet_id' => $this->sheet->id, 'sheet_tab_id' => $this->tab->id])
-            ->set('newComment', 'For @Thandi')
-            ->call('addComment');
-
-        Notification::assertSentTo($friend, MentionedInComment::class, fn (MentionedInComment $sent) => $sent->sheetTabId === $this->tab->id);
     }
 
     public function test_deleting_a_sheet_says_what_comments_go_with_it(): void

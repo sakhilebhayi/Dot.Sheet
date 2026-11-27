@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Livewire\NamedRangesPanel;
 use App\Models\Cell;
 use App\Models\NamedRange;
 use App\Models\SheetTab;
@@ -10,7 +9,6 @@ use App\Models\Spreadsheet;
 use App\Models\User;
 use App\Services\FormulaEvaluatorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class NamedRangesTest extends TestCase
@@ -114,91 +112,5 @@ class NamedRangesTest extends TestCase
         // function) and returns 0 rather than erroring.
         $this->assertFalse($result['error']);
         $this->assertSame(0.0, (float) $result['value']);
-    }
-
-    public function test_owner_can_create_a_named_range_via_the_panel(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-
-        Livewire::actingAs($user)->test(NamedRangesPanel::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])
-            ->set('name', 'Revenue')
-            ->set('rangeInput', 'A1:A10')
-            ->call('createRange')
-            ->assertSet('error', '');
-
-        $range = NamedRange::where('spreadsheet_id', $spreadsheet->id)->where('name', 'Revenue')->first();
-        $this->assertNotNull($range);
-        $this->assertSame(0, $range->start_row);
-        $this->assertSame(9, $range->end_row);
-        $this->assertSame('A1:A10', $range->toReferenceText());
-    }
-
-    public function test_a_name_that_looks_like_a_cell_reference_is_rejected(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-
-        Livewire::actingAs($user)->test(NamedRangesPanel::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])
-            ->set('name', 'B12')
-            ->set('rangeInput', 'A1:A10')
-            ->call('createRange')
-            ->assertSet('error', fn ($error) => $error !== '');
-
-        $this->assertSame(0, NamedRange::where('spreadsheet_id', $spreadsheet->id)->count());
-    }
-
-    public function test_a_duplicate_name_case_insensitive_is_rejected(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-
-        NamedRange::create([
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-            'name' => 'Revenue',
-            'start_row' => 0, 'start_col' => 0, 'end_row' => 0, 'end_col' => 0,
-        ]);
-
-        Livewire::actingAs($user)->test(NamedRangesPanel::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])
-            ->set('name', 'revenue')
-            ->set('rangeInput', 'B1:B5')
-            ->call('createRange')
-            ->assertSet('error', fn ($error) => $error !== '');
-
-        $this->assertSame(1, NamedRange::where('spreadsheet_id', $spreadsheet->id)->count());
-    }
-
-    public function test_owner_can_delete_a_named_range(): void
-    {
-        $user = User::factory()->create();
-        $spreadsheet = $this->ownedSpreadsheet($user);
-        $tab = $spreadsheet->defaultSheetTab();
-
-        $range = NamedRange::create([
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-            'name' => 'Revenue',
-            'start_row' => 0, 'start_col' => 0, 'end_row' => 0, 'end_col' => 0,
-        ]);
-
-        Livewire::actingAs($user)->test(NamedRangesPanel::class, [
-            'spreadsheet_id' => $spreadsheet->id,
-            'sheet_tab_id' => $tab->id,
-        ])->call('deleteRange', $range->id);
-
-        $this->assertSame(0, NamedRange::where('spreadsheet_id', $spreadsheet->id)->count());
     }
 }

@@ -6,7 +6,7 @@ export default defineConfig({
     plugins: [
         tailwindcss(),
         laravel({
-            input: ['resources/css/app.css', 'resources/css/signed-in.css', 'resources/js/app.js', 'resources/js/classic.js', 'resources/css/dot-grid.css', 'resources/js/grid/main.js', 'resources/css/dot-pages.css', 'resources/js/pages/header-search.js', 'resources/js/pages/dashboard.js', 'resources/images/dot-sheet-mark.png'],
+            input: ['resources/css/app.css', 'resources/css/signed-in.css', 'resources/js/app.js', 'resources/css/dot-grid.css', 'resources/js/grid/main.js', 'resources/css/dot-pages.css', 'resources/js/pages/header-search.js', 'resources/js/pages/dashboard.js', 'resources/images/dot-sheet-mark.png'],
             refresh: true,
         }),
     ],

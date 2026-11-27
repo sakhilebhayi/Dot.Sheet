@@ -37,7 +37,6 @@
                 <div class="more-in" role="group" aria-label="More actions">
                     <button class="tool" id="open-palette" type="button">Commands<kbd>Ctrl K</kbd></button>
                     <button class="tool quiet" id="do-explain" type="button" hidden>Explain</button>
-                    <a class="tool quiet" href="{{ route('spreadsheets.classic', $spreadsheet) }}">Classic editor</a>
                 </div>
             </div>
         </div>
@@ -343,6 +342,39 @@
             <button class="button" type="submit">Add</button>
         </form>
         <ul class="people dock-list" id="names-list"></ul>
+    </aside>
+
+    <aside class="dock" id="workflows" aria-label="Workflow rules" hidden>
+        <div class="dock-head">
+            <h2>Workflow rules</h2>
+            <button class="tool" type="button" id="workflows-close" aria-label="Close workflow rules">×</button>
+        </div>
+        <p class="dock-note">A rule watches one column on every sheet. When a cell there meets it, you are told, or the cell is marked.</p>
+        <form class="dock-form workflows-form" id="workflows-form">
+            <label for="workflows-name">Name the rule</label>
+            <input id="workflows-name" autocomplete="off" maxlength="80" placeholder="Low stock">
+            <p class="workflows-sentence">
+                <span>When column</span>
+                <input id="workflows-column" autocomplete="off" spellcheck="false" maxlength="3" value="B" aria-label="Column">
+                <select id="workflows-operator" aria-label="Comparison">
+                    <option value="<">is under</option>
+                    <option value="<=">is at most</option>
+                    <option value=">">is over</option>
+                    <option value=">=">is at least</option>
+                    <option value="==">is</option>
+                    <option value="!=">is not</option>
+                </select>
+                <input id="workflows-value" autocomplete="off" maxlength="50" value="10" aria-label="Value">
+                <select id="workflows-action" aria-label="What happens">
+                    <option value="email_owner">tell the owner</option>
+                    <option value="highlight_cell">mark the cell</option>
+                </select>
+            </p>
+            <label class="tick"><input type="checkbox" id="workflows-email" checked> By email</label>
+            <label class="tick"><input type="checkbox" id="workflows-inapp"> Under the bell</label>
+            <button class="button" type="submit">Add</button>
+        </form>
+        <ul class="people dock-list" id="workflows-list"></ul>
     </aside>
 
     <div class="formula-help" id="formula-help" role="listbox" aria-label="Suggestions" hidden></div>

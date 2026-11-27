@@ -903,7 +903,8 @@ class DotGridEditorTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($user, $sheet) {
             $this->open($browser, $user, $sheet);
-            $this->runCommand($browser, 'Insert or delete rows');
+            // The entry answers what a person would type for the real commands.
+            $this->runCommand($browser, 'insert rows');
             $browser->waitForTextIn('#note', 'not available yet');
         });
     }
@@ -953,6 +954,7 @@ class DotGridEditorTest extends DuskTestCase
         });
     }
 
+    #[\PHPUnit\Framework\Attributes\Group('structure-ops')]
     public function test_columns_go_in_beside_the_selection(): void
     {
         [$user, $sheet, $tab] = $this->sheet();

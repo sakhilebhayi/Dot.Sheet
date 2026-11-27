@@ -21,6 +21,7 @@
         </include>
     </source>
     <php>
+        <env name="DOT_CRON_ESSENTIAL_ONLY" value="false"/>
         <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="DOTSSO_ENABLED" value="false" force="true"/>

@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\DB;
  */
 class SheetComments
 {
+    /** Most people one comment's @mentions notify. */
+    public const MAX_MENTIONED = 20;
+
     /** Threads sent to the panel at once. Marks on the sheet are not limited. */
     public const MAX_THREADS = 500;
 
@@ -110,28 +113,30 @@ class SheetComments
             return;
         }
 
+        // EA-2 (E-04): each person once however many of their names are typed, LIKE wildcards in a token taken
+        // literally, and at most MAX_MENTIONED people per comment.
+        $mentioned = collect();
         foreach ($tokens as $token) {
-            $users = User::whereIn('id', $recipientIds)
-                ->where(function ($q) use ($token) {
-                    $q->where('name', 'like', $token.'%')
-                        ->orWhere('email', 'like', $token.'%');
-                })
-                ->get();
+            $like = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $token).'%';
+            $mentioned = $mentioned->merge(User::whereIn('id', $recipientIds)
+                ->where(fn ($q) => $q->whereRaw("name like ? escape '!'", [$like])->orWhereRaw("email like ? escape '!'", [$like]))
+                ->limit(self::MAX_MENTIONED)
+                ->get());
+        }
 
-            foreach ($users as $user) {
-                try {
-                    $user->notify(new MentionedInComment(
-                        actorName: $actor->name ?? 'Someone',
-                        spreadsheetId: $spreadsheet->id,
-                        spreadsheetName: $spreadsheet->name,
-                        row: $comment->row_index + 1,
-                        col: $comment->col_index + 1,
-                        excerpt: mb_strimwidth($comment->content, 0, 140, '...'),
-                        sheetTabId: $comment->sheet_tab_id,
-                    ));
-                } catch (\Throwable $e) {
-                    report($e);
-                }
+        foreach ($mentioned->unique('id')->take(self::MAX_MENTIONED) as $user) {
+            try {
+                $user->notify(new MentionedInComment(
+                    actorName: $actor->name ?? 'Someone',
+                    spreadsheetId: $spreadsheet->id,
+                    spreadsheetName: $spreadsheet->name,
+                    row: $comment->row_index + 1,
+                    col: $comment->col_index + 1,
+                    excerpt: mb_strimwidth($comment->content, 0, 140, '...'),
+                    sheetTabId: $comment->sheet_tab_id,
+                ));
+            } catch (\Throwable $e) {
+                report($e);
             }
         }
     }

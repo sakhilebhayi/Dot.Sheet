@@ -226,6 +226,13 @@ jobs:
           if [ "$(pre_val DOTSSO_ENABLED | tr 'A-Z' 'a-z')" != "true" ] || [ "$(pre_val DOTSSO_ALLOW_LOCAL_LOGIN | tr 'A-Z' 'a-z')" = "true" ]; then
             echo "::error::Central sign-in is not enforced in the host .env (need DOTSSO_ENABLED=true and DOTSSO_ALLOW_LOCAL_LOGIN unset or false)."; PRE_FAIL=1
           fi
+          # EA-2 (E-09): mail must really leave. The default mailer writes every email to the log, silently.
+          case "$(pre_val MAIL_MAILER | tr 'A-Z' 'a-z')" in
+            ''|log|array) echo "::error::MAIL_MAILER is '$(pre_val MAIL_MAILER)' in the host .env, so no email would be sent. Set MAIL_MAILER=smtp and the MAIL_* settings there."; PRE_FAIL=1 ;;
+          esac
+          case "$(pre_val MAIL_FROM_ADDRESS | tr 'A-Z' 'a-z')" in
+            ''|*example.com|*example.org) echo "::error::MAIL_FROM_ADDRESS is '$(pre_val MAIL_FROM_ADDRESS)' in the host .env. Set it to the sending address (for example no-reply@infodot.co.za)."; PRE_FAIL=1 ;;
+          esac
           if [ "$PRE_FAIL" = 1 ]; then exit 1; fi
 
           # Git hooks on the host never run during a release. The Forms host's old

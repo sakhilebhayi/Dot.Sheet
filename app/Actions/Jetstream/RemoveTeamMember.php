@@ -4,6 +4,7 @@ namespace App\Actions\Jetstream;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Services\AccountNotices;
 use App\Services\TeamDeparture;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Gate;
@@ -25,6 +26,10 @@ class RemoveTeamMember implements RemovesTeamMembers
         $team->removeUser($teamMember);
 
         app(TeamDeparture::class)->handOver($team, $teamMember);
+
+        if ($user->id !== $teamMember->id) {
+            app(AccountNotices::class)->teamRole($team, $teamMember, null);
+        }
 
         TeamMemberRemoved::dispatch($team, $teamMember);
     }

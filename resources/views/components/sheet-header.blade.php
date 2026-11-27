@@ -91,6 +91,7 @@
             :root-attributes="['data-search-url' => route('search')]" />
     </x-slot:search>
     <x-slot:tools>
+        <x-notice-centre />
         <x-dot.switcher :model="$switcherModel" platform="sheet" :company="$companyUuid" :company-name="$companyUuid ? $company->name : null" logos="/dot-ui/img/platforms" />
     </x-slot:tools>
 </x-dot.header>

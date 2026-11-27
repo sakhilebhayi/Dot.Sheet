@@ -12,6 +12,9 @@ use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Jetstream\HasTeams;
 use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * @property array<string, bool>|null $notification_preferences which optional emails the person wants (EA-2)
+ */
 class User extends Authenticatable
 {
     use HasApiTokens;
@@ -67,7 +70,23 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_operator' => 'boolean',
+            'notification_preferences' => 'array',
         ];
+    }
+
+    /** The kinds of email a person may turn off (EA-2, E-10). Security and account email is never optional. */
+    public const OPTIONAL_EMAIL = [
+        'collaboration' => 'Mentions, approvals, sharing and workflow rules on workbooks',
+        'team' => 'Changes to your companies and your role in them',
+    ];
+
+    public function wantsEmailAbout(string $category): bool
+    {
+        if (! array_key_exists($category, self::OPTIONAL_EMAIL)) {
+            return true; // security and account notices
+        }
+
+        return (bool) (($this->notification_preferences ?? [])[$category.'_email'] ?? true);
     }
 
     public function spreadsheets()

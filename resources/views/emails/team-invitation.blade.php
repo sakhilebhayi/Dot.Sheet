@@ -1,5 +1,5 @@
 @component('mail::message')
-{{ __('You have been invited to join the :team team!', ['team' => $invitation->team->name]) }}
+{{ __('You have been invited to join :team in Dot.Sheet.', ['team' => \App\Support\MailText::inline($invitation->team->name)]) }}
 
 @if (\App\Support\CentralSignIn::active())
 {{ __('Sign in to Dot.Sheet with your InfoDot account, or create one there, using this email address. You come straight back to this invitation. You may accept it by clicking the button below:') }}

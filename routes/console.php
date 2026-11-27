@@ -30,6 +30,7 @@ Schedule::command('sheet:prune-exports')->hourly()->name('prune-exports')->witho
 // Automatic and safety copies of each sheet beyond the newest few (SheetVersions::KEEP_*); copies people made stay.
 // Calls to other Dot platforms wait in the outbox, and this sends what is due.
 Schedule::command('integrations:deliver')->everyMinute()->name('integrations-deliver')->withoutOverlapping();
+Schedule::command('notices:prune')->dailyAt('03:40')->name('notices-prune')->withoutOverlapping();
 Schedule::command('integrations:deliver --prune')->dailyAt('03:15')->name('integrations-prune');
 Schedule::command('integrations:analytics-snapshots')->dailyAt('04:30')->name('integrations-analytics')->withoutOverlapping();
 

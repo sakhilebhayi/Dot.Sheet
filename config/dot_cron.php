@@ -19,5 +19,7 @@ return [
     // to InfoDot go through it. Matched by schedule name so the nightly `integrations-prune` stays paused.
     'essential' => [
         'integrations-deliver',
+        // EA-2: keeps the notification centre bounded.
+        'notices-prune',
     ],
 ];

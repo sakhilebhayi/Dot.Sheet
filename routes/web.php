@@ -20,6 +20,7 @@ use App\Http\Controllers\GridShareController;
 use App\Http\Controllers\GridTabController;
 use App\Http\Controllers\GuardianHealthController;
 use App\Http\Controllers\IntegrationsController;
+use App\Http\Controllers\NoticeController;
 use App\Http\Controllers\ReadyController;
 use App\Http\Controllers\ReconfirmThroughInfoDotController;
 use App\Http\Controllers\SchedulerProbeController;
@@ -83,6 +84,9 @@ Route::middleware([
     RecordWorkbookAction::class,
 ])->group(function () {
     Route::get('/dashboard', [SpreadsheetController::class, 'index'])->name('dashboard');
+    // EA-2 (E-02): the notification centre behind the header bell.
+    Route::post('/notices/read-all', [NoticeController::class, 'readAll'])->middleware('throttle:30,1')->name('notices.read-all');
+    Route::post('/notices/{notice}', [NoticeController::class, 'open'])->middleware('throttle:60,1')->name('notices.open');
     // The header search: spreadsheets and sheet tabs this person can reach, by name.
     Route::get('/search', SearchController::class)->middleware('throttle:60,1')->name('search');
 
